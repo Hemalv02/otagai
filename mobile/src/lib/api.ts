@@ -1,0 +1,96 @@
+import { supabase } from "@/lib/supabase";
+
+const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+
+if (!apiUrl) {
+  throw new Error("Set EXPO_PUBLIC_API_URL in mobile/.env.local.");
+}
+
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export type Language = "ja" | "en" | "bn";
+export type Region = "jp" | "bd";
+
+export type UserProfile = {
+  id: string;
+  kind: "self" | "managed";
+  display_name: string;
+  preferred_language: Language;
+  languages: Language[];
+  region: Region;
+  timezone: string;
+  age_band: string | null;
+  intro: string | null;
+  happy_to_help_with: string | null;
+  accepts_money_orei: boolean;
+  simple_mode: boolean;
+  text_scale_percent: number;
+  push_enabled: boolean;
+  status: string;
+  created_at: string;
+};
+
+export type NewProfile = {
+  display_name: string;
+  preferred_language: Language;
+  region: Region;
+  languages?: Language[];
+  age_band?: string;
+  happy_to_help_with?: string;
+};
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw new ApiError(401, "Sign in again to continue.");
+  }
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
+  if (init.body) {
+    headers.set("Content-Type", "application/json");
+  }
+  if (data.session) {
+    headers.set("Authorization", `Bearer ${data.session.access_token}`);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}${path}`, { ...init, headers });
+  } catch {
+    throw new ApiError(0, "Could not reach Otagai. Check your connection.");
+  }
+
+  if (!response.ok) {
+    let message = "Something went wrong. Please try again.";
+    try {
+      const body = (await response.json()) as { message?: unknown };
+      if (typeof body.message === "string") {
+        message = body.message;
+      }
+    } catch {
+      message = `Request failed (${response.status}).`;
+    }
+    throw new ApiError(response.status, message);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return (await response.json()) as T;
+}
+
+export const api = {
+  getMyProfile: () => request<UserProfile>("/users/me"),
+  createProfile: (profile: NewProfile) =>
+    request<UserProfile>("/users", {
+      method: "POST",
+      body: JSON.stringify(profile),
+    }),
+};

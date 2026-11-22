@@ -2,7 +2,14 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import AnyHttpUrl, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AnyHttpUrl,
+    Field,
+    FilePath,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +34,11 @@ class Settings(BaseSettings):
     postgres_password: SecretStr | None = None
     migration_database_host: str | None = None
     migration_database_port: int = Field(default=5432, ge=1, le=65535)
+    database_ssl_mode: Literal["disable", "require", "verify-full"] = "disable"
+    database_ssl_root_cert: FilePath | None = None
+
+    supabase_url: AnyHttpUrl | None = None
+    supabase_jwt_audience: str = "authenticated"
 
     redis_host: str | None = None
     redis_port: int = Field(default=6379, ge=1, le=65535)
@@ -83,6 +95,15 @@ class Settings(BaseSettings):
             raise ValueError("Set POSTGRES_PASSWORD for the database connection.")
         if self.redis_host and not self.redis_password:
             raise ValueError("Set REDIS_PASSWORD for the Redis connection.")
+        if self.database_ssl_mode == "verify-full" and not self.database_ssl_root_cert:
+            raise ValueError("Set DATABASE_SSL_ROOT_CERT for verify-full SSL.")
+        if self.supabase_url and (
+            self.supabase_url.scheme != "https"
+            and self.supabase_url.host not in ("localhost", "127.0.0.1")
+        ):
+            raise ValueError("Use HTTPS for SUPABASE_URL.")
+        if self.supabase_url and self.supabase_url.path not in (None, "", "/"):
+            raise ValueError("Set SUPABASE_URL to the project URL with no path.")
         if bool(self.s3_access_key) != bool(self.s3_secret_key):
             raise ValueError("Set both S3 credentials.")
         if self.s3_endpoint_url and not (self.s3_bucket and self.s3_access_key):

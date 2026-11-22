@@ -2,9 +2,16 @@ services:
   backend:
     build: ./backend
     environment: &backend_environment
-      DATABASE_HOST: pgbouncer
-      MIGRATION_DATABASE_HOST: postgres
+      DATABASE_HOST: "${DATABASE_HOST:-pgbouncer}"
+      DATABASE_PORT: "${DATABASE_PORT:-5432}"
+      MIGRATION_DATABASE_HOST: "${MIGRATION_DATABASE_HOST:-postgres}"
+      MIGRATION_DATABASE_PORT: "${MIGRATION_DATABASE_PORT:-5432}"
+      POSTGRES_USER: "${POSTGRES_USER:-otagai}"
+      POSTGRES_DB: "${POSTGRES_DB:-otagai}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+      DATABASE_SSL_MODE: "${DATABASE_SSL_MODE:-disable}"
+      DATABASE_SSL_ROOT_CERT: "${DATABASE_SSL_ROOT_CERT:-}"
+      SUPABASE_URL: "${SUPABASE_URL:-}"
       REDIS_HOST: redis
       REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"
       S3_ENDPOINT_URL: http://s3:9000

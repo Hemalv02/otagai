@@ -30,6 +30,7 @@ for (const [role, { size, weight, lineHeight }] of Object.entries(textRoles)) {
 
 module.exports = {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  darkMode: "class",
   presets: [require("nativewind/preset")],
   safelist: Object.keys(typeUtilities).map((selector) => selector.slice(1)),
   theme: {
