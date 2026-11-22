@@ -1,13 +1,51 @@
 services:
   backend:
     build: ./backend
+    environment: &backend_environment
+      DATABASE_HOST: pgbouncer
+      MIGRATION_DATABASE_HOST: postgres
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
+      REDIS_HOST: redis
+      REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"
+      S3_ENDPOINT_URL: http://s3:9000
+      S3_BUCKET: "${S3_BUCKET:-otagai-media}"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-otagai}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:?Set S3_SECRET_KEY}"
+      S3_CREATE_BUCKET: "true"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-}"
+      CORS_ALLOW_CREDENTIALS: "${CORS_ALLOW_CREDENTIALS:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_TLS: "${SMTP_TLS:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      EXPO_ACCESS_TOKEN: "${EXPO_ACCESS_TOKEN:-}"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      s3:
+        condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/openapi.json', timeout=3).close()"]
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/ready', timeout=5).close()"]
       interval: 5s
-      timeout: 4s
+      timeout: 6s
       retries: 12
+
+  worker:
+    profiles: [worker]
+    build: ./backend
+    environment: *backend_environment
+    command: ["dramatiq", "app.services.queue.worker:broker", "--processes", "1", "--threads", "2"]
+    depends_on:
+      redis:
+        condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
@@ -52,7 +90,7 @@ services:
       REDIS_PASSWORD: "${REDIS_PASSWORD:?Set REDIS_PASSWORD}"
     command: ["/bin/sh", "-ec", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${OTAGAI_REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:

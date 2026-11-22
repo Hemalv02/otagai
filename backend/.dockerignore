@@ -1,4 +1,9 @@
 *
 !main.py
+!app
+!app/**
+!alembic.ini
 !pyproject.toml
 !uv.lock
+**/__pycache__
+**/.env*
