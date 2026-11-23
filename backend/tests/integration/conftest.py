@@ -203,11 +203,12 @@ def pytest_sessionfinish(session, exitstatus):
         if key[0] == method and rx.match(cpath)
     }
     untested = sorted(all_ops - covered)
-    report = os.path.join(os.environ.get("COVERAGE_OUT", "/tmp"), "endpoint_coverage.txt")
+    report = os.path.join(
+        os.environ.get("COVERAGE_OUT", "/tmp"), "endpoint_coverage.txt"
+    )
     with open(report, "w") as handle:
         handle.write(f"exercised {len(all_ops) - len(untested)}/{len(all_ops)}\n")
-        for method, path in untested:
-            handle.write(f"UNTESTED {method} {path}\n")
+        handle.writelines(f"UNTESTED {method} {path}\n" for method, path in untested)
 
 
 async def matched_exchange(client: httpx2.AsyncClient, *, loan: bool = False) -> dict:
@@ -274,7 +275,5 @@ async def completed_exchange(client: httpx2.AsyncClient) -> dict:
     await client.post(
         f"/exchanges/{exchange_id}/confirm", headers=auth(ctx["requester"])
     )
-    await client.post(
-        f"/exchanges/{exchange_id}/confirm", headers=auth(ctx["helper"])
-    )
+    await client.post(f"/exchanges/{exchange_id}/confirm", headers=auth(ctx["helper"]))
     return ctx

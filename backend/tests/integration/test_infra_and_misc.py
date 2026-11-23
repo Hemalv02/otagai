@@ -72,13 +72,15 @@ async def test_event_detail_list_and_signup_cancel(client):
         await client.post(
             f"/circles/{circle_id}/events",
             headers=auth(leader),
-            json={"title": "Matsuri", "lang": "ja", "starts_at": "2026-12-09T09:00:00Z"},
+            json={
+                "title": "Matsuri",
+                "lang": "ja",
+                "starts_at": "2026-12-09T09:00:00Z",
+            },
         )
     ).json()["id"]
 
-    listed = await client.get(
-        f"/circles/{circle_id}/events", headers=auth(leader)
-    )
+    listed = await client.get(f"/circles/{circle_id}/events", headers=auth(leader))
     assert listed.status_code == 200
 
     detail = await client.get(f"/events/{event_id}", headers=auth(leader))
@@ -108,8 +110,6 @@ async def test_report_dismiss_by_leader(client):
             },
         )
     ).json()["id"]
-    dismissed = await client.post(
-        f"/reports/{report_id}/dismiss", headers=auth(leader)
-    )
+    dismissed = await client.post(f"/reports/{report_id}/dismiss", headers=auth(leader))
     assert dismissed.status_code == 200
     assert dismissed.json()["status"] == "dismissed"

@@ -1,4 +1,4 @@
-from tests.integration.conftest import auth, completed_exchange, make_user
+from tests.integration.conftest import auth, completed_exchange
 
 
 async def _mid(client, token):
@@ -12,7 +12,11 @@ async def test_thank_you_patch_wall_and_user_reads(client):
     created = await client.post(
         "/thank-yous",
         headers=auth(requester),
-        json={"exchange_id": ctx["exchange_id"], "gift_type": "note", "note": "Arigato"},
+        json={
+            "exchange_id": ctx["exchange_id"],
+            "gift_type": "note",
+            "note": "Arigato",
+        },
     )
     assert created.status_code == 201
     thank_you_id = created.json()["id"]
@@ -85,9 +89,7 @@ async def test_points_from_thank_you(client):
     assert balance.status_code == 200
     assert balance.json()["balance"] == 5
 
-    entries = await client.get(
-        "/users/me/points-entries", headers=auth(ctx["helper"])
-    )
+    entries = await client.get("/users/me/points-entries", headers=auth(ctx["helper"]))
     assert entries.status_code == 200
     assert len(entries.json()["items"]) == 1
 
@@ -162,8 +164,6 @@ async def test_report_resolve_by_leader(client):
     )
     assert queue.status_code == 200
 
-    resolved = await client.post(
-        f"/reports/{report_id}/resolve", headers=auth(leader)
-    )
+    resolved = await client.post(f"/reports/{report_id}/resolve", headers=auth(leader))
     assert resolved.status_code == 200
     assert resolved.json()["status"] == "resolved"

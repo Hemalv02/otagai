@@ -7,7 +7,10 @@ from tests.integration.conftest import auth, make_user
 
 AI_CALLS = [
     ("/ai/listing-drafts", {"description": "A cordless drill", "language": "ja"}),
-    ("/ai/thank-you-drafts", {"helped_with": "moving", "culture_pack": "japan", "language": "ja"}),
+    (
+        "/ai/thank-you-drafts",
+        {"helped_with": "moving", "culture_pack": "japan", "language": "ja"},
+    ),
     ("/ai/extension-drafts", {"intent": "extend", "language": "ja"}),
     ("/ai/tool-guides", {"tool_name": "Chainsaw", "language": "ja"}),
     ("/ai/transcriptions", {"media_id": str(uuid.uuid4())}),

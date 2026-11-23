@@ -51,7 +51,7 @@ async def test_list_responses_requester_only(client):
 
 
 async def test_patch_and_withdraw_response(client):
-    requester, helper, request_id = await _req_and_offer(client)
+    _requester, helper, request_id = await _req_and_offer(client)
     response_id = (
         await client.post(
             f"/requests/{request_id}/responses",
@@ -85,7 +85,7 @@ async def test_widen_request(client):
 
 
 async def test_mark_received_seen_and_hidden(client):
-    requester, helper, request_id = await _req_and_offer(client)
+    _requester, helper, request_id = await _req_and_offer(client)
     patched = await client.patch(
         f"/users/me/received-requests/{request_id}",
         headers=auth(helper),
