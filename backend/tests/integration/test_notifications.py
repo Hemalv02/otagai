@@ -142,3 +142,31 @@ async def test_home_aggregates(client):
     assert "received_requests" in body
     assert "active_exchanges" in body
     assert "due_soon" in body
+
+
+async def test_home_lists_only_open_received_requests(client):
+    requester, helper = await _request_with_offer(client)
+    open_id = (
+        await client.post(
+            "/requests",
+            headers=auth(requester),
+            json={"kind": "borrow", "raw_text": "Ladder", "lang": "en"},
+        )
+    ).json()["id"]
+    cancelled_id = (
+        await client.post(
+            "/requests",
+            headers=auth(requester),
+            json={"kind": "borrow", "raw_text": "Drill", "lang": "en"},
+        )
+    ).json()["id"]
+    cancel = await client.post(
+        f"/requests/{cancelled_id}/cancel", headers=auth(requester)
+    )
+    assert cancel.status_code == 200
+
+    body = (await client.get("/users/me/home", headers=auth(helper))).json()
+    ids = {item["id"] for item in body["received_requests"]}
+    assert open_id in ids
+    assert cancelled_id not in ids
+    assert all(item["status"] == "open" for item in body["received_requests"])

@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 
 from app.database.connection import Database
 from app.database.models import Exchange, HelpRequest, RequestRecipient, User
-from app.database.models.enums import ExchangeStatus
+from app.database.models.enums import ExchangeStatus, RequestStatus
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import MessageRepository
 from app.repositories.exchanges import ExchangeRepository
@@ -45,6 +45,7 @@ async def home(database: Database, user: User) -> HomeView:
             blocked,
             direct_only=False,
             page=PageRequest(limit=HOME_LIMIT),
+            statuses=(RequestStatus.OPEN.value,),
         )
         received_requests = await requests_repo.get_many(
             [recipient.request_id for recipient in recipients.items]

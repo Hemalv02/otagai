@@ -118,6 +118,7 @@ class RequestRepository:
         *,
         direct_only: bool,
         page: PageRequest,
+        statuses: tuple[str, ...] = (),
     ) -> PageResult[RequestRecipient]:
         statement = (
             select(RequestRecipient)
@@ -129,6 +130,8 @@ class RequestRepository:
         )
         if direct_only:
             statement = statement.where(HelpRequest.direct_to_user_id == user_id)
+        if statuses:
+            statement = statement.where(HelpRequest.status.in_(statuses))
         if exclude_owner_ids:
             statement = statement.where(
                 HelpRequest.requester_user_id.not_in(exclude_owner_ids)
