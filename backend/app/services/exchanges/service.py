@@ -119,11 +119,9 @@ async def hand_over(
         request = await requests.get_for_update(exchange.request_id)
         listings = ListingRepository(session)
         listing = None
-        if exchange.listing_id is not None:
+        if exchange.mode == ExchangeMode.LOAN.value and exchange.listing_id is not None:
             listing = await listings.get_for_update(exchange.listing_id)
-            if exchange.mode == ExchangeMode.LOAN.value and (
-                listing is None or listing.status != ListingStatus.ACTIVE.value
-            ):
+            if listing is None or listing.status != ListingStatus.ACTIVE.value:
                 raise ExchangeStateError(
                     "This listing is no longer available for pickup."
                 )
@@ -206,13 +204,22 @@ async def _complete_exchange(session, exchange: Exchange, now: datetime) -> None
     if exchange.listing_id is not None:
         listing = await ListingRepository(session).get_for_update(exchange.listing_id)
         if listing is not None and listing.status == ListingStatus.LENT_OUT.value:
-            await ListingRepository(session).update(
-                listing,
-                {
-                    "status": ListingStatus.ACTIVE.value,
-                    "available_again_at": now + AVAILABLE_AGAIN_DELAY,
-                },
+            # Older help exchanges could reserve a listing. Restore it only
+            # if a real loan does not still hold it.
+            releasable = (
+                exchange.mode == ExchangeMode.LOAN.value
+                or not await ExchangeRepository(session).is_listing_out_on_loan(
+                    listing.id
+                )
             )
+            if releasable:
+                await ListingRepository(session).update(
+                    listing,
+                    {
+                        "status": ListingStatus.ACTIVE.value,
+                        "available_again_at": now + AVAILABLE_AGAIN_DELAY,
+                    },
+                )
     for user_id in (exchange.requester_user_id, exchange.helper_user_id):
         await NotificationRepository(session).create(
             user_id,

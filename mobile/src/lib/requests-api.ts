@@ -1,4 +1,4 @@
-import { type Language, type Page, request } from "@/lib/api";
+import { type Exchange, type Language, type Page, request } from "@/lib/api";
 
 export type RequestStatus =
   | "open"
@@ -58,11 +58,7 @@ export type SendResponse = {
   proposed_start?: string;
 };
 
-export type ExchangeDetail = {
-  id: string;
-  request_id: string;
-  requester_user_id: string;
-  helper_user_id: string;
+export type ExchangeDetail = Exchange & {
   mode: "help" | "loan";
   status:
     | "scheduled"
@@ -71,8 +67,6 @@ export type ExchangeDetail = {
     | "completed"
     | "cancelled"
     | "disputed";
-  scheduled_at: string | null;
-  meet_place_note: string | null;
 };
 
 function page<T>(path: string, cursor?: string) {
