@@ -320,6 +320,19 @@ async def get_listing(
         return await _detail_view(session, storage, settings, listing)
 
 
+async def visible_listing(
+    session, actor: Actor, listing_id: uuid.UUID
+) -> Listing | None:
+    listing = await ListingRepository(session).get(listing_id)
+    if listing is None:
+        return None
+    try:
+        await _require_visible(session, actor, listing)
+    except ListingNotFoundError:
+        return None
+    return listing
+
+
 async def _require_visible(session, actor: Actor, listing: Listing) -> None:
     if listing.owner_user_id == actor.subject_id:
         return

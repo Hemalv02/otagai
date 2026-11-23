@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import Database
-from app.database.models import HelpRequest, RequestRecipient, RequestResponse
+from app.database.models import HelpRequest, Listing, RequestRecipient, RequestResponse
 from app.database.models.enums import (
     ConversationKind,
     ExchangeMode,
@@ -48,6 +48,7 @@ from app.services.errors import (
 from app.services.listings.service import (
     ListingRequestMismatchError,
     requestable_listing,
+    visible_listing,
 )
 
 RIPPLE_ORDER = [
@@ -106,7 +107,17 @@ class AlreadyAcceptedError(ConflictError):
         super().__init__("Another helper has already been chosen.")
 
 
+class OpenListingRequestExistsError(ConflictError):
+    def __init__(self) -> None:
+        super().__init__("You already have an open request for this listing.")
+
+
 OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
+
+
+def _violates_open_listing_index(error: IntegrityError) -> bool:
+    driver_error = getattr(error.orig, "__cause__", None)
+    return getattr(driver_error, "constraint_name", None) == OPEN_LISTING_INDEX
 
 
 @dataclass(frozen=True)
@@ -133,6 +144,7 @@ class RequestDetail:
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
+    listing: Listing | None = None
 
 
 @dataclass(frozen=True)
@@ -239,8 +251,7 @@ async def create_request_in_session(
                     request = await requests.create(values, media_ids)
                 break
             except IntegrityError as error:
-                driver_error = getattr(error.orig, "__cause__", None)
-                if getattr(driver_error, "constraint_name", None) != OPEN_LISTING_INDEX:
+                if not _violates_open_listing_index(error):
                     raise
                 existing = await requests.get_open_for_listing(
                     requester_id, new_request.listing_id, lock=True
@@ -248,6 +259,8 @@ async def create_request_in_session(
                 if existing is None:
                     raise
                 if existing.expires_at > now:
+                    if existing.kind != new_request.kind:
+                        raise OpenListingRequestExistsError from error
                     return existing
                 if attempt == 1:
                     raise
@@ -340,8 +353,14 @@ async def get_request(
             exchange = await ExchangeRepository(session).active_for_request(
                 request_id, lock=False
             )
+        listing = (
+            await visible_listing(session, actor, request.listing_id)
+            if request.listing_id
+            else None
+        )
         return RequestDetail(
             request=request,
+            listing=listing,
             my_role="requester" if owns_request else "recipient",
             my_response_status=live.status if live else None,
             my_response_id=live.id if live else None,
@@ -441,13 +460,28 @@ async def widen_request(
     async with database.session() as session:
         request = await _load_own_request_for_update(session, actor, request_id)
         if request.status == RequestStatus.EXPIRED.value:
-            return await RequestRepository(session).update(
-                request,
-                {
-                    "status": RequestStatus.OPEN.value,
-                    "expires_at": now + DEFAULT_EXPIRY,
-                },
-            )
+            requests = RequestRepository(session)
+            if (
+                request.listing_id is not None
+                and await requests.get_open_for_listing(
+                    request.requester_user_id, request.listing_id
+                )
+                is not None
+            ):
+                raise RequestNotOpenError
+            try:
+                async with session.begin_nested():
+                    return await requests.update(
+                        request,
+                        {
+                            "status": RequestStatus.OPEN.value,
+                            "expires_at": now + DEFAULT_EXPIRY,
+                        },
+                    )
+            except IntegrityError as error:
+                if not _violates_open_listing_index(error):
+                    raise
+                raise RequestNotOpenError from error
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         if request.direct_to_user_id is not None:

@@ -184,6 +184,11 @@ class RequestSummary(BaseModel):
     created_at: datetime
 
 
+class ListingSummaryModel(BaseModel):
+    id: uuid.UUID
+    title: str
+
+
 class RequestDetailModel(RequestSummary):
     raw_text: str
     tone: str
@@ -194,6 +199,7 @@ class RequestDetailModel(RequestSummary):
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
+    listing: ListingSummaryModel | None
 
 
 class ResponseModel(BaseModel):
@@ -231,6 +237,9 @@ def request_detail(view: RequestDetail) -> RequestDetailModel:
         my_response_status=view.my_response_status,
         my_response_id=view.my_response_id,
         exchange_id=view.exchange_id,
+        listing=ListingSummaryModel(id=view.listing.id, title=view.listing.title)
+        if view.listing
+        else None,
     )
 
 

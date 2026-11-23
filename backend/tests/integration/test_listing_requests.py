@@ -170,7 +170,7 @@ async def test_owner_cannot_request_own_listing(client):
     assert response.status_code == 400, response.text
 
 
-async def test_other_circle_listing_is_404(client):
+async def test_other_circle_listing_is_rejected_without_leaking(client):
     owner, _, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
     outsider = await make_user(client, display_name="Outsider")
@@ -179,7 +179,7 @@ async def test_other_circle_listing_is_404(client):
     assert response.status_code == 400, response.text
 
 
-async def test_blocked_owner_listing_is_404(client):
+async def test_blocked_owner_listing_is_rejected_without_leaking(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
     blocked = await client.post(
@@ -286,3 +286,62 @@ async def test_expired_open_request_does_not_block_a_new_one(client):
     assert old.json()["status"] == "expired"
     again = await _post(client, seeker, _body(listing, owner_id))
     assert again.json()["id"] == fresh.json()["id"]
+
+
+async def test_reopening_an_expired_request_blocked_by_a_newer_open_one_is_409(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    stale = await _post(
+        client,
+        seeker,
+        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
+    )
+    fresh = await _post(client, seeker, _body(listing, owner_id))
+    assert fresh.json()["id"] != stale.json()["id"]
+    widened = await client.post(
+        f"/requests/{stale.json()['id']}/widen", headers=auth(seeker)
+    )
+    assert widened.status_code == 409, widened.text
+    assert widened.json()["message"]
+
+
+async def test_repeat_send_with_a_different_kind_is_409(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    first = await _post(client, seeker, _body(listing, owner_id, "borrow"))
+    assert first.status_code == 201, first.text
+    second = await _post(client, seeker, _body(listing, owner_id, "borrow_with_help"))
+    assert second.status_code == 409, second.text
+    assert (
+        second.json()["message"] == "You already have an open request for this listing."
+    )
+
+
+async def test_request_detail_shows_the_listing_title_to_the_recipient(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    created = await _post(client, seeker, _body(listing, owner_id))
+    seen = await client.get(f"/requests/{created.json()['id']}", headers=auth(owner))
+    assert seen.json()["listing"] == {"id": listing, "title": "Shared item"}
+
+
+async def test_request_detail_hides_a_listing_the_viewer_can_no_longer_see(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    created = await _post(client, seeker, _body(listing, owner_id))
+    blocked = await client.post(
+        "/users/me/blocks", headers=auth(seeker), json={"user_id": owner_id}
+    )
+    assert blocked.status_code == 201, blocked.text
+    seen = await client.get(f"/requests/{created.json()['id']}", headers=auth(seeker))
+    assert seen.status_code == 200, seen.text
+    assert seen.json()["listing"] is None
+
+
+async def test_request_without_a_listing_has_no_listing_summary(client):
+    _owner, seeker, _, _ = await _world(client)
+    created = await _post(
+        client, seeker, {"kind": "help", "raw_text": "Need a hand", "lang": "en"}
+    )
+    seen = await client.get(f"/requests/{created.json()['id']}", headers=auth(seeker))
+    assert seen.json()["listing"] is None
