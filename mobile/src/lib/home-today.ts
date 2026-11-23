@@ -23,7 +23,7 @@ export type TodayRow =
       borrowing: boolean;
     };
 
-export function todayRows(home: HomeView, me: string | null): TodayRow[] {
+export function todayRows(home: HomeView, me: string): TodayRow[] {
   const requests: TodayRow[] = home.received_requests
     .filter((item) => item.status === "open" && item.requester_user_id !== me)
     .map((item) => ({
@@ -54,7 +54,9 @@ export function todayRows(home: HomeView, me: string | null): TodayRow[] {
 export function todayPeople(rows: TodayRow[]) {
   return [
     ...new Set(
-      rows.map((row) => (row.type === "request" ? row.personId : row.partnerId)),
+      rows.map((row) =>
+        row.type === "request" ? row.personId : row.partnerId,
+      ),
     ),
   ];
 }

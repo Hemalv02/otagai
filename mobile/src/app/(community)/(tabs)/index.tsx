@@ -35,16 +35,22 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 const homeCopy = {
   en: {
     greet: (name: string) => `Hello, ${name}`,
+    greetFallback: "Hello",
+    lentItem: "Lent item",
     ask: "Ask",
     lend: "Lend",
     family: "Family",
     browse: "Browse tools and skills",
     nearby: "Available nearby",
     today: "Today",
-    empty: "There are no open requests in your circle.",
+    empty: "Nothing needs you today.",
     todayError: "Could not load today's activity.",
     someone: "A neighbour",
-    kinds: { borrow: "Wants to borrow", help: "Asks for help", borrow_with_help: "Borrow with help" },
+    kinds: {
+      borrow: "Wants to borrow",
+      help: "Asks for help",
+      borrow_with_help: "Borrow with help",
+    },
     nearbyEmptyTitle: "Nothing nearby yet",
     nearbyEmptyDetail:
       "Ask for something you need or lend a tool to get started.",
@@ -52,35 +58,46 @@ const homeCopy = {
   },
   ja: {
     greet: (name: string) => `こんにちは、${name}`,
+    greetFallback: "こんにちは",
+    lentItem: "貸しているもの",
     ask: "お願いする",
     lend: "貸す",
     family: "家族",
     browse: "道具とスキルを探す",
     nearby: "近所で借りられるもの",
     today: "今日",
-    empty: "サークルに募集中の依頼はありません。",
+    empty: "今日対応することはありません。",
     todayError: "今日のアクティビティを読み込めませんでした。",
     someone: "近所の人",
-    kinds: { borrow: "借りたい", help: "手伝ってほしい", borrow_with_help: "手伝い付きで借りたい" },
+    kinds: {
+      borrow: "借りたい",
+      help: "手伝ってほしい",
+      borrow_with_help: "手伝い付きで借りたい",
+    },
     nearbyEmptyTitle: "近所にはまだ何もありません",
     nearbyEmptyDetail: "必要なものをお願いするか、道具を貸して始めましょう。",
     nearbyError: "近所の掲載を読み込めませんでした。",
   },
   bn: {
     greet: (name: string) => `স্বাগতম, ${name}`,
+    greetFallback: "স্বাগতম",
+    lentItem: "ধার দেওয়া জিনিস",
     ask: "সাহায্য চাই",
     lend: "ধার দিন",
     family: "পরিবার",
     browse: "জিনিসপত্র ও সাহায্য দেখুন",
     nearby: "কাছাকাছি পাওয়া যাচ্ছে",
     today: "আজ",
-    empty: "আপনার দলে কোনো খোলা অনুরোধ নেই।",
+    empty: "আজ আপনার জন্য কিছু নেই।",
     todayError: "আজকের কার্যকলাপ লোড করা যায়নি।",
     someone: "একজন প্রতিবেশী",
-    kinds: { borrow: "ধার চান", help: "সাহায্য চান", borrow_with_help: "সাহায্যসহ ধার চান" },
+    kinds: {
+      borrow: "ধার চান",
+      help: "সাহায্য চান",
+      borrow_with_help: "সাহায্যসহ ধার চান",
+    },
     nearbyEmptyTitle: "কাছাকাছি এখনো কিছু নেই",
-    nearbyEmptyDetail:
-      "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
+    nearbyEmptyDetail: "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
     nearbyError: "কাছাকাছির তালিকা লোড করা যায়নি।",
   },
 };
@@ -106,7 +123,7 @@ export default function Home() {
   );
 }
 
-async function loadToday(me: string | null) {
+async function loadToday(me: string) {
   const rows = todayRows(await api.getHome(), me);
   const lookup = async <T,>(load: () => Promise<T>) => {
     try {
@@ -146,7 +163,7 @@ async function loadToday(me: string | null) {
 
 function CircleHome({ circleName }: { circleName: string }) {
   const { locale } = useOnboardingText();
-  const { session, profile } = useSession();
+  const { session, profile, reloadProfile } = useSession();
   const account = session?.user.id ?? null;
   const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = homeCopy[locale];
@@ -158,7 +175,10 @@ function CircleHome({ circleName }: { circleName: string }) {
   const readCopy = listingReadCopy[locale];
   const activity = activityCopy[locale];
   const today = useLiveResource(
-    useCallback(() => loadToday(profileId), [profileId]),
+    useCallback(() => {
+      if (!profileId) throw new Error("Profile is not ready.");
+      return loadToday(profileId);
+    }, [profileId]),
   );
   const [nearby, setNearby] = useState<BrowseState>(initialBrowseState);
   const [nearbyRequests] = useState(createLatestRequest);
@@ -218,7 +238,7 @@ function CircleHome({ circleName }: { circleName: string }) {
 
   return (
     <CommunityScreen
-      title={displayName ? copy.greet(displayName) : circleName}
+      title={displayName ? copy.greet(displayName) : copy.greetFallback}
       eyebrow={circleName}
       titleAction={<NotificationBell />}
       inlineTitleAction
@@ -231,36 +251,36 @@ function CircleHome({ circleName }: { circleName: string }) {
           onPress={() => router.navigate("/assistant")}
         />
         <Button
-            label={copy.lend}
-            labelStyle={[button, styles.green]}
-            style={[styles.action, styles.secondaryButton]}
-            variant="secondary"
-            onPress={() => router.push("/tools/add")}
-          />
+          label={copy.lend}
+          labelStyle={[button, styles.green]}
+          style={[styles.action, styles.secondaryButton]}
+          variant="secondary"
+          onPress={() => router.push("/tools/add")}
+        />
       </View>
       <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={copy.family}
-          onPress={() => router.push("/family")}
-          android_ripple={{ color: colors.wash }}
-          style={styles.family}
-        >
-          <SymbolView
-            name={{ ios: "person.2", android: "group", web: "group" }}
-            size={20}
-            tintColor={colors.action}
-          />
-          <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
-          <SymbolView
-            name={{
-              ios: "chevron.forward",
-              android: "chevron_right",
-              web: "chevron_right",
-            }}
-            size={18}
-            tintColor={colors.action}
-          />
-        </Pressable>
+        accessibilityRole="link"
+        accessibilityLabel={copy.family}
+        onPress={() => router.push("/family")}
+        android_ripple={{ color: colors.wash }}
+        style={styles.family}
+      >
+        <SymbolView
+          name={{ ios: "person.2", android: "group", web: "group" }}
+          size={20}
+          tintColor={colors.action}
+        />
+        <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
+        <SymbolView
+          name={{
+            ios: "chevron.forward",
+            android: "chevron_right",
+            web: "chevron_right",
+          }}
+          size={18}
+          tintColor={colors.action}
+        />
+      </Pressable>
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
@@ -331,7 +351,8 @@ function CircleHome({ circleName }: { circleName: string }) {
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.today}
         </Text>
-        {today.loading && !today.data ? (
+        {profile.status === "loading" ||
+        (profile.status === "ready" && today.loading && !today.data) ? (
           <View
             accessible
             accessibilityState={{ busy: true }}
@@ -340,16 +361,23 @@ function CircleHome({ circleName }: { circleName: string }) {
           >
             <ListingRowSkeleton />
           </View>
-        ) : today.error ? (
+        ) : profile.status !== "ready" || today.error ? (
           <View style={styles.section}>
-            <Text style={[supporting, styles.secondary]}>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[supporting, styles.secondary]}
+            >
               {copy.todayError}
             </Text>
             <Button
               label={listingCopy.retry}
               labelStyle={label}
               variant="text"
-              onPress={() => void today.reload()}
+              onPress={() =>
+                void (profile.status === "ready"
+                  ? today.reload()
+                  : reloadProfile())
+              }
             />
           </View>
         ) : today.data?.rows.length ? (
@@ -360,12 +388,15 @@ function CircleHome({ circleName }: { circleName: string }) {
                 accessibilityRole="link"
                 title={
                   (row.listingId && today.data?.titles[row.listingId]) ||
-                  activity.unnamedLoan
+                  (row.borrowing ? activity.unnamedLoan : copy.lentItem)
                 }
                 description={today.data?.people[row.partnerId] ?? copy.someone}
                 detail={`${activity.due}: ${formatActivityDate(row.dueAt, locale)}`}
                 onPress={() =>
-                  router.push({ pathname: "/loans/[id]", params: { id: row.id } })
+                  router.push({
+                    pathname: "/loans/[id]",
+                    params: { id: row.id },
+                  })
                 }
               />
             ) : (
@@ -386,7 +417,11 @@ function CircleHome({ circleName }: { circleName: string }) {
             ),
           )
         ) : (
-          <RequestNotice title={copy.today} detail={copy.empty} locale={locale} />
+          <RequestNotice
+            title={copy.today}
+            detail={copy.empty}
+            locale={locale}
+          />
         )}
       </View>
     </CommunityScreen>
