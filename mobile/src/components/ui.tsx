@@ -4,7 +4,10 @@ import {
   Pressable,
   Text,
   TextInput,
+  type StyleProp,
   type TextInputProps,
+  type TextStyle,
+  type ViewStyle,
   View,
 } from "react-native";
 
@@ -16,6 +19,8 @@ type ButtonProps = {
   busy?: boolean;
   disabled?: boolean;
   variant?: "primary" | "secondary";
+  style?: StyleProp<ViewStyle>;
+  labelStyle?: StyleProp<TextStyle>;
 };
 
 export function Button({
@@ -24,15 +29,19 @@ export function Button({
   busy = false,
   disabled = false,
   variant = "primary",
+  style,
+  labelStyle,
 }: ButtonProps) {
   const primary = variant === "primary";
   const inactive = disabled || busy;
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
       accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       onPress={onPress}
+      style={style}
       className={`min-h-primary-control items-center justify-center rounded-control px-card-inset ${
         primary ? "bg-action" : "border border-rule bg-canvas"
       } ${inactive ? "opacity-50" : ""}`}
@@ -41,7 +50,8 @@ export function Button({
         <ActivityIndicator color={primary ? colors["on-action"] : colors.ink} />
       ) : (
         <Text
-          className={`type-button ${primary ? "text-on-action" : "text-ink"}`}
+          style={labelStyle}
+          className={`type-button text-center ${primary ? "text-on-action" : "text-ink"}`}
         >
           {label}
         </Text>
@@ -50,10 +60,19 @@ export function Button({
   );
 }
 
-export function Field({ label, ...props }: TextInputProps & { label: string }) {
+export function Field({
+  label,
+  labelStyle,
+  ...props
+}: TextInputProps & {
+  label: string;
+  labelStyle?: StyleProp<TextStyle>;
+}) {
   return (
     <View className="gap-related-gap">
-      <Text className="type-body text-secondary">{label}</Text>
+      <Text className="type-body text-secondary" style={labelStyle}>
+        {label}
+      </Text>
       <TextInput
         accessibilityLabel={label}
         placeholderTextColor={colors.control}
@@ -68,15 +87,23 @@ type ChoiceProps<T extends string> = {
   options: readonly { value: T; label: string }[];
   value: T;
   onChange: (value: T) => void;
+  labelStyle?: (value: T) => StyleProp<TextStyle>;
+  stacked?: boolean;
 };
 
 export function Choice<T extends string>({
   options,
   value,
   onChange,
+  labelStyle,
+  stacked = false,
 }: ChoiceProps<T>) {
   return (
-    <View className="flex-row flex-wrap gap-related-gap">
+    <View
+      className={
+        stacked ? "gap-related-gap" : "flex-row flex-wrap gap-related-gap"
+      }
+    >
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -89,7 +116,12 @@ export function Choice<T extends string>({
               selected ? "border-action bg-wash" : "border-rule bg-canvas"
             }`}
           >
-            <Text className="type-body text-ink">{option.label}</Text>
+            <Text
+              className="type-body text-ink"
+              style={labelStyle?.(option.value)}
+            >
+              {option.label}
+            </Text>
           </Pressable>
         );
       })}

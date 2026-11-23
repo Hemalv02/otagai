@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -9,20 +10,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
+import { useOnboarding } from "@/lib/onboarding";
+import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { supabase } from "@/lib/supabase";
 
 type Method = "phone" | "email";
 type Country = "+81" | "+880";
-
-const methods = [
-  { value: "phone", label: "Phone" },
-  { value: "email", label: "Email" },
-] as const;
-
-const countries = [
-  { value: "+81", label: "Japan +81" },
-  { value: "+880", label: "Bangladesh +880" },
-] as const;
 
 function toE164(country: Country, local: string) {
   const digits = local.replace(/\D/g, "").replace(/^0+/, "");
@@ -30,8 +23,21 @@ function toE164(country: Country, local: string) {
 }
 
 export default function SignIn() {
+  const { state } = useOnboarding();
+  const { t, locale } = useOnboardingText();
+  const bodyStyle = localizedType("body", locale);
+  const buttonStyle = localizedType("button", locale);
+  const methods = [
+    { value: "phone", label: t("phone") },
+    { value: "email", label: t("email") },
+  ] as const;
+  const countries = [
+    { value: "+81", label: t("japanCode") },
+    { value: "+880", label: t("bangladeshCode") },
+  ] as const;
   const [method, setMethod] = useState<Method>("phone");
-  const [country, setCountry] = useState<Country>("+81");
+  const [countryOverride, setCountry] = useState<Country | null>(null);
+  const country = countryOverride ?? (state.region === "bd" ? "+880" : "+81");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -98,16 +104,32 @@ export default function SignIn() {
           contentContainerClassName="gap-card-inset px-screen-gutter py-card-inset"
           keyboardShouldPersistTaps="handled"
         >
-          <Text className="type-wordmark text-action">Otagai</Text>
-          <Text className="type-screen-title text-ink">Sign in</Text>
+          <View className="flex-row flex-wrap items-center justify-between gap-related-gap">
+            <Text className="type-wordmark text-action">Otagai</Text>
+            <Button
+              label={t("preferences")}
+              variant="secondary"
+              labelStyle={buttonStyle}
+              onPress={() => router.push("/onboarding-preferences")}
+            />
+          </View>
+          <Text
+            className="type-screen-title text-ink"
+            accessibilityRole="header"
+            style={localizedType("screen-title", locale)}
+          >
+            {t("signIn")}
+          </Text>
 
           {sentTo ? (
             <View className="gap-card-inset">
-              <Text className="type-body text-secondary">
-                We sent a 6-digit code to {sentTo}.
+              <Text className="type-body text-secondary" style={bodyStyle}>
+                {t("codeSent", { target: sentTo })}
               </Text>
               <Field
-                label="Code"
+                label={t("code")}
+                style={bodyStyle}
+                labelStyle={bodyStyle}
                 value={code}
                 onChangeText={(value) =>
                   setCode(value.replace(/\D/g, "").slice(0, 6))
@@ -119,13 +141,15 @@ export default function SignIn() {
               />
               <ErrorText>{error}</ErrorText>
               <Button
-                label="Sign in"
+                label={t("signIn")}
+                labelStyle={buttonStyle}
                 onPress={verifyCode}
                 busy={busy}
                 disabled={code.length !== 6}
               />
               <Button
-                label="Use a different number or email"
+                label={t("changeTarget")}
+                labelStyle={buttonStyle}
                 variant="secondary"
                 onPress={() => {
                   setSentTo(null);
@@ -137,6 +161,7 @@ export default function SignIn() {
             <View className="gap-card-inset">
               <Choice
                 options={methods}
+                labelStyle={() => bodyStyle}
                 value={method}
                 onChange={(value) => {
                   setMethod(value);
@@ -147,22 +172,29 @@ export default function SignIn() {
                 <>
                   <Choice
                     options={countries}
+                    labelStyle={() => bodyStyle}
                     value={country}
                     onChange={setCountry}
                   />
                   <Field
-                    label="Phone number"
+                    label={t("phoneNumber")}
+                    style={bodyStyle}
+                    labelStyle={bodyStyle}
                     value={phone}
                     onChangeText={setPhone}
                     keyboardType="phone-pad"
                     textContentType="telephoneNumber"
                     autoComplete="tel"
-                    placeholder="090 1234 5678"
+                    placeholder={
+                      country === "+880" ? "01712 345678" : "090 1234 5678"
+                    }
                   />
                 </>
               ) : (
                 <Field
-                  label="Email"
+                  label={t("email")}
+                  style={bodyStyle}
+                  labelStyle={bodyStyle}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -175,7 +207,8 @@ export default function SignIn() {
               )}
               <ErrorText>{error}</ErrorText>
               <Button
-                label="Send code"
+                label={t("sendCode")}
+                labelStyle={buttonStyle}
                 onPress={sendCode}
                 busy={busy}
                 disabled={!targetValid}

@@ -6,6 +6,8 @@ import { DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
+import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
+import { getLaunchRoute } from "@/lib/onboarding-state";
 import { SessionProvider, useSession } from "@/lib/session";
 import { fontAssets } from "@/theme/fonts";
 import { colors } from "@/theme/tokens.json";
@@ -28,23 +30,27 @@ SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
 
 function RootNavigator() {
   const { session, isLoading, profile } = useSession();
+  const { ready, state } = useOnboarding();
   const [fontsLoaded, fontError] = useFonts(fontAssets);
 
   useEffect(() => {
     if (fontError) {
       console.warn("Could not load Otagai fonts.", fontError);
     }
-    if ((fontsLoaded || fontError) && !isLoading) {
+    if ((fontsLoaded || fontError) && !isLoading && ready) {
       SplashScreen.hide();
     }
-  }, [fontsLoaded, fontError, isLoading]);
+  }, [fontsLoaded, fontError, isLoading, ready]);
 
-  if ((!fontsLoaded && !fontError) || isLoading) {
+  if ((!fontsLoaded && !fontError) || isLoading || !ready) {
     return null;
   }
 
-  const signedIn = session !== null;
-  const needsProfile = signedIn && profile.status === "missing";
+  const launchRoute = getLaunchRoute({
+    signedIn: session !== null,
+    needsProfile: profile.status === "missing",
+    completed: state.completed,
+  });
 
   return (
     <Stack
@@ -53,13 +59,25 @@ function RootNavigator() {
         contentStyle: { backgroundColor: colors.canvas },
       }}
     >
-      <Stack.Protected guard={!signedIn}>
+      <Stack.Protected guard={launchRoute === "welcome"}>
+        <Stack.Screen name="welcome" />
+        <Stack.Protected guard={state.step >= 2}>
+          <Stack.Screen name="onboarding-story" />
+        </Stack.Protected>
+        <Stack.Protected guard={state.step === 3}>
+          <Stack.Screen name="onboarding-features" />
+        </Stack.Protected>
+      </Stack.Protected>
+      <Stack.Protected guard={launchRoute === "sign-in"}>
         <Stack.Screen name="sign-in" />
       </Stack.Protected>
-      <Stack.Protected guard={needsProfile}>
+      <Stack.Protected guard={!session}>
+        <Stack.Screen name="onboarding-preferences" />
+      </Stack.Protected>
+      <Stack.Protected guard={launchRoute === "profile-setup"}>
         <Stack.Screen name="profile-setup" />
       </Stack.Protected>
-      <Stack.Protected guard={signedIn && !needsProfile}>
+      <Stack.Protected guard={launchRoute === "index"}>
         <Stack.Screen name="index" />
       </Stack.Protected>
     </Stack>
@@ -71,7 +89,9 @@ export default function RootLayout() {
     <ThemeProvider value={navigationTheme}>
       <StatusBar style="dark" />
       <SessionProvider>
-        <RootNavigator />
+        <OnboardingProvider>
+          <RootNavigator />
+        </OnboardingProvider>
       </SessionProvider>
     </ThemeProvider>
   );

@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  react-native-css-interop@0.2.7: 9f6a427a93916f19494ad07c65cc7607e82b2d47c63ed49464b67de4d66fc501
+
 importers:
 
   .:
@@ -106,7 +109,7 @@ importers:
         version: 0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1)
       react-native-css-interop:
         specifier: 0.2.7
-        version: 0.2.7(0d95422c9db11a47f6e60019cb417366)
+        version: 0.2.7(patch_hash=9f6a427a93916f19494ad07c65cc7607e82b2d47c63ed49464b67de4d66fc501)(0d95422c9db11a47f6e60019cb417366)
       react-native-gesture-handler:
         specifier: ~3.3.0
         version: 3.3.0(react-native@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.13(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)
@@ -7992,7 +7995,7 @@ snapshots:
     dependencies:
       comment-json: 4.6.2
       debug: 4.4.3(supports-color@8.1.1)
-      react-native-css-interop: 0.2.7(0d95422c9db11a47f6e60019cb417366)
+      react-native-css-interop: 0.2.7(patch_hash=9f6a427a93916f19494ad07c65cc7607e82b2d47c63ed49464b67de4d66fc501)(0d95422c9db11a47f6e60019cb417366)
       tailwindcss: 3.4.19
     transitivePeerDependencies:
       - react
@@ -8306,7 +8309,7 @@ snapshots:
 
   react-is@19.3.1: {}
 
-  react-native-css-interop@0.2.7(0d95422c9db11a47f6e60019cb417366):
+  react-native-css-interop@0.2.7(patch_hash=9f6a427a93916f19494ad07c65cc7607e82b2d47c63ed49464b67de4d66fc501)(0d95422c9db11a47f6e60019cb417366):
     dependencies:
       '@babel/helper-module-imports': 7.29.7(supports-color@8.1.1)
       '@babel/traverse': 7.29.15(supports-color@8.1.1)
