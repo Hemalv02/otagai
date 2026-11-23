@@ -1,9 +1,11 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import {
+  type ComponentRef,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
+  type Ref,
   useState,
 } from "react";
 import {
@@ -35,7 +37,11 @@ type CommunityScreenProps = PropsWithChildren<{
   back?: boolean;
   keyboard?: boolean;
   footer?: ReactNode;
-  live?: boolean;
+  scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
+  onContentSizeChange?: (width: number, height: number) => void;
+  showDemoPreview?: boolean;
+  fixedTitle?: boolean;
+  compactTitle?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
@@ -75,7 +81,11 @@ export function CommunityScreen({
   back,
   keyboard,
   footer,
-  live = false,
+  scrollRef,
+  onContentSizeChange,
+  showDemoPreview = true,
+  fixedTitle = false,
+  compactTitle = false,
   refreshControl,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
@@ -106,6 +116,36 @@ export function CommunityScreen({
     else router.replace("/");
   }
 
+  const heading =
+    title || eyebrow || subtitle ? (
+      <View style={[styles.heading, fixedTitle && styles.fixedHeading]}>
+        {eyebrow ? <Text style={[label, styles.green]}>{eyebrow}</Text> : null}
+        {title || titleAction ? (
+          <View style={styles.titleRow}>
+            {title ? (
+              <Text
+                accessibilityRole="header"
+                style={[
+                  localizedType(
+                    compactTitle ? "field-label" : "screen-title",
+                    locale,
+                  ),
+                  styles.ink,
+                  styles.title,
+                ]}
+              >
+                {title}
+              </Text>
+            ) : null}
+            {titleAction}
+          </View>
+        ) : null}
+        {subtitle ? (
+          <Text style={[body, styles.secondary]}>{subtitle}</Text>
+        ) : null}
+      </View>
+    ) : null;
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.rule}>
@@ -130,18 +170,21 @@ export function CommunityScreen({
           </View>
         </View>
       </View>
-      {actor === "neighbour" && !live ? (
+      {showDemoPreview && actor === "neighbour" ? (
         <View style={styles.preview}>
           <Text style={[label, styles.green]}>
             {copy.preview} {people.neighbour.name}
           </Text>
         </View>
       ) : null}
+      {fixedTitle ? heading : null}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          ref={scrollRef}
+          onContentSizeChange={onContentSizeChange}
           contentContainerStyle={[styles.column, styles.content]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
@@ -161,33 +204,7 @@ export function CommunityScreen({
               <Text style={[label, styles.green]}>{t("back")}</Text>
             </Pressable>
           ) : null}
-          {title || eyebrow || subtitle ? (
-            <View style={styles.heading}>
-              {eyebrow ? (
-                <Text style={[label, styles.green]}>{eyebrow}</Text>
-              ) : null}
-              {title || titleAction ? (
-                <View style={styles.titleRow}>
-                  {title ? (
-                    <Text
-                      accessibilityRole="header"
-                      style={[
-                        localizedType("screen-title", locale),
-                        styles.ink,
-                        styles.title,
-                      ]}
-                    >
-                      {title}
-                    </Text>
-                  ) : null}
-                  {titleAction}
-                </View>
-              ) : null}
-              {subtitle ? (
-                <Text style={[body, styles.secondary]}>{subtitle}</Text>
-              ) : null}
-            </View>
-          ) : null}
+          {!fixedTitle && heading}
           {children}
         </ScrollView>
         {footer ? (
@@ -281,6 +298,14 @@ const styles = StyleSheet.create({
   },
   content: { padding: spacing["screen-gutter"], gap: spacing["card-inset"] },
   heading: { gap: spacing["related-gap"] },
+  fixedHeading: {
+    width: "100%",
+    maxWidth: 540,
+    alignSelf: "center",
+    paddingHorizontal: spacing["screen-gutter"],
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
   titleRow: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -307,6 +307,10 @@ test("only a 403 counts as a denied grant", () => {
 test("needed times read naturally and say when there is no time set", () => {
   const options = { timeZone: "Asia/Tokyo" };
   assert.equal(formatNeededWindow(null, null, "en", options), null);
+  const deadline = "2026-11-24T08:00:00Z";
+  assert.match(formatNeededWindow(null, deadline, "en", options), /^By /);
+  assert.match(formatNeededWindow(null, deadline, "ja", options), /まで$/);
+  assert.match(formatNeededWindow(null, deadline, "bn", options), /এর মধ্যে$/);
   assert.match(
     formatNeededWindow("2026-11-24T08:00:00Z", null, "en", options),
     /Nov/,

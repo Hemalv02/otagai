@@ -371,6 +371,25 @@ An ask session holds the AI steps before anything is sent. Nothing reaches a nei
 | `POST /ask-sessions/{session_id}/draft` | Polite message and translations for a chosen tone, time and audience (one person, the *han*, or a widening ripple). Call it again to change the tone | 200 | 14 | MVP |
 | `DELETE /ask-sessions/{session_id}` | Abandon the ask | 204 | 11–14 | MVP |
 
+### Assistant chat
+
+| Method and path | Purpose | Success |
+|---|---|---|
+| `POST /assistant/turns` | Interpret a message or photo and return a reply, result cards and any request draft | 201 |
+| `GET /assistant/threads` | List the signed-in member's conversations, most recent activity first | 200 |
+| `GET /assistant/threads/{thread_id}/turns` | Read saved turns, newest first, with the current visible cards and posted request IDs | 200 |
+| `POST /assistant/turns/{turn_id}/confirm` | Post the member's reviewed text. Retrying the same draft or listing returns its request | 201 or 200 |
+
+Send `text`, `image_media_id`, or both. Upload a photo with `POST /media` and `purpose=ask`. For voice input, upload with `purpose=voice`, transcribe with `POST /ai/transcriptions`, then send the reviewed transcript as `text`. Send `previous_turn_id` to continue a conversation. Use `language` to choose `en`, `ja`, or `bn`. Both history endpoints accept `limit` and `cursor`.
+
+Each turn includes `id`, `thread_id`, `reply`, `cards`, an optional `draft`, and any attachment or posted request ID. A card includes an actual listing and owner. Open tool details with `GET /listings/{id}` or a helper profile with `GET /users/{id}`. A card's `action` is `borrow` or `ask_for_help`, based on the listing's lending mode. When `no_matches` is true, the client can offer to draft a request in a follow-up turn using the same conversation.
+
+When `clarification` is set, display the follow-up in `reply` and submit the answer as a new turn with the question's `id` as `previous_turn_id`. The turn can show relevant matches during clarification. Its draft is empty and its confirm endpoint returns 409 until the member answers in a new turn. A clear request can be drafted with no timing.
+
+After the member confirms the draft or a card selection, send the reviewed `text` and `kind` to the confirm endpoint. The request may include `listing_id` from the same turn, `direct_to_user_id`, `home_circle_id`, and offset-aware `needed_from` and `needed_until` timestamps. A selected listing goes to its owner. History holds independent receipts for these requests under `listing_requests`. General drafts go to the member's circle unless they choose a recipient. For a broadcast, show the destination in the review and send its `home_circle_id`. The API requires a destination when the member has multiple approved circles. An off-topic turn provides a short redirect and has no draft or matches to post.
+
+With Redis configured, repeated text prompts can reuse their interpretation for five minutes. Listings, access checks, and photo URLs are resolved from current data on every lookup.
+
 ## 8. Help requests
 
 ### Requester side
@@ -379,12 +398,12 @@ An ask session holds the AI steps before anything is sent. Nothing reaches a nei
 |---|---|---|---|---|
 | `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients | 201 | 14, 15 | MVP |
 | `GET /users/me/requests?status=` | My requests: open, matched, in progress, done, cancelled, expired. `status` takes a comma-separated list; an unknown status or query parameter returns 422. With `X-Acting-For: <member_id>`, lists that member's requests and needs `can_view_activity` (403 without it, or when the grant is missing or revoked) | 200 | 16, 33 | MVP |
-| `GET /requests/{request_id}` | Request detail. The response depends on whether I'm the requester or a recipient | 200 | 17, 18 | MVP |
+| `GET /requests/{request_id}` | Request detail includes the viewer's role and their response. The matched participants also get `exchange_id` | 200 | 17, 18 | MVP |
 | `PATCH /requests/{request_id}` | Edit the time or wording. 409 unless the request is open | 200 | 17 | MVP |
 | `POST /requests/{request_id}/cancel` | Cancel. Notifies anyone with a pending or accepted response | 200 | 17 | MVP |
 | `POST /requests/{request_id}/widen` | Move to the next ripple stage now, or reopen an expired request | 200 | 15, 16 | MVP |
 | `GET /requests/{request_id}/responses` | Offers, questions and other suggested times. Only the requester sees all of them | 200 | 17 | MVP |
-| `POST /requests/{request_id}/responses/{response_id}/accept` | Choose a helper: creates the exchange and chat, and supersedes the other responses, all in one transaction. A second accept returns 409 | 200 | 17 | MVP |
+| `POST /requests/{request_id}/responses/{response_id}/accept` | Accept an offer or suggested time to create the exchange and chat and supersede the other responses. Retrying the same match returns the accepted response. Choosing a different response after matching returns 409 | 200 | 17 | MVP |
 
 ### Helper side
 
@@ -397,6 +416,8 @@ An ask session holds the AI steps before anything is sent. Nothing reaches a nei
 | `POST /requests/{request_id}/responses/{response_id}/withdraw` | Withdraw. If it was already accepted, the request goes back to open and the exchange is cancelled | 200 | 17, 18 | MVP |
 
 Questions on a request use responses with `kind=question`, so there is no separate comments endpoint.
+
+With `X-Acting-For`, request detail, response lists, and incoming requests require `can_view_activity`. Request edits use the separate `can_post_requests` scope.
 
 ## 9. Exchanges (the loan or the help job)
 

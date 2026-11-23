@@ -110,21 +110,22 @@ curl -s -X POST "$API/requests" -H "Authorization: Bearer $MEMBER_TOKEN" \
   -d '{"kind":"help","raw_text":"Could someone carry rice up the stairs?","lang":"en"}'
 ```
 
-## iOS simulator acceptance (not yet run)
+## iOS simulator acceptance
 
-This was built on Linux, so no iOS simulator was available. Run these steps on macOS with `pnpm ios` from `mobile/` and tick them off:
+The combined Family and Live Requests build was checked on an iPhone 18 Pro simulator with two separate signed-in test accounts, a running FastAPI app, and seeded PostgreSQL records. The combined suites passed 198 backend and 36 mobile tests.
 
-- [ ] Sign in as the caretaker and open **Family**. **You** is selected and shows only your own open requests.
-- [ ] Switch to the member. Their open request appears, and tapping it expands the details.
+- [x] Sign in as the caretaker and open **Family**. **You** is selected and shows only your own open requests.
+- [x] Switch to the member. Their open request appears, and tapping it expands the details.
+- [x] Sign in separately as the member. Their own requests remain visible after delegation ends.
 - [ ] Switch back to **You**. Relaunch the app, open Family, and check that both accounts still load the right requests.
-- [ ] As the member, turn off the activity scope with `PATCH /proxy-grants/$GRANT_ID` and body `{"can_view_activity": false}`. Pull to refresh on Family. The requests disappear and the member shows "Requests hidden".
-- [ ] Confirm the API denies the same call:
+- [x] As the member, turn off the activity scope with `PATCH /proxy-grants/$GRANT_ID` and body `{"can_view_activity": false}`. Pull to refresh on Family. The requests disappear and the member shows "Requests hidden".
+- [x] Confirm the API denies the same call:
   ```bash
   curl -i "$API/users/me/requests?status=open" \
     -H "Authorization: Bearer $CARETAKER_TOKEN" -H "X-Acting-For: $MEMBER_ID"
   ```
   It returns `403`.
-- [ ] Revoke the grant with `POST /proxy-grants/$GRANT_ID/revoke` and refresh. The member leaves the switcher.
+- [x] Revoke the grant with `POST /proxy-grants/$GRANT_ID/revoke` and refresh. The linked person is no longer selectable and Family returns to **You**.
 - [ ] With an account that has no family links, check the "No family linked yet" and "You have no open requests" states.
 - [ ] Turn off the network, check the error state, turn it on again, and tap **Try again**.
 - [ ] Repeat a few screens in Japanese and Bengali.
@@ -135,9 +136,7 @@ This was built on Linux, so no iOS simulator was available. Run these steps on m
   - `GET /users/me/exchanges?status=`
   - `GET /users/{user_id}/requests?status=`
   - `GET /users/{user_id}/exchanges?status=`
-  - `GET /users/me/received-requests?direct=true`
 
   The fix is to move each filter into a `PageQuery` subclass, as `MyRequestsQuery` does.
-- `GET /requests/{request_id}` and `GET /requests/{request_id}/responses` do not check `VIEW_ACTIVITY` for proxies. Adding the check needs care: the edit, cancel and widen routes call `get_request` after a `POST_REQUESTS` action, so a caretaker with that scope but no activity scope would start getting `403`.
 - When you are the member on an accepted link, the caretaker shows as "no permission to help yet". That is accurate, but it could instead read "can act for you" by also loading `GET /users/me/proxy-grants?as=member`.
 - Opening `/family` as a cold-start deep link lands on Home first, because of the protected community route guard. Tapping the tab works.

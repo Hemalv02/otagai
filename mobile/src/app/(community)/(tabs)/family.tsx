@@ -40,7 +40,7 @@ export default function FamilyScreen() {
     <CommunityScreen
       title={copy.title}
       subtitle={copy.subtitle}
-      live
+      showDemoPreview={false}
       refreshControl={
         <RefreshControl
           refreshing={family.refreshing}

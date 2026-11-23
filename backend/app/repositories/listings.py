@@ -1,18 +1,26 @@
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import and_, case, delete, exists, false, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
+    Category,
     CircleMembership,
     Listing,
     ListingMedia,
     ListingPart,
     MediaVariant,
+    User,
 )
-from app.database.models.enums import ListingStatus, MembershipStatus
+from app.database.models.enums import (
+    ListingKind,
+    ListingStatus,
+    MembershipStatus,
+    UserStatus,
+)
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
 
@@ -23,6 +31,27 @@ class ListingFilters:
     circle_id: uuid.UUID | None = None
     statuses: tuple[str, ...] = ()
     query: str | None = None
+
+
+def _shared_listing_circle(circle_ids: list[uuid.UUID]):
+    return exists(
+        select(CircleMembership.circle_id).where(
+            CircleMembership.user_id == Listing.owner_user_id,
+            CircleMembership.status == MembershipStatus.APPROVED.value,
+            CircleMembership.circle_id.in_(circle_ids),
+        )
+    )
+
+
+def _assistant_visibility(
+    circle_ids: list[uuid.UUID], excluded_owners: list[uuid.UUID]
+):
+    return (
+        Listing.status == ListingStatus.ACTIVE.value,
+        User.status == UserStatus.ACTIVE.value,
+        Listing.owner_user_id.not_in(excluded_owners),
+        _shared_listing_circle(circle_ids),
+    )
 
 
 class ListingRepository:
@@ -68,20 +97,120 @@ class ListingRepository:
         circle_ids = [filters.circle_id] if filters.circle_id else viewer_circle_ids
         if not circle_ids:
             return PageResult(items=[], next_cursor=None)
-        shares_circle = exists(
-            select(CircleMembership.circle_id).where(
-                CircleMembership.user_id == Listing.owner_user_id,
-                CircleMembership.status == MembershipStatus.APPROVED.value,
-                CircleMembership.circle_id.in_(circle_ids),
-            )
-        )
-        statement = select(Listing).where(shares_circle)
+        statement = select(Listing).where(_shared_listing_circle(circle_ids))
         if exclude_owner_ids:
             statement = statement.where(Listing.owner_user_id.not_in(exclude_owner_ids))
         statement = self._apply_filters(statement, filters)
         return await paginate(
             self._session, statement, page, Listing.created_at, Listing.id
         )
+
+    async def assistant_matches(
+        self,
+        *,
+        circle_ids: list[uuid.UUID],
+        excluded_owners: list[uuid.UUID],
+        tool_terms: list[str],
+        skill_terms: list[str],
+    ) -> list[tuple[Listing, str]]:
+        if not circle_ids or not (tool_terms or skill_terms):
+            return []
+
+        scores = []
+        listing_text = func.concat_ws(" ", Listing.title, Listing.description)
+        for kind, terms in (
+            (ListingKind.TOOL, tool_terms),
+            (ListingKind.SKILL, skill_terms),
+        ):
+            for term in terms:
+                has_kind = Listing.kind == kind.value
+                words = list(dict.fromkeys(re.findall(r"[^\W_]+", term)))
+                reordered_match = false()
+                if 2 <= len(words) <= 5:
+                    reordered_match = and_(
+                        *(
+                            listing_text.icontains(word, autoescape=True)
+                            for word in words
+                        )
+                    )
+                category_match = or_(
+                    func.replace(Category.slug, "_", " ").icontains(
+                        term, autoescape=True
+                    ),
+                    *(
+                        Category.names[lang].astext.icontains(term, autoescape=True)
+                        for lang in ("en", "ja", "bn")
+                    ),
+                )
+                scores.append(
+                    case(
+                        (
+                            and_(
+                                has_kind, Listing.title.icontains(term, autoescape=True)
+                            ),
+                            6,
+                        ),
+                        (
+                            and_(
+                                has_kind,
+                                Listing.description.icontains(term, autoescape=True),
+                            ),
+                            3,
+                        ),
+                        (and_(has_kind, reordered_match), 2),
+                        (and_(has_kind, category_match), 1),
+                        else_=0,
+                    )
+                )
+        score = func.greatest(*scores)
+        ranked = (
+            select(
+                Listing.id,
+                func.row_number()
+                .over(
+                    partition_by=Listing.kind,
+                    order_by=(
+                        score.desc(),
+                        Listing.created_at.desc(),
+                        Listing.id.desc(),
+                    ),
+                )
+                .label("rank"),
+            )
+            .join(Category, Category.id == Listing.category_id)
+            .join(User, User.id == Listing.owner_user_id)
+            .where(
+                *_assistant_visibility(circle_ids, excluded_owners),
+                score > 0,
+            )
+            .subquery()
+        )
+        rows = await self._session.execute(
+            select(Listing, User.display_name)
+            .join(ranked, ranked.c.id == Listing.id)
+            .join(User, User.id == Listing.owner_user_id)
+            .where(ranked.c.rank <= 6)
+            .order_by(ranked.c.rank, Listing.kind)
+        )
+        return [(listing, name) for listing, name in rows]
+
+    async def assistant_matches_by_id(
+        self,
+        listing_ids: list[uuid.UUID],
+        circle_ids: list[uuid.UUID],
+        excluded_owners: list[uuid.UUID],
+    ) -> list[tuple[Listing, str]]:
+        if not listing_ids or not circle_ids:
+            return []
+        rows = await self._session.execute(
+            select(Listing, User.display_name)
+            .join(User, User.id == Listing.owner_user_id)
+            .where(
+                Listing.id.in_(listing_ids),
+                *_assistant_visibility(circle_ids, excluded_owners),
+            )
+        )
+        return [(listing, name) for listing, name in rows]
 
     async def search_for_owner(
         self, owner_user_id: uuid.UUID, filters: ListingFilters, page: PageRequest

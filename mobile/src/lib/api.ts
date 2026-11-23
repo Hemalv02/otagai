@@ -1,3 +1,6 @@
+import { fetch as expoFetch } from "expo/fetch";
+import { Platform } from "react-native";
+
 import { supabase } from "@/lib/supabase";
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -94,7 +97,11 @@ export type ProxyGrant = {
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";
 export type RippleStage =
-  "direct" | "family" | "han" | "association" | "nearby";
+  | "direct"
+  | "family"
+  | "han"
+  | "association"
+  | "nearby";
 
 export type RequestSummary = {
   id: string;
@@ -112,18 +119,21 @@ export type RequestSummary = {
   created_at: string;
 };
 
-type Page<T> = { items: T[]; next_cursor: string | null };
+export type Page<T> = { items: T[]; next_cursor: string | null };
 
 const MAX_REQUEST_PAGES = 10;
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const { data, error } = await supabase.auth.getSession();
   if (error) {
     throw new ApiError(401, "Sign in again to continue.");
   }
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body) {
+  if (typeof init.body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (data.session) {
@@ -132,7 +142,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   let response: Response;
   try {
-    response = await fetch(`${apiUrl}${path}`, { ...init, headers });
+    const fetcher =
+      init.body instanceof FormData && Platform.OS !== "web"
+        ? expoFetch
+        : fetch;
+    response = await fetcher(`${apiUrl}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(0, "Could not reach Otagai. Check your connection.");
   }

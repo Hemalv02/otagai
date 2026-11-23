@@ -22,6 +22,7 @@ from app.database.models.enums import (
 )
 from app.routes.dependencies import ActorDep, DatabaseDep
 from app.routes.pagination import Page, PageQuery
+from app.services.actors.service import ProxyScope
 from app.services.requests.service import (
     NewRequest,
     ReceivedView,
@@ -161,6 +162,10 @@ class ReceivedPatchBody(BaseModel):
     hidden: bool | None = None
 
 
+class ReceivedPageQuery(PageQuery):
+    direct: bool = False
+
+
 class RequestSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -187,6 +192,8 @@ class RequestDetailModel(RequestSummary):
     expires_at: datetime
     my_role: str
     my_response_status: str | None
+    my_response_id: uuid.UUID | None
+    exchange_id: uuid.UUID | None
 
 
 class ResponseModel(BaseModel):
@@ -222,6 +229,8 @@ def request_detail(view: RequestDetail) -> RequestDetailModel:
         expires_at=view.request.expires_at,
         my_role=view.my_role,
         my_response_status=view.my_response_status,
+        my_response_id=view.my_response_id,
+        exchange_id=view.exchange_id,
     )
 
 
@@ -278,6 +287,7 @@ async def my_requests(
 async def read_request(
     request_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
 ) -> RequestDetailModel:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     return request_detail(await get_request(database, actor, request_id))
 
 
@@ -320,6 +330,7 @@ async def request_responses(
     actor: ActorDep,
     database: DatabaseDep,
 ) -> Page[ResponseModel]:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     result = await list_responses(database, actor, request_id, query.page())
     return Page.build(result, ResponseModel)
 
@@ -387,12 +398,14 @@ async def withdraw(
 
 @received_router.get("")
 async def my_received_requests(
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ReceivedPageQuery, Query()],
     actor: ActorDep,
     database: DatabaseDep,
-    direct: Annotated[bool, Query()] = False,
 ) -> Page[ReceivedItem]:
-    result = await list_received(database, actor, direct_only=direct, page=query.page())
+    actor.require(ProxyScope.VIEW_ACTIVITY)
+    result = await list_received(
+        database, actor, direct_only=query.direct, page=query.page()
+    )
     return Page[ReceivedItem](
         items=[received_item(view) for view in result.items],
         next_cursor=result.next_cursor,
@@ -406,6 +419,7 @@ async def patch_received(
     actor: ActorDep,
     database: DatabaseDep,
 ) -> ReceivedItem:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     view = await mark_received(
         database, actor, request_id, seen=body.seen, hidden=body.hidden
     )

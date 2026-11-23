@@ -229,6 +229,8 @@ export function formatNeededWindow(
     return `${start} – ${end}`;
   }
   if (start) return start;
-  if (end) return `– ${end}`;
+  if (end) {
+    return { en: `By ${end}`, ja: `${end}まで`, bn: `${end} এর মধ্যে` }[locale];
+  }
   return null;
 }

@@ -291,17 +291,35 @@ async def test_family_activity_scope_removed_403(client):
     ctx = await _family_with_open_request(client)
     allowed = await _open_requests(client, ctx["caretaker"], ctx["member_id"])
     assert allowed.status_code == 200, allowed.text
+    acting = {**auth(ctx["caretaker"]), "X-Acting-For": ctx["member_id"]}
+    request_path = f"/requests/{ctx['open_request_id']}"
+    activity_paths = (
+        request_path,
+        f"{request_path}/responses",
+        "/users/me/received-requests",
+    )
+    for path in activity_paths:
+        visible = await client.get(path, headers=acting)
+        assert visible.status_code == 200, visible.text
 
     patched = await client.patch(
         f"/proxy-grants/{ctx['grant_id']}",
         headers=auth(ctx["member"]),
-        json={"can_view_activity": False},
+        json={"can_view_activity": False, "can_post_requests": True},
     )
     assert patched.status_code == 200, patched.text
     assert patched.json()["can_view_activity"] is False
 
     denied = await _open_requests(client, ctx["caretaker"], ctx["member_id"])
     assert denied.status_code == 403, denied.text
+    for path in activity_paths:
+        denied = await client.get(path, headers=acting)
+        assert denied.status_code == 403, denied.text
+
+    edited = await client.patch(
+        request_path, headers=acting, json={"raw_text": "Carry two bags upstairs"}
+    )
+    assert edited.status_code == 200, edited.text
 
     switcher = await client.get(
         "/users/me/proxy-grants?as=caretaker", headers=auth(ctx["caretaker"])

@@ -14,6 +14,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database.connection import Database
 from app.routes.ai.route import router as ai_router
 from app.routes.ask_sessions.route import router as ask_sessions_router
+from app.routes.assistant.route import router as assistant_router
 from app.routes.categories.route import router as categories_router
 from app.routes.chat.route import (
     me_router as my_conversations_router,
@@ -289,6 +290,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(home_router)
     app.include_router(ai_router)
     app.include_router(ask_sessions_router)
+    app.include_router(assistant_router)
     app.include_router(coordinator_router)
     app.include_router(map_router)
     app.include_router(circle_notices_router)
