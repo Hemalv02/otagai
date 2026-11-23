@@ -46,9 +46,7 @@ async def test_loan_extension_flow(client):
     assert created.status_code == 201, created.text
     extension_id = created.json()["id"]
 
-    listed = await client.get(
-        f"/exchanges/{exch}/extensions", headers=auth(helper)
-    )
+    listed = await client.get(f"/exchanges/{exch}/extensions", headers=auth(helper))
     assert listed.status_code == 200
     assert extension_id in [e["id"] for e in listed.json()["items"]]
 

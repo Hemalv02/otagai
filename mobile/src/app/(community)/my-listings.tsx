@@ -108,7 +108,6 @@ export default function MyListingsScreen() {
   );
 
   useEffect(() => {
-    // Reset screen state when the authenticated query changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setRows([]);
     setCursor(null);

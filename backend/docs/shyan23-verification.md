@@ -49,6 +49,12 @@ DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 \
   connection, passed **168 tests** in 68.36 seconds, with the same 10 warnings.
 - Sol independently reviewed the backend change: spec compliance and code
   quality passed, with no blocking findings.
+- After reading both repository `CLAUDE.md` files, the required root command
+  `uvx pre-commit run --all-files` passed. Existing test-only Ruff lint and
+  formatting issues were corrected without changing fixture output. The full
+  backend suite passed again: **168 tests** in 71.50 seconds, with 10 existing
+  warnings. The mobile formatting hook currently skips if Prettier is absent;
+  it is not proof of an enforced mobile formatting check.
 - The listing run emitted 10 existing SQLAlchemy `distinct` deprecation warnings
   from `app/repositories/listings.py`.
 
