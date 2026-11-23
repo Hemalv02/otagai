@@ -108,8 +108,9 @@ class AlreadyAcceptedError(ConflictError):
 
 
 class OpenListingRequestExistsError(ConflictError):
-    def __init__(self) -> None:
+    def __init__(self, request_id: uuid.UUID) -> None:
         super().__init__("You already have an open request for this listing.")
+        self.details = {"code": "open_request_exists", "request_id": str(request_id)}
 
 
 OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
@@ -260,7 +261,7 @@ async def create_request_in_session(
                     raise
                 if existing.expires_at > now:
                     if existing.kind != new_request.kind:
-                        raise OpenListingRequestExistsError from error
+                        raise OpenListingRequestExistsError(existing.id) from error
                     return existing
                 if attempt == 1:
                     raise
@@ -461,14 +462,24 @@ async def widen_request(
         request = await _load_own_request_for_update(session, actor, request_id)
         if request.status == RequestStatus.EXPIRED.value:
             requests = RequestRepository(session)
-            if (
-                request.listing_id is not None
-                and await requests.get_open_for_listing(
-                    request.requester_user_id, request.listing_id
+            if request.listing_id is not None:
+                sibling = await requests.get_open_for_listing(
+                    request.requester_user_id, request.listing_id, lock=True
                 )
-                is not None
-            ):
-                raise RequestNotOpenError
+                if sibling is not None:
+                    if sibling.expires_at > now:
+                        raise OpenListingRequestExistsError(sibling.id)
+                    await requests.update(
+                        sibling, {"status": RequestStatus.EXPIRED.value}
+                    )
+                if request.direct_to_user_id is not None:
+                    await requestable_listing(
+                        session,
+                        actor,
+                        request.listing_id,
+                        request.direct_to_user_id,
+                        request.kind,
+                    )
             try:
                 async with session.begin_nested():
                     return await requests.update(
@@ -481,7 +492,12 @@ async def widen_request(
             except IntegrityError as error:
                 if not _violates_open_listing_index(error):
                     raise
-                raise RequestNotOpenError from error
+                existing = await requests.get_open_for_listing(
+                    request.requester_user_id, request.listing_id
+                )
+                if existing is None:
+                    raise
+                raise OpenListingRequestExistsError(existing.id) from error
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         if request.direct_to_user_id is not None:

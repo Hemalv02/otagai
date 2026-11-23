@@ -302,7 +302,8 @@ async def test_reopening_an_expired_request_blocked_by_a_newer_open_one_is_409(c
         f"/requests/{stale.json()['id']}/widen", headers=auth(seeker)
     )
     assert widened.status_code == 409, widened.text
-    assert widened.json()["message"]
+    assert widened.json()["code"] == "open_request_exists"
+    assert widened.json()["request_id"] == fresh.json()["id"]
 
 
 async def test_repeat_send_with_a_different_kind_is_409(client):
@@ -315,6 +316,8 @@ async def test_repeat_send_with_a_different_kind_is_409(client):
     assert (
         second.json()["message"] == "You already have an open request for this listing."
     )
+    assert second.json()["code"] == "open_request_exists"
+    assert second.json()["request_id"] == first.json()["id"]
 
 
 async def test_request_detail_shows_the_listing_title_to_the_recipient(client):
@@ -345,3 +348,42 @@ async def test_request_without_a_listing_has_no_listing_summary(client):
     )
     seen = await client.get(f"/requests/{created.json()['id']}", headers=auth(seeker))
     assert seen.json()["listing"] is None
+
+
+async def test_reopening_ignores_a_sibling_that_has_already_expired(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    past = {"needed_until": "2020-01-01T00:00:00Z"}
+    first = await _post(client, seeker, _body(listing, owner_id, **past))
+    second = await _post(client, seeker, _body(listing, owner_id, **past))
+    assert second.json()["id"] != first.json()["id"]
+    widened = await client.post(
+        f"/requests/{first.json()['id']}/widen", headers=auth(seeker)
+    )
+    assert widened.status_code == 200, widened.text
+    assert widened.json()["status"] == "open"
+    sibling = await client.get(f"/requests/{second.json()['id']}", headers=auth(seeker))
+    assert sibling.json()["status"] == "expired"
+
+
+async def test_reopening_an_expired_request_for_a_paused_listing_is_409(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    stale = await _post(
+        client,
+        seeker,
+        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
+    )
+    fresh = await _post(client, seeker, _body(listing, owner_id))
+    cancelled = await client.post(
+        f"/requests/{fresh.json()['id']}/cancel", headers=auth(seeker)
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    paused = await client.post(f"/listings/{listing}/pause", headers=auth(owner))
+    assert paused.status_code == 200, paused.text
+    widened = await client.post(
+        f"/requests/{stale.json()['id']}/widen", headers=auth(seeker)
+    )
+    assert widened.status_code == 409, widened.text
+    still = await client.get(f"/requests/{stale.json()['id']}", headers=auth(seeker))
+    assert still.json()["status"] == "expired"
