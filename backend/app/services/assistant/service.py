@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import hashlib
 import json
 import logging
@@ -28,9 +27,7 @@ from app.database.models.enums import (
     Language,
     LendMode,
     ListingStatus,
-    MediaKind,
     MediaPurpose,
-    MediaVariantName,
     RequestKind,
     RequestTone,
     RippleStage,
@@ -39,7 +36,6 @@ from app.database.models.enums import (
 from app.repositories.assistant import AssistantRepository
 from app.repositories.circles import CircleRepository
 from app.repositories.listings import ListingRepository
-from app.repositories.media import MediaRepository
 from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.requests import RequestRepository
 from app.repositories.users import UserRepository
@@ -50,13 +46,13 @@ from app.services.errors import (
     BadRequestError,
     ConflictError,
     NotFoundError,
-    UpstreamUnavailableError,
 )
 from app.services.listings.service import (
     ListingCard,
     assistant_listings_by_id,
     match_assistant_listings,
 )
+from app.services.media.service import MediaNotFoundError, ready_image_data_url
 from app.services.requests.service import (
     NewRequest,
     NoCircleError,
@@ -277,27 +273,12 @@ async def _photo_input(
     user: User,
     media_id: uuid.UUID,
 ) -> str:
-    async with database.session() as session:
-        repository = MediaRepository(session)
-        media = await repository.owned_ready(media_id, user.id, MediaPurpose.ASK.value)
-        if media is None or media.kind != MediaKind.IMAGE:
-            raise AssistantImageNotFoundError
-        variants = await repository.get_variants(media_id)
-        display = next(
-            (item for item in variants if item.variant == MediaVariantName.DISPLAY),
-            None,
+    try:
+        return await ready_image_data_url(
+            database, storage, settings, user.id, media_id, MediaPurpose.ASK.value
         )
-        if display is None:
-            raise AssistantImageNotFoundError
-    image = await storage.download(
-        display.s3_key, max_bytes=settings.media_max_image_bytes
-    )
-    if not image:
-        raise UpstreamUnavailableError(
-            "The uploaded photo could not be read. Try again."
-        )
-    encoded = base64.b64encode(image).decode("ascii")
-    return f"data:{display.mime_type};base64,{encoded}"
+    except MediaNotFoundError:
+        raise AssistantImageNotFoundError from None
 
 
 async def run_turn(

@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -20,6 +21,7 @@ from app.services.errors import (
     ConflictError,
     NotFoundError,
     UnsupportedMediaTypeError,
+    UpstreamUnavailableError,
 )
 from app.services.media.processing import ImageDecodeError, process_image
 from app.services.storage.service import Storage
@@ -194,3 +196,34 @@ async def delete_media(
         )
     for key in keys:
         await storage.delete(key)
+
+
+async def ready_image_data_url(
+    database: Database,
+    storage: Storage,
+    settings: Settings,
+    owner_user_id: uuid.UUID,
+    media_id: uuid.UUID,
+    purpose: str,
+) -> str:
+    async with database.session() as session:
+        repository = MediaRepository(session)
+        media = await repository.owned_ready(media_id, owner_user_id, purpose)
+        if media is None or media.kind != MediaKind.IMAGE:
+            raise MediaNotFoundError
+        variants = await repository.get_variants(media_id)
+        display = next(
+            (item for item in variants if item.variant == MediaVariantName.DISPLAY),
+            None,
+        )
+        if display is None:
+            raise MediaNotFoundError
+    image = await storage.download(
+        display.s3_key, max_bytes=settings.media_max_image_bytes
+    )
+    if not image:
+        raise UpstreamUnavailableError(
+            "The uploaded photo could not be read. Try again."
+        )
+    encoded = base64.b64encode(image).decode("ascii")
+    return f"data:{display.mime_type};base64,{encoded}"
