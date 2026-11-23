@@ -146,36 +146,37 @@ export default function ToolListingScreen() {
           key={photo.id}
           source={{ uri: photo.url }}
           style={styles.photo}
-          contentFit="contain"
+          contentFit="cover"
           accessibilityLabel={listing.title}
         />
       ))}
       {listing.owner ? (
-        <View style={styles.ownerCopy}>
+        <View style={styles.owner}>
           <Text style={[labelType, styles.ink]}>
             {listing.owner.display_name}
           </Text>
+          <Text style={[localizedType("supporting", locale), styles.secondary]}>
+            {copy.neighbour}
+          </Text>
         </View>
       ) : null}
-      {listing.description ? (
-        <>
+      {listing.description || listing.parts.length > 0 ? (
+        <View style={styles.section}>
           <Text
             accessibilityRole="header"
             style={[localizedType("section-heading", locale), styles.ink]}
           >
             {skill ? copy.skillHeading : copy.includedHeading}
           </Text>
-          <Text style={[bodyType, styles.ink]}>{listing.description}</Text>
-        </>
-      ) : null}
-      {listing.parts.length > 0 ? (
-        <RequestNotice
-          title={copy.includedParts}
-          detail={listing.parts
-            .map((part) => `${part.label} × ${part.quantity}`)
-            .join("\n")}
-          locale={locale}
-        />
+          {listing.description ? (
+            <Text style={[bodyType, styles.ink]}>{listing.description}</Text>
+          ) : null}
+          {listing.parts.map((part) => (
+            <Text key={part.id} style={[bodyType, styles.ink]}>
+              {`${part.label} × ${part.quantity}`}
+            </Text>
+          ))}
+        </View>
       ) : null}
       {listing.safety_notes ? (
         <RequestNotice
@@ -186,7 +187,13 @@ export default function ToolListingScreen() {
       ) : null}
       <RequestNotice
         title={lendState}
-        detail={availabilityDetail || copy.availability}
+        detail={
+          own
+            ? availabilityDetail || copy.noAvailabilityNote
+            : [availabilityDetail, readCopy.readOnly]
+                .filter(Boolean)
+                .join("\n")
+        }
         locale={locale}
       />
       {own ? (
@@ -195,24 +202,19 @@ export default function ToolListingScreen() {
           labelStyle={localizedType("button", locale)}
           onPress={() => router.push("/my-listings")}
         />
-      ) : (
-        <Text style={[localizedType("supporting", locale), styles.secondary]}>
-          {readCopy.readOnly}
-        </Text>
-      )}
+      ) : null}
     </CommunityScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  photo: { height: 220, width: "100%", borderRadius: controls.radius },
-  ownerCopy: {
-    flex: 1,
-    minWidth: 0,
-    paddingTop: 4,
-    paddingBottom: 5,
-    gap: spacing["control-gap"],
+  photo: {
+    width: "100%",
+    aspectRatio: 3 / 2,
+    borderRadius: controls.radius,
   },
+  owner: { minWidth: 0, gap: spacing["control-gap"] },
+  section: { gap: spacing["control-gap"] },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },
 });
