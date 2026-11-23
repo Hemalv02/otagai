@@ -1,15 +1,17 @@
 import type { Language, RequestKind, RippleStage } from "./api";
-import type { LinkStanding } from "./family-state";
+import type { StatusLinkStanding } from "./family-state";
 
 type FamilyCopy = {
   title: string;
   subtitle: string;
-  accounts: string;
-  you: string;
+  chooseWho: string;
+  yourAccount: string;
+  active: string;
+  switchTo: string;
   canView: string;
   activityHidden: string;
-  linkedPeople: string;
-  standing: Record<LinkStanding, string>;
+  linkStatus: { pending: string; noAccess: string };
+  linkDetail: Record<StatusLinkStanding, string>;
   yourRequests: string;
   theirRequests: (name: string) => string;
   noFamilyTitle: string;
@@ -27,7 +29,6 @@ type FamilyCopy = {
   lostAccess: (name: string) => string;
   kinds: Record<RequestKind, string>;
   open: string;
-  needed: string;
   anyTime: string;
   posted: string;
   audience: string;
@@ -38,18 +39,18 @@ type FamilyCopy = {
 };
 
 const en: FamilyCopy = {
-  title: "Family",
-  subtitle: "Switch between yourself and the people you help.",
-  accounts: "Accounts",
-  you: "You",
+  title: "Your family",
+  subtitle: "Help someone you trust with everyday requests.",
+  chooseWho: "Choose who you’re helping",
+  yourAccount: "Your account",
+  active: "Active",
+  switchTo: "Switch",
   canView: "Can see requests",
   activityHidden: "Requests hidden",
-  linkedPeople: "Linked family",
-  standing: {
-    "pending-outgoing": "Pending · waiting for them to accept",
-    "pending-incoming": "Pending · asked to link with you",
-    "can-view": "Linked · you can see their requests",
-    "activity-hidden": "Linked · their requests are hidden from you",
+  linkStatus: { pending: "Pending", noAccess: "No access" },
+  linkDetail: {
+    "pending-outgoing": "Waiting for them to accept",
+    "pending-incoming": "Asked to link with you",
     "no-permission": "Linked · no permission to help yet",
   },
   yourRequests: "Your open requests",
@@ -75,7 +76,6 @@ const en: FamilyCopy = {
     borrow_with_help: "Borrow with help",
   },
   open: "Open",
-  needed: "When",
   anyTime: "Any time",
   posted: "Posted",
   audience: "Who can see it",
@@ -92,18 +92,18 @@ const en: FamilyCopy = {
 };
 
 const ja: FamilyCopy = {
-  title: "家族",
-  subtitle: "自分と、お手伝いしている家族の画面を切り替えられます。",
-  accounts: "アカウント",
-  you: "自分",
+  title: "あなたの家族",
+  subtitle: "信頼できる人の日々の依頼を手伝いましょう。",
+  chooseWho: "お手伝いする相手を選ぶ",
+  yourAccount: "あなたのアカウント",
+  active: "選択中",
+  switchTo: "切り替え",
   canView: "依頼を見られます",
   activityHidden: "依頼は非公開",
-  linkedPeople: "つながっている家族",
-  standing: {
-    "pending-outgoing": "承認待ち・相手の承認を待っています",
-    "pending-incoming": "承認待ち・つながりの申請が届いています",
-    "can-view": "つながり済み・依頼を見られます",
-    "activity-hidden": "つながり済み・依頼は非公開です",
+  linkStatus: { pending: "承認待ち", noAccess: "権限なし" },
+  linkDetail: {
+    "pending-outgoing": "相手の承認を待っています",
+    "pending-incoming": "つながりの申請が届いています",
     "no-permission": "つながり済み・代理の許可はまだありません",
   },
   yourRequests: "自分の募集中の依頼",
@@ -129,7 +129,6 @@ const ja: FamilyCopy = {
     borrow_with_help: "借りて手伝ってほしい",
   },
   open: "募集中",
-  needed: "日時",
   anyTime: "いつでも",
   posted: "投稿日",
   audience: "公開範囲",
@@ -146,18 +145,18 @@ const ja: FamilyCopy = {
 };
 
 const bn: FamilyCopy = {
-  title: "পরিবার",
-  subtitle: "নিজের এবং যাদের সাহায্য করেন তাদের মধ্যে বদল করুন।",
-  accounts: "অ্যাকাউন্ট",
-  you: "আপনি",
+  title: "আপনার পরিবার",
+  subtitle: "আপনার বিশ্বস্ত কাউকে দৈনন্দিন অনুরোধে সাহায্য করুন।",
+  chooseWho: "কাকে সাহায্য করছেন বেছে নিন",
+  yourAccount: "আপনার অ্যাকাউন্ট",
+  active: "সক্রিয়",
+  switchTo: "বদলান",
   canView: "অনুরোধ দেখা যাবে",
   activityHidden: "অনুরোধ লুকানো",
-  linkedPeople: "যুক্ত পরিবার",
-  standing: {
-    "pending-outgoing": "অপেক্ষমাণ · তাদের সম্মতির অপেক্ষায়",
-    "pending-incoming": "অপেক্ষমাণ · আপনার সাথে যুক্ত হতে চেয়েছেন",
-    "can-view": "যুক্ত · আপনি তাদের অনুরোধ দেখতে পারেন",
-    "activity-hidden": "যুক্ত · তাদের অনুরোধ আপনার কাছে লুকানো",
+  linkStatus: { pending: "অপেক্ষমাণ", noAccess: "অনুমতি নেই" },
+  linkDetail: {
+    "pending-outgoing": "তাদের সম্মতির অপেক্ষায়",
+    "pending-incoming": "আপনার সাথে যুক্ত হতে চেয়েছেন",
     "no-permission": "যুক্ত · এখনো সাহায্যের অনুমতি নেই",
   },
   yourRequests: "আপনার খোলা অনুরোধ",
@@ -182,7 +181,6 @@ const bn: FamilyCopy = {
     borrow_with_help: "ধার ও সাহায্য",
   },
   open: "খোলা",
-  needed: "কখন",
   anyTime: "যেকোনো সময়",
   posted: "পোস্ট করা হয়েছে",
   audience: "কারা দেখতে পাবে",

@@ -2,17 +2,17 @@ import { RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import {
+  AccountList,
   AccountSkeleton,
-  AccountSwitcher,
   FamilyNotice,
-  FamilyRequestCard,
-  LinkedFamily,
+  FamilyRequestRow,
   RequestSkeleton,
 } from "@/components/family-ui";
 import { Button, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { familyCopy } from "@/lib/family-copy";
-import type { FamilyAccount } from "@/lib/family-state";
+import { type FamilyAccount, statusLinks } from "@/lib/family-state";
+import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { type FamilyState, useFamily } from "@/lib/use-family";
 import { colors, spacing } from "@/theme/tokens.json";
@@ -24,6 +24,17 @@ export default function FamilyScreen() {
   const copy = familyCopy[locale];
   const family = useFamily();
   const { state } = family;
+  const memberships = useMemberships();
+  const circle =
+    memberships.state.status === "ready"
+      ? memberships.state.items.find((item) => item.status === "approved")
+          ?.circle
+      : undefined;
+  const translatedName = circle?.name_translations[locale];
+  const circleName =
+    typeof translatedName === "string"
+      ? translatedName
+      : (circle?.name ?? null);
 
   return (
     <CommunityScreen
@@ -56,6 +67,7 @@ export default function FamilyScreen() {
         <ReadyContent
           state={state}
           locale={locale}
+          circleName={circleName}
           lostAccess={family.lostAccess}
           onSelect={family.select}
           onRefresh={() => void family.refresh()}
@@ -69,6 +81,7 @@ export default function FamilyScreen() {
 function ReadyContent({
   state,
   locale,
+  circleName,
   lostAccess,
   onSelect,
   onRefresh,
@@ -76,6 +89,7 @@ function ReadyContent({
 }: {
   state: ReadyFamily;
   locale: Language;
+  circleName: string | null;
   lostAccess: string | null;
   onSelect: (accountId: string) => void;
   onRefresh: () => void;
@@ -97,9 +111,11 @@ function ReadyContent({
           />
         </View>
       ) : null}
-      <AccountSwitcher
+      <AccountList
         accounts={state.accounts}
+        links={statusLinks(state.links)}
         selectedId={state.selected.id}
+        circleName={circleName}
         onSelect={onSelect}
         locale={locale}
       />
@@ -134,9 +150,6 @@ function ReadyContent({
           onRetry={onRetryRequests}
         />
       </View>
-      {state.links.length > 0 ? (
-        <LinkedFamily links={state.links} locale={locale} />
-      ) : null}
     </>
   );
 }
@@ -214,13 +227,15 @@ function RequestsBody({
               locale={locale}
             />
           ) : (
-            requests.items.map((request) => (
-              <FamilyRequestCard
-                key={request.id}
-                request={request}
-                locale={locale}
-              />
-            ))
+            <View style={styles.list}>
+              {requests.items.map((request) => (
+                <FamilyRequestRow
+                  key={request.id}
+                  request={request}
+                  locale={locale}
+                />
+              ))}
+            </View>
           )}
         </>
       );
@@ -228,7 +243,8 @@ function RequestsBody({
 }
 
 const styles = StyleSheet.create({
-  section: { gap: spacing["related-gap"] },
+  section: { gap: spacing["card-inset"] },
+  list: { gap: spacing["card-inset"] },
   inlineError: { gap: 4 },
   ink: { color: colors.ink },
 });

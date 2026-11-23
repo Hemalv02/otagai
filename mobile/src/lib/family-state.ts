@@ -27,6 +27,13 @@ export type FamilyLinkRow = {
   standing: LinkStanding;
 };
 
+export type StatusLinkStanding = Exclude<
+  LinkStanding,
+  "can-view" | "activity-hidden"
+>;
+
+export type StatusLinkRow = FamilyLinkRow & { standing: StatusLinkStanding };
+
 export type FamilyOverview = {
   accounts: FamilyAccount[];
   links: FamilyLinkRow[];
@@ -120,6 +127,13 @@ export function selectAccount(
   selectedId: string | null,
 ): FamilyAccount {
   return accounts.find((account) => account.id === selectedId) ?? accounts[0];
+}
+
+export function statusLinks(links: readonly FamilyLinkRow[]): StatusLinkRow[] {
+  return links.filter(
+    (link): link is StatusLinkRow =>
+      link.standing !== "can-view" && link.standing !== "activity-hidden",
+  );
 }
 
 export function retainSelection(

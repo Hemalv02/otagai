@@ -9,6 +9,7 @@ import {
   retainSelection,
   requestsViewFor,
   selectAccount,
+  statusLinks,
 } from "../src/lib/family-state.ts";
 
 const self = { id: "u-yuki", display_name: "Yuki" };
@@ -346,4 +347,33 @@ test("a selection is kept only while that account is still available", () => {
   assert.equal(retainSelection(accounts, "u-mum"), "u-mum");
   assert.equal(retainSelection(accounts, "u-revoked"), null);
   assert.equal(retainSelection(accounts, null), null);
+});
+
+test("only pending and unpaired links become status rows", () => {
+  const { links } = buildFamilyOverview(
+    self,
+    [
+      link(),
+      link({
+        id: "link-2",
+        relative_user_id: "u-cousin",
+        status: "pending",
+        other: { id: "u-cousin", display_name: "Cousin" },
+      }),
+      link({
+        id: "link-3",
+        relative_user_id: "u-brother",
+        other: { id: "u-brother", display_name: "Brother" },
+      }),
+    ],
+    [grant()],
+  );
+
+  assert.deepEqual(
+    statusLinks(links).map((row) => [row.name, row.standing]),
+    [
+      ["Cousin", "pending-outgoing"],
+      ["Brother", "no-permission"],
+    ],
+  );
 });
