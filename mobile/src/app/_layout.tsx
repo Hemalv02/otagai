@@ -6,6 +6,8 @@ import { DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
+import { CommunityDemoProvider } from "@/lib/community-demo";
+import { DemoListingsProvider } from "@/lib/demo-listings";
 import { MembershipProvider, useMemberships } from "@/lib/memberships";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { getLaunchRoute } from "@/lib/onboarding-state";
@@ -58,38 +60,51 @@ function RootNavigator() {
     completed: state.completed,
   });
 
+  const canUseCommunity =
+    profile.status === "ready" && memberships.access === "approved";
+
   return (
-    <Stack
-      screenOptions={{
-        headerShown: false,
-        contentStyle: { backgroundColor: colors.canvas },
-      }}
+    <CommunityDemoProvider
+      key={session?.user.id ?? "guest"}
+      memberName={
+        profile.status === "ready" ? profile.profile.display_name : ""
+      }
     >
-      <Stack.Protected guard={launchRoute === "welcome"}>
-        <Stack.Screen name="welcome" />
-        <Stack.Protected guard={state.step >= 2}>
-          <Stack.Screen name="onboarding-story" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+        }}
+      >
+        <Stack.Protected guard={launchRoute === "welcome"}>
+          <Stack.Screen name="welcome" />
+          <Stack.Protected guard={state.step >= 2}>
+            <Stack.Screen name="onboarding-story" />
+          </Stack.Protected>
+          <Stack.Protected guard={state.step === 3}>
+            <Stack.Screen name="onboarding-features" />
+          </Stack.Protected>
         </Stack.Protected>
-        <Stack.Protected guard={state.step === 3}>
-          <Stack.Screen name="onboarding-features" />
+        <Stack.Protected guard={launchRoute === "sign-in"}>
+          <Stack.Screen name="sign-in" />
         </Stack.Protected>
-      </Stack.Protected>
-      <Stack.Protected guard={launchRoute === "sign-in"}>
-        <Stack.Screen name="sign-in" />
-      </Stack.Protected>
-      <Stack.Protected guard={!session}>
-        <Stack.Screen name="onboarding-preferences" />
-      </Stack.Protected>
-      <Stack.Protected guard={launchRoute === "profile-setup"}>
-        <Stack.Screen name="profile-setup" />
-      </Stack.Protected>
-      <Stack.Protected guard={launchRoute === "find-circle"}>
-        <Stack.Screen name="find-circle" />
-      </Stack.Protected>
-      <Stack.Protected guard={launchRoute === "index"}>
-        <Stack.Screen name="index" />
-      </Stack.Protected>
-    </Stack>
+        <Stack.Protected guard={!session}>
+          <Stack.Screen name="onboarding-preferences" />
+        </Stack.Protected>
+        <Stack.Protected guard={launchRoute === "profile-setup"}>
+          <Stack.Screen name="profile-setup" />
+        </Stack.Protected>
+        <Stack.Protected guard={launchRoute === "find-circle"}>
+          <Stack.Screen name="find-circle" />
+        </Stack.Protected>
+        <Stack.Protected guard={launchRoute === "index" && !canUseCommunity}>
+          <Stack.Screen name="account-status" />
+        </Stack.Protected>
+        <Stack.Protected guard={canUseCommunity}>
+          <Stack.Screen name="(community)" />
+        </Stack.Protected>
+      </Stack>
+    </CommunityDemoProvider>
   );
 }
 
@@ -100,7 +115,9 @@ export default function RootLayout() {
       <SessionProvider>
         <OnboardingProvider>
           <MembershipProvider>
-            <RootNavigator />
+            <DemoListingsProvider>
+              <RootNavigator />
+            </DemoListingsProvider>
           </MembershipProvider>
         </OnboardingProvider>
       </SessionProvider>
