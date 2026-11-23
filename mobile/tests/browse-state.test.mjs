@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   browseFilterKey,
   browseHeading,
+  emptyMessage,
   changeKind,
   firstPageFailed,
   firstPageLoaded,
@@ -254,4 +255,10 @@ test("an available-again date is formatted, and a malformed or missing one is om
   assert.equal(formatAvailableAgain("2026-12-05T12:00:00Z", "en-US"), "12/5/2026");
   assert.equal(formatAvailableAgain("not-a-date", "en-US"), null);
   assert.equal(formatAvailableAgain(null, "en-US"), null);
+});
+
+test("the empty message depends on the search text and on whether any filter is active", () => {
+  assert.equal(emptyMessage(true, "drill"), "emptyQuery");
+  assert.equal(emptyMessage(true, ""), "emptyFiltered");
+  assert.equal(emptyMessage(false, ""), "emptyCircle");
 });

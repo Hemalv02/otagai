@@ -177,15 +177,15 @@ const labels = {
   paused: "Paused",
 };
 
-test("a lend listing reads as available to lend", () => {
+test("a lend listing reads as Available", () => {
   assert.equal(availabilityLabel(listing(), labels), "Available");
 });
 
-test("a help-only listing reads as help offered, not borrowing", () => {
+test("a help-only listing reads as Ask for a time", () => {
   assert.equal(availabilityLabel(listing({ lend_mode: "help_only" }), labels), "Ask for a time");
 });
 
-test("a lend-or-help listing reads as both", () => {
+test("a lend-or-help listing reads as Available", () => {
   assert.equal(
     availabilityLabel(listing({ lend_mode: "lend_or_help" }), labels),
     "Available",

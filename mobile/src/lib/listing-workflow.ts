@@ -304,6 +304,14 @@ export function browseHeading(
   return "noResults";
 }
 
+export function emptyMessage(
+  filtersActive: boolean,
+  query: string,
+): "emptyQuery" | "emptyFiltered" | "emptyCircle" {
+  if (query) return "emptyQuery";
+  return filtersActive ? "emptyFiltered" : "emptyCircle";
+}
+
 export function selectAll(filters: BrowseFilters): BrowseFilters {
   return { ...filters, kind: "all", categoryId: "" };
 }

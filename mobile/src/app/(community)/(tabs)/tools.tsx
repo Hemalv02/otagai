@@ -17,6 +17,7 @@ import {
   browseFilterKey,
   browseHeading,
   canRetry,
+  emptyMessage,
   changeKind,
   firstPageFailed,
   SEARCH_MAX_LENGTH,
@@ -242,6 +243,7 @@ export default function BrowseToolsScreen() {
   }
 
   const heading = browseHeading(view, kindFilter);
+  const emptyKey = emptyMessage(filtersActive, debouncedQuery);
 
   return (
     <CommunityScreen
@@ -386,9 +388,9 @@ export default function BrowseToolsScreen() {
               accessibilityLiveRegion="polite"
               style={[localizedType("body", locale), styles.ink]}
             >
-              {debouncedQuery
+              {emptyKey === "emptyQuery"
                 ? copy.emptyQuery(debouncedQuery)
-                : copy.emptyFiltered}
+                : copy[emptyKey]}
             </Text>
             {!view.refreshError ? (
               <Button
@@ -427,7 +429,7 @@ export default function BrowseToolsScreen() {
               key={listing.id}
               accessibilityRole="link"
               title={listing.title}
-              description={catLabel ?? ""}
+              description={catLabel ?? undefined}
               detail={statusLabel}
               photo={listing.photo_url ? { uri: listing.photo_url } : undefined}
               onPress={() =>

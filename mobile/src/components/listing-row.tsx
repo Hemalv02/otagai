@@ -14,8 +14,8 @@ export function ListingRow({
   onPress,
 }: {
   title: string;
-  description: string;
-  detail: string;
+  description?: string;
+  detail?: string;
   photo?: ImageSource;
   portrait?: boolean;
   accessibilityRole?: "button" | "link";
