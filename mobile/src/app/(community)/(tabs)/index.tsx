@@ -147,6 +147,7 @@ function CircleHome({ circleName }: { circleName: string }) {
       title={copy.greet(people[actor].name)}
       eyebrow={circleName}
       titleAction={<NotificationBell />}
+      inlineTitleAction
     >
       <View style={styles.actions}>
         <Button

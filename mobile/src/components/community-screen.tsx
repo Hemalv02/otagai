@@ -25,14 +25,17 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 type CommunityScreenProps = PropsWithChildren<{
   title?: string;
   titleAction?: ReactNode;
+  inlineTitleAction?: boolean;
   eyebrow?: string;
   subtitle?: string;
   back?: boolean;
+  backAction?: ReactNode;
   keyboard?: boolean;
   footer?: ReactNode;
   live?: boolean;
   scroll?: boolean;
   design?: boolean;
+  renderList?: (header: ReactNode) => ReactNode;
 }>;
 
 const text = {
@@ -66,14 +69,17 @@ export function CommunityScreen({
   children,
   title,
   titleAction,
+  inlineTitleAction = false,
   eyebrow,
   subtitle,
   back,
+  backAction,
   keyboard,
   footer,
   live = false,
   scroll = true,
   design = false,
+  renderList,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -103,6 +109,63 @@ export function CommunityScreen({
     if (router.canGoBack()) router.back();
     else router.replace("/");
   }
+
+  const backButton = back ? (
+    <Pressable accessibilityRole="button" onPress={goBack} style={styles.back}>
+      <Image
+        source={require("../../assets/images/lending-arrow-left.svg")}
+        style={styles.arrow}
+        accessible={false}
+      />
+      <Text style={[label, styles.green]}>{t("back")}</Text>
+    </Pressable>
+  ) : null;
+
+  const screenContent = (
+    <>
+      {back && backAction ? (
+        <View style={styles.titleRow}>
+          {backButton}
+          {backAction}
+        </View>
+      ) : (
+        backButton
+      )}
+      {title || eyebrow || subtitle ? (
+        <View style={[styles.heading, design && styles.designHeading]}>
+          {eyebrow ? (
+            <Text style={[label, styles.green]}>{eyebrow}</Text>
+          ) : null}
+          {title || titleAction ? (
+            <View
+              style={[
+                styles.titleRow,
+                inlineTitleAction && styles.inlineTitleRow,
+              ]}
+            >
+              {title ? (
+                <Text
+                  accessibilityRole="header"
+                  style={[
+                    localizedType("screen-title", locale),
+                    styles.ink,
+                    styles.title,
+                  ]}
+                >
+                  {title}
+                </Text>
+              ) : null}
+              {titleAction}
+            </View>
+          ) : null}
+          {subtitle ? (
+            <Text style={[body, styles.secondary]}>{subtitle}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {children}
+    </>
+  );
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -143,61 +206,28 @@ export function CommunityScreen({
         style={styles.flex}
         behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
       >
-        <Content
-          contentContainerStyle={
-            scroll
-              ? [styles.column, styles.content, design && styles.designContent]
-              : undefined
-          }
-          style={
-            scroll ? undefined : [styles.column, styles.content, styles.flex]
-          }
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
-          {back ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={goBack}
-              style={styles.back}
-            >
-              <Image
-                source={require("../../assets/images/lending-arrow-left.svg")}
-                style={styles.arrow}
-                accessible={false}
-              />
-              <Text style={[label, styles.green]}>{t("back")}</Text>
-            </Pressable>
-          ) : null}
-          {title || eyebrow || subtitle ? (
-            <View style={[styles.heading, design && styles.designHeading]}>
-              {eyebrow ? (
-                <Text style={[label, styles.green]}>{eyebrow}</Text>
-              ) : null}
-              {title || titleAction ? (
-                <View style={styles.titleRow}>
-                  {title ? (
-                    <Text
-                      accessibilityRole="header"
-                      style={[
-                        localizedType("screen-title", locale),
-                        styles.ink,
-                        styles.title,
-                      ]}
-                    >
-                      {title}
-                    </Text>
-                  ) : null}
-                  {titleAction}
-                </View>
-              ) : null}
-              {subtitle ? (
-                <Text style={[body, styles.secondary]}>{subtitle}</Text>
-              ) : null}
-            </View>
-          ) : null}
-          {children}
-        </Content>
+        {renderList ? (
+          renderList(screenContent)
+        ) : (
+          <Content
+            contentContainerStyle={
+              scroll
+                ? [
+                    styles.column,
+                    styles.content,
+                    design && styles.designContent,
+                  ]
+                : undefined
+            }
+            style={
+              scroll ? undefined : [styles.column, styles.content, styles.flex]
+            }
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            {screenContent}
+          </Content>
+        )}
         {footer ? (
           <View style={[styles.column, styles.footer]}>{footer}</View>
         ) : null}
@@ -321,6 +351,7 @@ const styles = StyleSheet.create({
     gap: spacing["related-gap"],
   },
   title: { flexShrink: 1 },
+  inlineTitleRow: { flexWrap: "nowrap" },
   back: {
     flexDirection: "row",
     alignSelf: "flex-start",
