@@ -20,6 +20,7 @@ import {
   changeKind,
   firstPageFailed,
   firstPageLoaded,
+  listingStatusLabel,
   initialBrowseState,
   nextPageFailed,
   nextPageLoaded,
@@ -364,14 +365,11 @@ export default function BrowseToolsScreen() {
           );
           const catLabel = catNode ? categoryName(catNode, locale) : null;
           const lendLabel = readCopy[listing.lend_mode];
-          const lentOut = listing.status === "lent_out";
-          const statusLabel = [
-            own ? copy.yourListing : null,
+          const statusLabel = listingStatusLabel(listing, own, {
+            yourListing: copy.yourListing,
+            lentOut: copy.lentOut,
             lendLabel,
-            lentOut ? copy.lentOut : null,
-          ]
-            .filter(Boolean)
-            .join(" · ");
+          });
 
           return (
             <Pressable

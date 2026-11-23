@@ -7,6 +7,7 @@ import {
   firstPageFailed,
   firstPageLoaded,
   initialBrowseState,
+  listingStatusLabel,
   nextPageFailed,
   nextPageLoaded,
   normalizeSearch,
@@ -156,4 +157,14 @@ test("an auth failure on refresh clears rows into the first-page error state", (
   assert.deepEqual(failed.rows, []);
   assert.equal(failed.nextCursor, null);
   assert.equal(failed.refreshError, null);
+});
+
+test("a lent-out card shows the lent-out label instead of the lend label", () => {
+  const labels = { yourListing: "Mine", lentOut: "Lent out", lendLabel: "Available to lend" };
+  const lent = listingStatusLabel({ status: "lent_out" }, false, labels);
+  assert.equal(lent, "Lent out");
+  assert.ok(!lent.includes("Available to lend"));
+  assert.equal(listingStatusLabel({ status: "active" }, false, labels), "Available to lend");
+  assert.equal(listingStatusLabel({ status: "active" }, true, labels), "Mine · Available to lend");
+  assert.equal(listingStatusLabel({ status: "lent_out" }, true, labels), "Mine · Lent out");
 });

@@ -270,3 +270,16 @@ export function visibleBrowseState(
 export function canRetry(errorKind: BrowseErrorKind | null) {
   return errorKind === "transient";
 }
+
+export function listingStatusLabel(
+  listing: Pick<ListingSummary, "status">,
+  own: boolean,
+  labels: { yourListing: string; lentOut: string; lendLabel: string },
+) {
+  return [
+    own ? labels.yourListing : null,
+    listing.status === "lent_out" ? labels.lentOut : labels.lendLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
