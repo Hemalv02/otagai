@@ -463,6 +463,14 @@ async def widen_request(
         if request.status == RequestStatus.EXPIRED.value:
             requests = RequestRepository(session)
             if request.listing_id is not None:
+                if request.direct_to_user_id is not None:
+                    await requestable_listing(
+                        session,
+                        actor,
+                        request.listing_id,
+                        request.direct_to_user_id,
+                        request.kind,
+                    )
                 sibling = await requests.get_open_for_listing(
                     request.requester_user_id, request.listing_id, lock=True
                 )
@@ -471,14 +479,6 @@ async def widen_request(
                         raise OpenListingRequestExistsError(sibling.id)
                     await requests.update(
                         sibling, {"status": RequestStatus.EXPIRED.value}
-                    )
-                if request.direct_to_user_id is not None:
-                    await requestable_listing(
-                        session,
-                        actor,
-                        request.listing_id,
-                        request.direct_to_user_id,
-                        request.kind,
                     )
             try:
                 async with session.begin_nested():
