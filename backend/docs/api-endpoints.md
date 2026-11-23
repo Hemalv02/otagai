@@ -357,7 +357,7 @@ Files never go straight to S3 from the app. The backend strips EXIF and GPS data
 | `DELETE /listings/{listing_id}` | Soft delete. 409 while the item is lent out | 204 | 21 | MVP |
 | `PUT /listings/{listing_id}/parts` | Replace the parts list | 200 | 19 | MVP |
 | `PUT /listings/{listing_id}/media` | Replace the photos and their order | 200 | 19 | MVP |
-| `GET /users/me/listings?status=` | My listings, including paused and lent-out ones | 200 | 21 | MVP |
+| `GET /users/me/listings` | My listings, including paused and lent-out ones. Optional filters: `kind=tool\|skill`, `status` (comma-separated) | 200 | 21 | MVP |
 
 ## 7. Asking for help (the AI ask flow)
 
