@@ -33,9 +33,8 @@ async def draft[Output: BaseModel](
     if not settings.openai_api_key or not settings.openai_model:
         raise ServiceConfigurationError("Configure the OpenAI key and model.")
 
-    async with AsyncOpenAI(
-        api_key=settings.openai_api_key.get_secret_value(), timeout=25, max_retries=1
-    ) as client:
+    api_key = settings.openai_api_key.get_secret_value()
+    async with AsyncOpenAI(api_key=api_key, timeout=25, max_retries=1) as client:
         agent = Agent(
             name="Otagai drafting assistant",
             instructions=instructions,
@@ -56,7 +55,11 @@ async def draft[Output: BaseModel](
                 user_input,
                 context=context,
                 max_turns=1,
-                run_config=RunConfig(tracing_disabled=True),
+                run_config=RunConfig(
+                    workflow_name="Otagai Ask",
+                    trace_include_sensitive_data=False,
+                    tracing={"api_key": api_key},
+                ),
             )
             return result.final_output_as(output_type, raise_if_incorrect_type=True)
         except (APIError, AgentsException, TypeError):
