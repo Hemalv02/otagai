@@ -43,6 +43,17 @@ class RequestRepository:
             HelpRequest, request_id, with_for_update=True, populate_existing=True
         )
 
+    async def get_open_for_listing(
+        self, requester_id: uuid.UUID, listing_id: uuid.UUID
+    ) -> HelpRequest | None:
+        return await self._session.scalar(
+            select(HelpRequest).where(
+                HelpRequest.requester_user_id == requester_id,
+                HelpRequest.listing_id == listing_id,
+                HelpRequest.status == "open",
+            )
+        )
+
     async def create(
         self, values: dict[str, Any], media_ids: list[uuid.UUID]
     ) -> HelpRequest:

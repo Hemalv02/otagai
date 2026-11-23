@@ -48,6 +48,22 @@ class ListingLentOutError(ConflictError):
         super().__init__("You can't change a listing while it is lent out.")
 
 
+class ListingUnavailableError(ConflictError):
+    def __init__(self) -> None:
+        super().__init__("This listing is no longer available.")
+
+
+class ListingRequestMismatchError(BadRequestError):
+    pass
+
+
+ALLOWED_REQUEST_KINDS = {
+    LendMode.HELP_ONLY.value: {"help"},
+    LendMode.LEND.value: {"borrow", "borrow_with_help"},
+    LendMode.LEND_OR_HELP.value: {"borrow", "borrow_with_help", "help"},
+}
+
+
 @dataclass(frozen=True)
 class Photo:
     media_id: uuid.UUID
@@ -315,6 +331,30 @@ async def _require_visible(session, actor: Actor, listing: Listing) -> None:
         actor.subject_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
+
+
+async def requestable_listing(
+    session,
+    actor: Actor,
+    listing_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    kind: str,
+) -> Listing:
+    listing = await ListingRepository(session).get_for_update(listing_id)
+    if listing is None:
+        raise ListingNotFoundError
+    await _require_visible(session, actor, listing)
+    if recipient_id != listing.owner_user_id:
+        raise ListingRequestMismatchError(
+            "The recipient must own the selected listing."
+        )
+    if listing.status != ListingStatus.ACTIVE.value:
+        raise ListingUnavailableError
+    if kind not in ALLOWED_REQUEST_KINDS.get(listing.lend_mode, set()):
+        raise ListingRequestMismatchError(
+            "This listing doesn't offer that kind of request."
+        )
+    return listing
 
 
 async def _validate_media(

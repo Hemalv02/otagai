@@ -396,7 +396,7 @@ With Redis configured, repeated text prompts can reuse their interpretation for 
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients | 201 | 14, 15 | MVP |
+| `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients. With `listing_id`, `direct_to_user_id` must be the listing owner. The listing must be visible and active, and the kind must match its lend mode (`help_only` → `help`; `lend` → `borrow` or `borrow_with_help`). Paused or lent-out listings return 409. A member has at most one open request per listing: a repeat send returns the existing open request (same id, still 201) with no new notification | 201 | 14, 15 | MVP |
 | `GET /users/me/requests?status=` | My requests: open, matched, in progress, done, cancelled, expired. `status` takes a comma-separated list; an unknown status or query parameter returns 422. With `X-Acting-For: <member_id>`, lists that member's requests and needs `can_view_activity` (403 without it, or when the grant is missing or revoked) | 200 | 16, 33 | MVP |
 | `GET /requests/{request_id}` | Request detail includes the viewer's role and their response. The matched participants also get `exchange_id` | 200 | 17, 18 | MVP |
 | `PATCH /requests/{request_id}` | Edit the time or wording. 409 unless the request is open | 200 | 17 | MVP |

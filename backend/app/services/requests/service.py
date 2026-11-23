@@ -2,6 +2,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import Database
@@ -43,6 +44,10 @@ from app.services.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
+)
+from app.services.listings.service import (
+    ListingRequestMismatchError,
+    requestable_listing,
 )
 
 RIPPLE_ORDER = [
@@ -99,6 +104,9 @@ class ResponseNotPendingError(ConflictError):
 class AlreadyAcceptedError(ConflictError):
     def __init__(self) -> None:
         super().__init__("Another helper has already been chosen.")
+
+
+OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
 
 
 @dataclass(frozen=True)
@@ -179,12 +187,20 @@ async def create_request_in_session(
 
     media_ids = await _validated_media(session, requester_id, new_request.media_ids)
     is_direct = new_request.direct_to_user_id is not None
+    category_id = new_request.category_id
+    if new_request.listing_id is not None and not is_direct:
+        raise ListingRequestMismatchError("Send a listing request to its owner.")
     if is_direct:
         target_id = new_request.direct_to_user_id
         if target_id == requester_id or not await _connected(
             session, requester_id, target_id
         ):
             raise RecipientUnreachableError
+        if new_request.listing_id is not None:
+            listing = await requestable_listing(
+                session, actor, new_request.listing_id, target_id, new_request.kind
+            )
+            category_id = listing.category_id
         ripple_max = RippleStage.DIRECT.value
         ripple_stage = RippleStage.DIRECT.value
     else:
@@ -197,7 +213,7 @@ async def create_request_in_session(
         "acted_by_user_id": actor.user.id,
         "region": requester.region,
         "kind": new_request.kind,
-        "category_id": new_request.category_id,
+        "category_id": category_id,
         "listing_id": new_request.listing_id,
         "direct_to_user_id": new_request.direct_to_user_id,
         "raw_text": new_request.raw_text,
@@ -212,7 +228,23 @@ async def create_request_in_session(
         "status": RequestStatus.OPEN.value,
         "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
     }
-    request = await RequestRepository(session).create(values, media_ids)
+    requests = RequestRepository(session)
+    if new_request.listing_id is None:
+        request = await requests.create(values, media_ids)
+    else:
+        try:
+            async with session.begin_nested():
+                request = await requests.create(values, media_ids)
+        except IntegrityError as error:
+            driver_error = getattr(error.orig, "__cause__", None)
+            if getattr(driver_error, "constraint_name", None) != OPEN_LISTING_INDEX:
+                raise
+            existing = await requests.get_open_for_listing(
+                requester_id, new_request.listing_id
+            )
+            if existing is None:
+                raise
+            return existing
 
     blocked = await BlockRepository(session).blocked_either_way(requester_id)
     if is_direct:

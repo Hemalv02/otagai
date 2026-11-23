@@ -59,6 +59,13 @@ class HelpRequest(UUIDPrimaryKey, Timestamps, Base):
             postgresql_where=text("status = 'open'"),
         ),
         Index(
+            "uq_help_requests_open_listing_per_requester",
+            "requester_user_id",
+            "listing_id",
+            unique=True,
+            postgresql_where=text("listing_id IS NOT NULL AND status = 'open'"),
+        ),
+        Index(
             "ix_help_requests_direct_to_user_id",
             "direct_to_user_id",
             postgresql_where=text("direct_to_user_id IS NOT NULL"),
