@@ -102,3 +102,18 @@ test("error mapping: a rejected listing request is unavailable, bad input is inv
   assert.equal(listingRequestError("boom"), "error");
   assert.equal(listingRequestError(null), "error");
 });
+
+test("a 409 carrying open_request_exists maps to alreadyOpen", () => {
+  assert.equal(
+    listingRequestError({ status: 409, code: "open_request_exists" }),
+    "alreadyOpen",
+  );
+  assert.equal(
+    listingRequestError({ status: 409, code: "other" }),
+    "unavailable",
+  );
+  assert.equal(
+    listingRequestError({ status: 400, code: "open_request_exists" }),
+    "unavailable",
+  );
+});

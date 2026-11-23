@@ -5,7 +5,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { Button, ErrorText, Field } from "@/components/ui";
-import { api, type ListingDetail } from "@/lib/api";
+import { api, ApiError, type ListingDetail } from "@/lib/api";
 import { lendingCopy } from "@/lib/lending-copy";
 import {
   buildListingRequest,
@@ -72,6 +72,7 @@ export default function ListingRequestScreen() {
   }, [account, id, validRoute, tick, requests]);
 
   const listing = state.status === "loaded" ? state.listing : null;
+  const [existingId, setExistingId] = useState<string | null>(null);
   const sendingRef = useRef(false);
 
   async function send() {
@@ -84,6 +85,7 @@ export default function ListingRequestScreen() {
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
+    setExistingId(null);
     try {
       const created = await requestsApi.create(body);
       router.replace({
@@ -91,7 +93,11 @@ export default function ListingRequestScreen() {
         params: { id: created.id },
       });
     } catch (cause) {
-      setFailure(listingRequestError(cause));
+      const kind = listingRequestError(cause);
+      setFailure(kind);
+      if (kind === "alreadyOpen" && cause instanceof ApiError) {
+        setExistingId(cause.requestId ?? null);
+      }
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -198,6 +204,19 @@ export default function ListingRequestScreen() {
       title={copy.reviewTitle}
       footer={
         <View style={styles.footer}>
+          {failure === "alreadyOpen" && existingId ? (
+            <Button
+              variant="secondary"
+              label={copy.openExisting}
+              labelStyle={buttonType}
+              onPress={() =>
+                router.replace({
+                  pathname: "/requests/[id]",
+                  params: { id: existingId },
+                })
+              }
+            />
+          ) : null}
           {failure === "unavailable" ? (
             <Button
               variant="secondary"

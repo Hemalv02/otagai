@@ -57,7 +57,12 @@ export function buildListingRequest(
 }
 
 export type ListingRequestError =
-  "unavailable" | "invalid" | "transient" | "auth" | "error";
+  | "alreadyOpen"
+  | "unavailable"
+  | "invalid"
+  | "transient"
+  | "auth"
+  | "error";
 
 export function listingRequestError(error: unknown): ListingRequestError {
   const status =
@@ -65,6 +70,11 @@ export function listingRequestError(error: unknown): ListingRequestError {
       ? (error as { status: unknown }).status
       : null;
   if (typeof status !== "number") return "error";
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? (error as { code: unknown }).code
+      : null;
+  if (status === 409 && code === "open_request_exists") return "alreadyOpen";
   if (status === 400 || status === 404 || status === 409) return "unavailable";
   if (status === 422) return "invalid";
   if (status === 401 || status === 403) return "auth";

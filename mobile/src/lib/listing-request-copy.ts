@@ -18,7 +18,10 @@ const en = {
   pausedReadOnly: "The owner has paused this listing.",
   lentOutReadOnly: "This item is lent out right now.",
   noOwner: "This listing has no owner to ask.",
-  unavailable: "This listing isn't available any more. Your message is kept.",
+  unavailable:
+    "This listing can't take your request right now. Try again or go back to the listing.",
+  alreadyOpen: "You already have an open request for this listing.",
+  openExisting: "Open my request",
   invalid: "Check your message and try again.",
   transient:
     "Couldn't send. Check your connection and try again. Your message is kept.",
@@ -49,6 +52,8 @@ const ja: typeof en = {
   noOwner: "この掲載には依頼できる持ち主がいません。",
   unavailable:
     "この掲載は現在依頼を受け付けられません。もう一度試すか、掲載に戻ってください。",
+  alreadyOpen: "この掲載には、すでに受付中の依頼があります。",
+  openExisting: "依頼を開く",
   invalid: "メッセージを確認して、もう一度お試しください。",
   transient:
     "送信できませんでした。接続を確認して、もう一度お試しください。メッセージは残してあります。",
@@ -77,7 +82,10 @@ const bn: typeof en = {
   pausedReadOnly: "মালিক এই তালিকাটি বিরতিতে রেখেছেন।",
   lentOutReadOnly: "এই জিনিসটি এখন ধার দেওয়া আছে।",
   noOwner: "এই তালিকায় অনুরোধ করার মতো মালিক নেই।",
-  unavailable: "এই তালিকাটি আর পাওয়া যাচ্ছে না। আপনার বার্তা রাখা আছে।",
+  unavailable:
+    "এই তালিকা এখন আপনার অনুরোধ নিতে পারছে না। আবার চেষ্টা করুন, অথবা তালিকায় ফিরে যান।",
+  alreadyOpen: "এই তালিকার জন্য আপনার একটি অনুরোধ আগে থেকেই চালু আছে।",
+  openExisting: "আমার অনুরোধ খুলুন",
   invalid: "আপনার বার্তাটি দেখে আবার চেষ্টা করুন।",
   transient: "পাঠানো যায়নি। সংযোগ দেখে আবার চেষ্টা করুন। আপনার বার্তা রাখা আছে।",
   auth: "অনুরোধ পাঠাতে আবার সাইন ইন করুন।",
