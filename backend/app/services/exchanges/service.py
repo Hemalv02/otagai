@@ -24,6 +24,7 @@ from app.repositories.requests import RequestRepository
 from app.services.actors.service import Actor, ProxyScope
 from app.services.errors import BadRequestError, ConflictError, NotFoundError
 from app.services.exchanges.handover import require_pickup_actor, require_pickup_check
+from app.services.requests.ripple import reopen_after_match
 
 AVAILABLE_AGAIN_DELAY = timedelta(hours=1)
 
@@ -256,7 +257,7 @@ async def cancel_exchange(
         request = await RequestRepository(session).get_for_update(exchange.request_id)
         if request is not None and request.status == RequestStatus.MATCHED.value:
             await RequestRepository(session).update(
-                request, {"status": RequestStatus.OPEN.value}
+                request, reopen_after_match(request, datetime.now(UTC))
             )
         return updated
 

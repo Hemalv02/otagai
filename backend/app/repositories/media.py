@@ -9,14 +9,17 @@ from app.database.models import (
     Exchange,
     HandoverCheck,
     HandoverMedia,
+    HelpRequest,
     ListingMedia,
     MediaFile,
     MediaVariant,
     MessageAttachment,
     RequestMedia,
+    RequestRecipient,
     User,
 )
 from app.database.models.enums import MediaStatus
+from app.repositories.blocks import blocked_user_ids
 
 
 class MediaRepository:
@@ -34,6 +37,31 @@ class MediaRepository:
     async def get_variants(self, media_id: uuid.UUID) -> list[MediaVariant]:
         statement = select(MediaVariant).where(MediaVariant.media_id == media_id)
         return list(await self._session.scalars(statement))
+
+    async def delivered_request_attachment(
+        self,
+        media_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        viewer_id: uuid.UUID,
+        acting_user_id: uuid.UUID,
+    ) -> bool:
+        delivery = (
+            select(RequestMedia.media_id)
+            .join(HelpRequest, HelpRequest.id == RequestMedia.request_id)
+            .join(RequestRecipient, RequestRecipient.request_id == HelpRequest.id)
+            .where(
+                RequestMedia.media_id == media_id,
+                HelpRequest.requester_user_id == owner_id,
+                RequestRecipient.user_id == viewer_id,
+                RequestRecipient.hidden_at.is_(None),
+                HelpRequest.requester_user_id.not_in(blocked_user_ids(viewer_id)),
+            )
+        )
+        if acting_user_id != viewer_id:
+            delivery = delivery.where(
+                HelpRequest.requester_user_id.not_in(blocked_user_ids(acting_user_id))
+            )
+        return bool(await self._session.scalar(select(delivery.exists())))
 
     async def create(
         self, file_values: dict[str, Any], variants: list[dict[str, Any]]

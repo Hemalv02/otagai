@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -23,6 +24,7 @@ from app.database.models.enums import (
 from app.routes.dependencies import ActorDep, DatabaseDep
 from app.routes.pagination import Page, PageQuery
 from app.services.actors.service import ProxyScope
+from app.services.requests.ripple import RippleReceipt, RippleStartStage
 from app.services.requests.service import (
     NewRequest,
     ReceivedView,
@@ -31,6 +33,7 @@ from app.services.requests.service import (
     cancel_request,
     create_request,
     create_response,
+    get_receipt,
     get_request,
     list_my_requests,
     list_received,
@@ -90,19 +93,26 @@ class CreateRequestBody(BaseModel):
     category_id: uuid.UUID | None = None
     listing_id: uuid.UUID | None = None
     direct_to_user_id: uuid.UUID | None = None
-    needed_from: datetime | None = None
-    needed_until: datetime | None = None
+    needed_from: AwareDatetime | None = None
+    needed_until: AwareDatetime | None = None
     ripple_max_stage: RippleStage = RippleStage.HAN
+    ripple_start_stage: RippleStartStage | None = None
     home_circle_id: uuid.UUID | None = None
     media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=6)
 
     @model_validator(mode="after")
     def check_direct(self) -> "CreateRequestBody":
-        if (
-            self.direct_to_user_id is None
-            and self.ripple_max_stage is RippleStage.DIRECT
-        ):
+        direct = self.direct_to_user_id is not None or self.listing_id is not None
+        if not direct and self.ripple_max_stage is RippleStage.DIRECT:
             raise ValueError("Set a direct recipient for a direct request.")
+        if direct and (
+            self.ripple_start_stage is not None
+            or (
+                "ripple_max_stage" in self.model_fields_set
+                and self.ripple_max_stage is not RippleStage.DIRECT
+            )
+        ):
+            raise ValueError("A request to one person cannot widen.")
         if (
             self.needed_from is not None
             and self.needed_until is not None
@@ -118,8 +128,14 @@ class UpdateRequestBody(BaseModel):
     raw_text: RawText | None = None
     polite_text: PoliteText | None = None
     tone: RequestTone | None = None
-    needed_from: datetime | None = None
-    needed_until: datetime | None = None
+    needed_from: AwareDatetime | None = None
+    needed_until: AwareDatetime | None = None
+
+
+class WidenRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_stage: RippleStage
 
 
 class CreateResponseBody(BaseModel):
@@ -266,6 +282,7 @@ async def post_request(
             needed_until=body.needed_until,
             ripple_max_stage=body.ripple_max_stage.value,
             home_circle_id=body.home_circle_id,
+            ripple_start_stage=body.ripple_start_stage,
             media_ids=body.media_ids,
         ),
     )
@@ -289,6 +306,13 @@ async def read_request(
 ) -> RequestDetailModel:
     actor.require(ProxyScope.VIEW_ACTIVITY)
     return request_detail(await get_request(database, actor, request_id))
+
+
+@router.get("/{request_id}/receipt")
+async def read_receipt(
+    request_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
+) -> RippleReceipt:
+    return await get_receipt(database, actor, request_id)
 
 
 @router.patch("/{request_id}")
@@ -317,9 +341,17 @@ async def cancel(
 
 @router.post("/{request_id}/widen")
 async def widen(
-    request_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
+    request_id: uuid.UUID,
+    actor: ActorDep,
+    database: DatabaseDep,
+    body: WidenRequestBody | None = None,
 ) -> RequestDetailModel:
-    await widen_request(database, actor, request_id)
+    await widen_request(
+        database,
+        actor,
+        request_id,
+        expected_stage=body.expected_stage if body else None,
+    )
     return request_detail(await get_request(database, actor, request_id))
 
 

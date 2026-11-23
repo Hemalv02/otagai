@@ -45,6 +45,24 @@ services:
       timeout: 6s
       retries: 12
 
+  ripple-scheduler:
+    build: ./backend
+    environment: *backend_environment
+    command: ["python", "-m", "app.services.requests.scheduler"]
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  push-dispatch:
+    build: ./backend
+    environment: *backend_environment
+    command: ["python", "-m", "app.services.notifications.dispatch"]
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
   worker:
     profiles: [worker]
     build: ./backend

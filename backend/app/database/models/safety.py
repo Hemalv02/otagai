@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import CheckConstraint, ForeignKey, Index, text
+from sqlalchemy import CheckConstraint, ForeignKey, Index, SmallInteger, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.models.base import (
@@ -37,6 +37,30 @@ class Notification(UUIDPrimaryKey, CreatedAt, Base):
     payload: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
     read_at: Mapped[datetime | None]
     pushed_at: Mapped[datetime | None]
+
+
+class PushDelivery(Base):
+    __tablename__ = "push_deliveries"
+    __table_args__ = (
+        Index(
+            "ix_push_deliveries_pending",
+            "available_at",
+            postgresql_where=text("finished_at IS NULL"),
+        ),
+    )
+
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("notifications.id", ondelete="CASCADE"), primary_key=True
+    )
+    # Retain delivery state when a device unregisters. The dispatcher resolves
+    # the token at send time and never stores its address in the outbox.
+    push_token_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    available_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
+    attempts: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+    ticket_id: Mapped[str | None]
+    ticket_created_at: Mapped[datetime | None]
+    finished_at: Mapped[datetime | None]
+    last_error: Mapped[str | None]
 
 
 class Block(CreatedAt, Base):

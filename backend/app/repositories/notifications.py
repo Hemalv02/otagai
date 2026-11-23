@@ -29,12 +29,14 @@ class NotificationRepository:
         user_ids: list[uuid.UUID],
         notification_type: str,
         payload: dict[str, Any],
-    ) -> None:
-        for user_id in user_ids:
-            self._session.add(
-                Notification(user_id=user_id, type=notification_type, payload=payload)
-            )
+    ) -> list[Notification]:
+        notifications = [
+            Notification(user_id=user_id, type=notification_type, payload=payload)
+            for user_id in user_ids
+        ]
+        self._session.add_all(notifications)
         await self._session.flush()
+        return notifications
 
     async def get_owned(
         self, notification_id: uuid.UUID, user_id: uuid.UUID

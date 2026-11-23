@@ -136,7 +136,23 @@ async def upload_media(
     )
 
 
-async def _can_view(session, viewer_id: uuid.UUID, media: MediaFile) -> bool:
+async def _can_view_request_photo(session, actor: Actor, media: MediaFile) -> bool:
+    if actor.grant is not None and not actor.grant.can_view_activity:
+        return False
+    owner = media.owner_user_id
+    if actor.subject_id == owner:
+        return not actor.is_proxy or not await BlockRepository(
+            session
+        ).is_blocked_either_way(actor.user.id, owner)
+    return await MediaRepository(session).delivered_request_attachment(
+        media.id, owner, actor.subject_id, actor.user.id
+    )
+
+
+async def _can_view(session, actor: Actor, media: MediaFile) -> bool:
+    if media.purpose == MediaPurpose.REQUEST.value:
+        return await _can_view_request_photo(session, actor, media)
+    viewer_id = actor.subject_id
     if viewer_id in (media.owner_user_id, media.uploaded_by_user_id):
         return True
     if media.purpose == MediaPurpose.ASK.value:
@@ -162,7 +178,7 @@ async def read_media(
         media = await repository.get(media_id)
         if media is None or media.status == MediaStatus.DELETED.value:
             raise MediaNotFoundError
-        if not await _can_view(session, actor.subject_id, media):
+        if not await _can_view(session, actor, media):
             raise MediaNotFoundError
         if media.purpose == MediaPurpose.HANDOVER.value:
             actor.require(ProxyScope.VIEW_ACTIVITY)
