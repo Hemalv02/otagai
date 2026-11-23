@@ -236,6 +236,7 @@ async def _validated_media(
 async def list_my_requests(
     database: Database, actor: Actor, statuses: tuple[str, ...], page: PageRequest
 ) -> PageResult[HelpRequest]:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     async with database.session() as session:
         return await RequestRepository(session).list_for_requester(
             actor.subject_id, statuses, page

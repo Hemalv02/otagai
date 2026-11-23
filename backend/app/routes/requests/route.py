@@ -3,7 +3,14 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.database.models.enums import (
     Language,
@@ -56,6 +63,19 @@ def _parse_statuses(raw: str | None) -> tuple[str, ...]:
         if value not in allowed:
             raise ValueError("Unknown request status.")
     return tuple(dict.fromkeys(values))
+
+
+class MyRequestsQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
+
+    @field_validator("status")
+    @classmethod
+    def check_statuses(cls, value: str | None) -> str | None:
+        _parse_statuses(value)
+        return value
+
+    def statuses(self) -> tuple[str, ...]:
+        return _parse_statuses(self.status)
 
 
 class CreateRequestBody(BaseModel):
@@ -246,13 +266,11 @@ async def post_request(
 
 @me_requests_router.get("")
 async def my_requests(
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[MyRequestsQuery, Query()],
     actor: ActorDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[RequestSummary]:
-    statuses = _parse_statuses(status_filter)
-    result = await list_my_requests(database, actor, statuses, query.page())
+    result = await list_my_requests(database, actor, query.statuses(), query.page())
     return Page.build(result, RequestSummary)
 
 

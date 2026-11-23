@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.routes.listings.route import CreateListingBody
-from app.routes.requests.route import CreateRequestBody
+from app.routes.requests.route import CreateRequestBody, MyRequestsQuery
 from app.routes.users.route import CreateProfileBody
 
 
@@ -66,3 +66,19 @@ def test_request_accepts_minimal_valid_body():
     body = CreateRequestBody(kind="help", raw_text="help please", lang="ja")
     assert body.tone.value == "polite"
     assert body.ripple_max_stage.value == "han"
+
+
+def test_my_requests_query_parses_status_list():
+    query = MyRequestsQuery.model_validate({"status": "open, matched,open"})
+    assert query.statuses() == ("open", "matched")
+    assert MyRequestsQuery.model_validate({}).statuses() == ()
+
+
+def test_my_requests_query_rejects_unknown_status():
+    with pytest.raises(ValidationError):
+        MyRequestsQuery.model_validate({"status": "open,bogus"})
+
+
+def test_my_requests_query_rejects_unknown_parameter():
+    with pytest.raises(ValidationError):
+        MyRequestsQuery.model_validate({"stat": "open"})
