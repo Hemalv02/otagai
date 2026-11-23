@@ -114,34 +114,54 @@ test("composeDescription appends only filled details and caps length", () => {
     details: "Has a case",
   };
   assert.equal(
-    composeDescription("Mine", fields, labels),
+    composeDescription("Mine", fields, labels, fields),
     "Mine\nBrand: Makita\nHas a case",
   );
-  assert.equal(composeDescription("", emptyDraftFields, labels), "");
   assert.equal(
-    composeDescription("x".repeat(2100), fields, labels).length,
+    composeDescription("", emptyDraftFields, labels, emptyDraftFields),
+    "",
+  );
+  assert.equal(
+    composeDescription("x".repeat(2100), fields, labels, fields).length,
     2000,
   );
 });
 
-test("visibleExtras shows filled rows except dismissed ones", () => {
-  const fields = {
-    ...emptyDraftFields,
-    brand: "Makita",
-    model: "X1",
-    details: "",
-  };
-  assert.deepEqual(visibleExtras(fields, new Set(["model"])), ["brand"]);
+test("visibleExtras shows rows the photo suggested except dismissed ones", () => {
+  const suggested = { ...emptyDraftFields, brand: "Makita", model: "X1" };
+  assert.deepEqual(visibleExtras(suggested, new Set(["model"])), ["brand"]);
   assert.deepEqual(visibleExtras(emptyDraftFields, new Set()), []);
 });
 
-test("a row the member edited stays visible and is published", () => {
+test("clearing a suggested field keeps its row but drops it from the description", () => {
   const labels = { brand: "Brand", model: "Model", condition: "Condition" };
-  const fields = { ...emptyDraftFields, brand: "My brand" };
-  assert.deepEqual(visibleExtras(fields, new Set()), ["brand"]);
+  const suggested = { ...emptyDraftFields, brand: "Makita" };
+  const cleared = { ...emptyDraftFields };
+  assert.deepEqual(visibleExtras(suggested, new Set()), ["brand"]);
   assert.equal(
-    composeDescription("", fields, labels, new Set()),
+    composeDescription("Mine", cleared, labels, suggested, new Set()),
+    "Mine",
+  );
+});
+
+test("an edited suggested row is published with the edit", () => {
+  const labels = { brand: "Brand", model: "Model", condition: "Condition" };
+  const suggested = { ...emptyDraftFields, brand: "Makita" };
+  const edited = { ...emptyDraftFields, brand: "My brand" };
+  assert.equal(
+    composeDescription("", edited, labels, suggested, new Set()),
     "Brand: My brand",
+  );
+});
+
+test("an edit left over from an earlier photo is not published", () => {
+  const labels = { brand: "Brand", model: "Model", condition: "Condition" };
+  const latest = { ...emptyDraftFields, model: "X1" };
+  const stale = { ...emptyDraftFields, brand: "Old edit", model: "X1" };
+  assert.deepEqual(visibleExtras(latest, new Set()), ["model"]);
+  assert.equal(
+    composeDescription("", stale, labels, latest, new Set()),
+    "Model: X1",
   );
 });
 
@@ -153,7 +173,7 @@ test("a dismissed row is never published", () => {
     details: "Has a case",
   };
   assert.equal(
-    composeDescription("Mine", fields, labels, new Set(["brand"])),
+    composeDescription("Mine", fields, labels, fields, new Set(["brand"])),
     "Mine\nHas a case",
   );
 });

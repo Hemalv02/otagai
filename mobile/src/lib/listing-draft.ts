@@ -108,11 +108,11 @@ export const extraKeys = ["brand", "model", "condition", "details"] as const;
 export type ExtraKey = (typeof extraKeys)[number];
 
 export function visibleExtras(
-  fields: DraftFields,
+  lastSuggested: DraftFields,
   dismissed: ReadonlySet<DraftKey>,
 ): ExtraKey[] {
   return extraKeys.filter(
-    (key) => fields[key].trim() !== "" && !dismissed.has(key),
+    (key) => lastSuggested[key].trim() !== "" && !dismissed.has(key),
   );
 }
 
@@ -120,11 +120,13 @@ export function composeDescription(
   description: string,
   fields: DraftFields,
   labels: { brand: string; model: string; condition: string },
+  lastSuggested: DraftFields,
   dismissed: ReadonlySet<DraftKey> = new Set(),
 ) {
   const lines = [description.trim()];
-  for (const key of visibleExtras(fields, dismissed)) {
+  for (const key of visibleExtras(lastSuggested, dismissed)) {
     const value = fields[key].trim();
+    if (!value) continue;
     lines.push(key === "details" ? value : `${labels[key]}: ${value}`);
   }
   return lines.filter(Boolean).join("\n").slice(0, MAX_DESCRIPTION);

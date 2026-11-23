@@ -335,6 +335,7 @@ export default function AddListingScreen() {
           description,
           { ...emptyDraftFields, ...extras },
           suggestCopy,
+          lastSuggested,
           dismissed,
         )
       : description.trim();
