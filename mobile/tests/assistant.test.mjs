@@ -79,6 +79,40 @@ test("editing the suggested time updates the prefilled request sentence", () => 
     confirmationBody(review, review.text, "Sunday afternoon").text,
     "Could I borrow a drill on Sunday afternoon?",
   );
+  assert.equal(
+    confirmationBody(
+      review,
+      "Could I borrow a hammer drill on Saturday?",
+      "Sunday afternoon",
+    ).text,
+    "Could I borrow a hammer drill on Sunday afternoon?",
+  );
+});
+
+test("broadcast confirmation includes the circle shown in the review", () => {
+  const review = makeReview(turn);
+  assert.deepEqual(confirmationBody(review, review.text, "", "home-circle"), {
+    kind: "borrow",
+    text: "Could I borrow a drill?",
+    home_circle_id: "home-circle",
+  });
+});
+
+test("shortening or clearing a suggested time respects the review", () => {
+  const review = {
+    ...makeReview(turn),
+    text: "Could I borrow a drill on Saturday afternoon?",
+    when: "Saturday afternoon",
+  };
+  assert.equal(
+    confirmationBody(review, review.text, "Saturday")?.text,
+    "Could I borrow a drill on Saturday?",
+  );
+  assert.equal(confirmationBody(review, review.text, ""), null);
+  assert.equal(
+    confirmationBody(review, "Could I borrow a drill?", "")?.text,
+    "Could I borrow a drill?",
+  );
 });
 
 test("merging saved turns restores chronological order without duplicate widgets", () => {

@@ -298,6 +298,46 @@ async def test_clarifies_then_posts_one_explicitly_confirmed_request(
     assert [item["id"] for item in older["items"]] == [first["id"]]
 
 
+async def test_broadcast_confirmation_requires_a_circle_for_multiple_memberships(
+    client, monkeypatch
+):
+    seeker = await make_user(client, language="en")
+    await make_circle(client, seeker)
+    neighbour = await make_user(client, language="en")
+    destination = await make_circle(client, neighbour)
+    await join_circle(client, neighbour, destination, seeker)
+    stub_agent(
+        monkeypatch,
+        intent(
+            draft={
+                "kind": "help",
+                "title": "Carry a desk",
+                "description": "Could someone help me carry a desk?",
+                "when_text": None,
+            },
+        ),
+    )
+    turn = await client.post(
+        "/assistant/turns",
+        headers=auth(seeker),
+        json={"text": "Post a request for help carrying a desk"},
+    )
+    assert turn.status_code == 201, turn.text
+    path = f"/assistant/turns/{turn.json()['id']}/confirm"
+    approval = {"kind": "help", "text": "Could someone help me carry a desk?"}
+    ambiguous = await client.post(path, headers=auth(seeker), json=approval)
+    assert ambiguous.status_code == 400, ambiguous.text
+    confirmed = await client.post(
+        path, headers=auth(seeker), json={**approval, "home_circle_id": destination}
+    )
+    assert confirmed.status_code == 201, confirmed.text
+    request = await client.get(
+        f"/requests/{confirmed.json()['id']}", headers=auth(neighbour)
+    )
+    assert request.status_code == 200, request.text
+    assert request.json()["home_circle_id"] == destination
+
+
 @pytest.mark.parametrize(
     ("message", "question", "expected_reply"),
     [
@@ -472,6 +512,8 @@ async def test_photo_is_sent_to_agent_only_for_owner(client, monkeypatch):
     client._transport.app._app.state.storage = FixtureStorage()
     owner = await make_user(client, language="en")
     stranger = await make_user(client, language="en")
+    circle = await make_circle(client, owner)
+    await join_circle(client, owner, circle, stranger)
     uploaded = await client.post(
         "/media",
         headers=auth(owner),
@@ -496,6 +538,15 @@ async def test_photo_is_sent_to_agent_only_for_owner(client, monkeypatch):
     turn = response.json()
     assert turn["image_subject"] == "Phillips screw"
     assert turn["image_media_id"] == media_id
+    assert (
+        await client.get(f"/media/{media_id}", headers=auth(owner))
+    ).status_code == 200
+    assert (
+        await client.get(f"/media/{media_id}", headers=auth(stranger))
+    ).status_code == 404
+    assert (
+        await client.delete(f"/media/{media_id}", headers=auth(owner))
+    ).status_code == 409
     assert len(calls) == 1
     parts = calls[0][0]["content"]
     image = next(part for part in parts if part["type"] == "input_image")

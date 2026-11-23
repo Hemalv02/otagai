@@ -20,14 +20,18 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button, ErrorText, Field } from "@/components/ui";
-import type { Language } from "@/lib/api";
+import type { Circle, Language } from "@/lib/api";
 import {
   assistantApi,
   type AssistantCard,
   type AssistantTurn,
   type ConfirmRequest,
 } from "@/lib/assistant-api";
-import { confirmationBody, type Review } from "@/lib/assistant-conversation";
+import {
+  confirmationBody,
+  hasClearedTiming,
+  type Review,
+} from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { localizedType } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -433,6 +437,7 @@ export function AssistantSheet({
 
 export function ReviewSheet({
   review,
+  homeCircle,
   locale,
   busy,
   error,
@@ -440,6 +445,7 @@ export function ReviewSheet({
   confirm,
 }: {
   review: Review;
+  homeCircle: Circle | null | undefined;
   locale: Language;
   busy: boolean;
   error: string | null;
@@ -449,12 +455,19 @@ export function ReviewSheet({
   const copy = assistantCopy[locale];
   const [description, setDescription] = useState(review.text);
   const [when, setWhen] = useState(review.when);
-  const body = confirmationBody(review, description, when);
-  const validation = !body
-    ? description.trim()
-      ? copy.requestTooLong
-      : copy.requestRequired
-    : null;
+  const body = confirmationBody(review, description, when, homeCircle?.id);
+  const needsCircle = !review.listingId && !homeCircle;
+  const localizedCircleName = homeCircle?.name_translations[locale];
+  const recipient =
+    review.recipient ??
+    (typeof localizedCircleName === "string"
+      ? localizedCircleName
+      : homeCircle?.name);
+  let validation = null;
+  if (!description.trim()) validation = copy.requestRequired;
+  else if (hasClearedTiming(review, description, when))
+    validation = copy.removeTiming;
+  else if (!body) validation = copy.requestTooLong;
   const label = localizedType("field-label", locale);
   const text = localizedType("body", locale);
   return (
@@ -473,10 +486,10 @@ export function ReviewSheet({
           />
           <Button
             label={copy.post}
-            disabled={!body}
+            disabled={!body || needsCircle}
             busy={busy}
             onPress={() => {
-              if (body) confirm(body);
+              if (body && !needsCircle) confirm(body);
             }}
             labelStyle={label}
             style={styles.widgetWords}
@@ -491,9 +504,11 @@ export function ReviewSheet({
             {review.title}
           </Text>
         ) : null}
-        <Text style={[localizedType("supporting", locale), styles.secondary]}>
-          {copy.to} · {review.recipient ?? copy.circle}
-        </Text>
+        {recipient ? (
+          <Text style={[localizedType("supporting", locale), styles.secondary]}>
+            {copy.to} · {recipient}
+          </Text>
+        ) : null}
       </View>
       <Field
         label={copy.details}
@@ -516,8 +531,8 @@ export function ReviewSheet({
         style={text}
         labelStyle={label}
       />
-      {validation || error ? (
-        <ErrorText>{validation ?? error}</ErrorText>
+      {validation || error || needsCircle ? (
+        <ErrorText>{validation ?? error ?? copy.circleRequired}</ErrorText>
       ) : null}
     </AssistantSheet>
   );

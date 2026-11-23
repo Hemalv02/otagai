@@ -151,7 +151,7 @@ function CircleHome({ circleName }: { circleName: string }) {
           label={copy.ask}
           labelStyle={button}
           style={styles.action}
-          onPress={() => router.navigate("/assistant")}
+          onPress={() => router.push("/ask")}
         />
         <Button
           label={copy.lend}

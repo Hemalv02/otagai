@@ -38,6 +38,7 @@ import {
   type Review,
 } from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
+import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useAssistantVoice } from "@/lib/use-assistant-voice";
 import { colors, spacing } from "@/theme/tokens.json";
@@ -46,7 +47,13 @@ type Attachment = MediaFile & { mediaId?: string };
 
 export default function AssistantScreen() {
   const { locale } = useOnboardingText();
+  const { state: memberships } = useMemberships();
   const copy = assistantCopy[locale];
+  const homeCircle =
+    memberships.status === "ready"
+      ? memberships.items.find((membership) => membership.status === "approved")
+          ?.circle
+      : null;
   const [threads, setThreads] = useState<Page<AssistantThread>>({
     items: [],
     next_cursor: null,
@@ -553,6 +560,7 @@ export default function AssistantScreen() {
         <ReviewSheet
           key={`${review.turnId}-${review.listingId ?? "draft"}`}
           review={review}
+          homeCircle={homeCircle}
           locale={locale}
           busy={posting}
           error={postError}

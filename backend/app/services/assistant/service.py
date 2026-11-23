@@ -37,6 +37,7 @@ from app.database.models.enums import (
     UserStatus,
 )
 from app.repositories.assistant import AssistantRepository
+from app.repositories.circles import CircleRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.repositories.pagination import PageRequest, PageResult
@@ -56,7 +57,11 @@ from app.services.listings.service import (
     assistant_listings_by_id,
     match_assistant_listings,
 )
-from app.services.requests.service import NewRequest, create_request_in_session
+from app.services.requests.service import (
+    NewRequest,
+    NoCircleError,
+    create_request_in_session,
+)
 from app.services.storage.service import Storage
 from app.settings import Settings
 
@@ -517,6 +522,7 @@ async def confirm_turn(
             raise BadRequestError("Choose an end time in the future.")
 
         recipient_id = approval.direct_to_user_id
+        home_circle_id = approval.home_circle_id
         category_id = None
         title = turn.draft["title"] if turn.draft else approval.text[:120]
         if approval.listing_id:
@@ -539,6 +545,15 @@ async def confirm_turn(
             recipient = await UserRepository(session).get(recipient_id)
             if recipient is None or recipient.status != UserStatus.ACTIVE.value:
                 raise BadRequestError("You can't send a request to this person.")
+        elif home_circle_id is None:
+            approved = await CircleRepository(session).approved_circle_ids(user.id)
+            if not approved:
+                raise NoCircleError
+            if len(approved) > 1:
+                raise BadRequestError(
+                    "Choose which circle should receive your request."
+                )
+            home_circle_id = approved[0]
 
         request = await create_request_in_session(
             session,
@@ -557,7 +572,7 @@ async def confirm_turn(
                 ripple_max_stage=RippleStage.DIRECT.value
                 if recipient_id
                 else RippleStage.HAN.value,
-                home_circle_id=approval.home_circle_id,
+                home_circle_id=home_circle_id,
             ),
         )
         if approval.listing_id:

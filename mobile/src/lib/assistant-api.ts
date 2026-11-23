@@ -94,6 +94,7 @@ export type ConfirmRequest = {
   kind: RequestKind;
   text: string;
   listing_id?: string;
+  home_circle_id?: string;
 };
 
 export type PostedRequest = {

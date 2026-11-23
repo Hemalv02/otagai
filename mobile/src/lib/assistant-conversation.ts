@@ -41,31 +41,49 @@ export function makeReview(
   };
 }
 
+export function hasClearedTiming(
+  review: Review,
+  description: string,
+  timing: string,
+) {
+  const suggested = review.when.trim().toLowerCase();
+  return (
+    !timing.trim() &&
+    suggested !== "" &&
+    description.toLowerCase().includes(suggested)
+  );
+}
+
 export function confirmationBody(
   review: Review,
   description: string,
   timing: string,
+  homeCircleId?: string,
 ): ConfirmRequest | null {
   const text = description.trim();
   const when = timing.trim();
-  if (!text) return null;
+  if (!text || hasClearedTiming(review, text, when)) return null;
   let reviewedText = text;
-  if (when && !text.toLowerCase().includes(when.toLowerCase())) {
+  if (when) {
+    const lowerText = text.toLowerCase();
     const suggested = review.when.trim();
-    const match =
-      suggested && text === review.text.trim()
-        ? text.toLowerCase().indexOf(suggested.toLowerCase())
-        : -1;
-    reviewedText =
-      match >= 0
-        ? `${text.slice(0, match)}${when}${text.slice(match + suggested.length)}`
-        : `${text}\n\n${when}`;
+    const match = suggested
+      ? lowerText.indexOf(suggested.toLowerCase())
+      : -1;
+    if (match >= 0 && suggested.toLowerCase() !== when.toLowerCase()) {
+      reviewedText = `${text.slice(0, match)}${when}${text.slice(match + suggested.length)}`;
+    } else if (!lowerText.includes(when.toLowerCase())) {
+      reviewedText = `${text}\n\n${when}`;
+    }
   }
   if (reviewedText.length > 2000) return null;
   return {
     kind: review.kind,
     text: reviewedText,
     ...(review.listingId ? { listing_id: review.listingId } : {}),
+    ...(!review.listingId && homeCircleId
+      ? { home_circle_id: homeCircleId }
+      : {}),
   };
 }
 
