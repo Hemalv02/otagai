@@ -64,8 +64,6 @@ async def test_user_listings_visible_to_circle_mate(client):
     listing_id = await _listing(client, owner)
     owner_id = (await client.get("/users/me", headers=auth(owner))).json()["id"]
 
-    listed = await client.get(
-        f"/users/{owner_id}/listings", headers=auth(mate)
-    )
+    listed = await client.get(f"/users/{owner_id}/listings", headers=auth(mate))
     assert listed.status_code == 200
     assert listing_id in [listing["id"] for listing in listed.json()["items"]]

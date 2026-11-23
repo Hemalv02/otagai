@@ -292,8 +292,12 @@ async def request_extension(
             raise NotLoanError
         if exchange.status != ExchangeStatus.ACTIVE.value:
             raise ExchangeStateError("Only an active loan can be extended.")
+        if actor.subject_id != exchange.requester_user_id:
+            raise ExchangeStateError("Only the borrower can request an extension.")
         if new_due_at <= now:
             raise BadRequestError("Choose a future due date.")
+        if exchange.due_at is not None and new_due_at <= exchange.due_at:
+            raise BadRequestError("Choose a date later than the current due date.")
         try:
             extension = await ExtensionRepository(session).create(
                 {
@@ -336,7 +340,6 @@ async def decide_extension(
     *,
     accept: bool,
 ) -> LoanExtension:
-    now = datetime.now(UTC)
     async with database.session() as session:
         extensions = ExtensionRepository(session)
         extension = await extensions.get_for_update(extension_id)
@@ -354,6 +357,19 @@ async def decide_extension(
             ):
                 return extension
             raise ExchangeStateError("This extension was already decided.")
+        now = datetime.now(UTC)
+        if accept:
+            if (
+                exchange.mode != ExchangeMode.LOAN.value
+                or exchange.status != ExchangeStatus.ACTIVE.value
+            ):
+                raise ExchangeStateError("Only an active loan can be extended.")
+            if extension.new_due_at <= now:
+                raise ExchangeStateError("The proposed due date has passed.")
+            if exchange.due_at is not None and extension.new_due_at <= exchange.due_at:
+                raise ExchangeStateError(
+                    "The proposed due date is no longer later than the current due date."
+                )
         status = (
             DecisionStatus.ACCEPTED.value if accept else DecisionStatus.DECLINED.value
         )

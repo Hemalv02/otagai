@@ -23,6 +23,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button, Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
+import { activityCopy } from "@/lib/activity-copy";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useOnboarding } from "@/lib/onboarding";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -32,9 +33,11 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 type CommunityScreenProps = PropsWithChildren<{
   title?: string;
   titleAction?: ReactNode;
+  inlineTitleAction?: boolean;
   eyebrow?: string;
   subtitle?: string;
   back?: boolean;
+  backAction?: ReactNode;
   keyboard?: boolean;
   footer?: ReactNode;
   scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
@@ -43,6 +46,9 @@ type CommunityScreenProps = PropsWithChildren<{
   fixedTitle?: boolean;
   compactTitle?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
+  scroll?: boolean;
+  design?: boolean;
+  renderList?: (header: ReactNode) => ReactNode;
 }>;
 
 const text = {
@@ -76,9 +82,11 @@ export function CommunityScreen({
   children,
   title,
   titleAction,
+  inlineTitleAction = false,
   eyebrow,
   subtitle,
   back,
+  backAction,
   keyboard,
   footer,
   scrollRef,
@@ -87,6 +95,9 @@ export function CommunityScreen({
   fixedTitle = false,
   compactTitle = false,
   refreshControl,
+  scroll = true,
+  design = false,
+  renderList,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -116,12 +127,34 @@ export function CommunityScreen({
     else router.replace("/");
   }
 
+  const backButton = back ? (
+    <Pressable accessibilityRole="button" onPress={goBack} style={styles.back}>
+      <Image
+        source={require("../../assets/images/lending-arrow-left.svg")}
+        style={styles.arrow}
+        accessible={false}
+      />
+      <Text style={[label, styles.green]}>{t("back")}</Text>
+    </Pressable>
+  ) : null;
+
   const heading =
     title || eyebrow || subtitle ? (
-      <View style={[styles.heading, fixedTitle && styles.fixedHeading]}>
+      <View
+        style={[
+          styles.heading,
+          fixedTitle && styles.fixedHeading,
+          design && styles.designHeading,
+        ]}
+      >
         {eyebrow ? <Text style={[label, styles.green]}>{eyebrow}</Text> : null}
         {title || titleAction ? (
-          <View style={styles.titleRow}>
+          <View
+            style={[
+              styles.titleRow,
+              inlineTitleAction && styles.inlineTitleRow,
+            ]}
+          >
             {title ? (
               <Text
                 accessibilityRole="header"
@@ -146,12 +179,31 @@ export function CommunityScreen({
       </View>
     ) : null;
 
+  const screenContent = (
+    <>
+      {back && backAction ? (
+        <View style={styles.titleRow}>
+          {backButton}
+          {backAction}
+        </View>
+      ) : (
+        backButton
+      )}
+      {!fixedTitle && heading}
+      {children}
+    </>
+  );
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.rule}>
-        <View style={[styles.column, styles.header]}>
+        <View
+          style={[styles.column, styles.header, design && styles.designHeader]}
+        >
           <Text className="type-wordmark text-action">Otagai</Text>
-          <View style={styles.headerActions}>
+          <View
+            style={[styles.headerActions, design && styles.designHeaderActions]}
+          >
             <Pressable
               accessibilityRole="button"
               onPress={() => openOptions("settings")}
@@ -182,31 +234,28 @@ export function CommunityScreen({
         style={styles.flex}
         behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView
-          ref={scrollRef}
-          onContentSizeChange={onContentSizeChange}
-          contentContainerStyle={[styles.column, styles.content]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          refreshControl={refreshControl}
-        >
-          {back ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={goBack}
-              style={styles.back}
-            >
-              <Image
-                source={require("../../assets/images/lending-arrow-left.svg")}
-                style={styles.arrow}
-                accessible={false}
-              />
-              <Text style={[label, styles.green]}>{t("back")}</Text>
-            </Pressable>
-          ) : null}
-          {!fixedTitle && heading}
-          {children}
-        </ScrollView>
+        {renderList ? (
+          renderList(screenContent)
+        ) : scroll ? (
+          <ScrollView
+            ref={scrollRef}
+            onContentSizeChange={onContentSizeChange}
+            contentContainerStyle={[
+              styles.column,
+              styles.content,
+              design && styles.designContent,
+            ]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            refreshControl={refreshControl}
+          >
+            {screenContent}
+          </ScrollView>
+        ) : (
+          <View style={[styles.column, styles.content, styles.flex]}>
+            {screenContent}
+          </View>
+        )}
         {footer ? (
           <View style={[styles.column, styles.footer]}>{footer}</View>
         ) : null}
@@ -226,7 +275,27 @@ export function CommunityScreen({
               {options === "settings" ? copy.settings : copy.language}
             </Text>
             {options === "settings" ? (
-              <Text style={[label, styles.secondary]}>{copy.language}</Text>
+              <>
+                <Button
+                  label={activityCopy[locale].notifications}
+                  labelStyle={label}
+                  variant="text"
+                  onPress={() => {
+                    setOptions(null);
+                    router.push("/notifications");
+                  }}
+                />
+                <Button
+                  label={activityCopy[locale].preferences}
+                  labelStyle={label}
+                  variant="text"
+                  onPress={() => {
+                    setOptions(null);
+                    router.push("/notification-preferences");
+                  }}
+                />
+                <Text style={[label, styles.secondary]}>{copy.language}</Text>
+              </>
             ) : null}
             <Choice
               options={languages}
@@ -286,6 +355,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing["control-gap"],
   },
+  designHeader: { minHeight: 58, paddingVertical: 5 },
+  designHeaderActions: { gap: spacing["card-inset"] },
+  designContent: { paddingVertical: spacing["card-inset"] },
+  designHeading: { gap: 6 },
   headerButton: {
     minHeight: controls["touch-target"],
     minWidth: 32,
@@ -314,6 +387,7 @@ const styles = StyleSheet.create({
     gap: spacing["related-gap"],
   },
   title: { flexShrink: 1 },
+  inlineTitleRow: { flexWrap: "nowrap" },
   back: {
     flexDirection: "row",
     alignSelf: "flex-start",

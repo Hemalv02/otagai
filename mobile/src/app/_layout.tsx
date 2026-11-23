@@ -36,17 +36,21 @@ function RootNavigator() {
   const { ready, state } = useOnboarding();
   const memberships = useMemberships();
   const [fontsLoaded, fontError] = useFonts(fontAssets);
+  const accountLoading =
+    session !== null &&
+    (profile.status === "loading" ||
+      (profile.status === "ready" && memberships.state.status === "loading"));
 
   useEffect(() => {
     if (fontError) {
       console.warn("Could not load Otagai fonts.", fontError);
     }
-    if ((fontsLoaded || fontError) && !isLoading && ready) {
+    if ((fontsLoaded || fontError) && !isLoading && ready && !accountLoading) {
       SplashScreen.hide();
     }
-  }, [fontsLoaded, fontError, isLoading, ready]);
+  }, [fontsLoaded, fontError, isLoading, ready, accountLoading]);
 
-  if ((!fontsLoaded && !fontError) || isLoading || !ready) {
+  if ((!fontsLoaded && !fontError) || isLoading || !ready || accountLoading) {
     return null;
   }
 

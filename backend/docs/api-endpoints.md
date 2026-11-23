@@ -436,7 +436,7 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `POST /exchanges/{exchange_id}/extensions` | Ask to keep it longer (new due date and message). 409 if one is already pending | 201 | 25 | MVP |
+| `POST /exchanges/{exchange_id}/extensions` | Borrower asks to keep it longer (timezone-aware future due date, later than the current due date, and optional message). 409 if one is already pending | 201 | 25 | MVP |
 | `GET /exchanges/{exchange_id}/extensions` | Extension history | 200 | 25 | MVP |
 | `POST /loan-extensions/{extension_id}/accept` | The lender accepts, and the due date moves | 200 | 25 | MVP |
 | `POST /loan-extensions/{extension_id}/decline` | The lender declines | 200 | 25 | MVP |
@@ -508,7 +508,7 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `GET /users/me/notifications` | My notifications, newest first | 200 | 43 | MVP |
+| `GET /users/me/notifications` | My notifications, newest first. Optional `unread_only=true` filters unread items before cursor pagination | 200 | 43 | MVP |
 | `PATCH /users/me/notifications/{notification_id}` | Mark one as read | 200 | 43 | MVP |
 | `POST /users/me/notifications/read-all` | Mark all as read | 204 | 43 | MVP |
 
