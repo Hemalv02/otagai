@@ -268,3 +268,21 @@ async def test_different_members_can_each_request_the_listing(client):
     second = await _post(client, other, _body(listing, owner_id))
     assert first.status_code == second.status_code == 201
     assert first.json()["id"] != second.json()["id"]
+
+
+async def test_expired_open_request_does_not_block_a_new_one(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    stale = await _post(
+        client,
+        seeker,
+        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
+    )
+    assert stale.status_code == 201, stale.text
+    fresh = await _post(client, seeker, _body(listing, owner_id))
+    assert fresh.status_code == 201, fresh.text
+    assert fresh.json()["id"] != stale.json()["id"]
+    old = await client.get(f"/requests/{stale.json()['id']}", headers=auth(seeker))
+    assert old.json()["status"] == "expired"
+    again = await _post(client, seeker, _body(listing, owner_id))
+    assert again.json()["id"] == fresh.json()["id"]

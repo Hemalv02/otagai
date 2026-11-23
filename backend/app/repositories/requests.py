@@ -44,15 +44,20 @@ class RequestRepository:
         )
 
     async def get_open_for_listing(
-        self, requester_id: uuid.UUID, listing_id: uuid.UUID
+        self,
+        requester_id: uuid.UUID,
+        listing_id: uuid.UUID,
+        *,
+        lock: bool = False,
     ) -> HelpRequest | None:
-        return await self._session.scalar(
-            select(HelpRequest).where(
-                HelpRequest.requester_user_id == requester_id,
-                HelpRequest.listing_id == listing_id,
-                HelpRequest.status == "open",
-            )
+        statement = select(HelpRequest).where(
+            HelpRequest.requester_user_id == requester_id,
+            HelpRequest.listing_id == listing_id,
+            HelpRequest.status == "open",
         )
+        if lock:
+            statement = statement.with_for_update()
+        return await self._session.scalar(statement)
 
     async def create(
         self, values: dict[str, Any], media_ids: list[uuid.UUID]

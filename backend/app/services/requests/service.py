@@ -232,19 +232,28 @@ async def create_request_in_session(
     if new_request.listing_id is None:
         request = await requests.create(values, media_ids)
     else:
-        try:
-            async with session.begin_nested():
-                request = await requests.create(values, media_ids)
-        except IntegrityError as error:
-            driver_error = getattr(error.orig, "__cause__", None)
-            if getattr(driver_error, "constraint_name", None) != OPEN_LISTING_INDEX:
-                raise
-            existing = await requests.get_open_for_listing(
-                requester_id, new_request.listing_id
-            )
-            if existing is None:
-                raise
-            return existing
+        request = None
+        for attempt in range(2):
+            try:
+                async with session.begin_nested():
+                    request = await requests.create(values, media_ids)
+                break
+            except IntegrityError as error:
+                driver_error = getattr(error.orig, "__cause__", None)
+                if getattr(driver_error, "constraint_name", None) != OPEN_LISTING_INDEX:
+                    raise
+                existing = await requests.get_open_for_listing(
+                    requester_id, new_request.listing_id, lock=True
+                )
+                if existing is None:
+                    raise
+                if existing.expires_at > now:
+                    return existing
+                if attempt == 1:
+                    raise
+                await requests.update(existing, {"status": RequestStatus.EXPIRED.value})
+        if request is None:
+            raise RuntimeError("Listing request was not created.")
 
     blocked = await BlockRepository(session).blocked_either_way(requester_id)
     if is_direct:
