@@ -64,6 +64,7 @@ The default origins are `http://localhost:3000` and `http://127.0.0.1:3000`.
 
 - Use async SQLAlchemy, asyncpg, Alembic, and PgBouncer for PostgreSQL.
 - Read [the database guide](docs/database.md) for connections, models, and migrations.
+- Read [the auth guide](docs/auth.md) for Supabase sign-in and token checks.
 - Use the async Redis client in `app/services/redis/`.
 - Read [the Redis guide](docs/redis.md) for configuration and usage.
 - Use the async SMTP service in `app/services/email/` to send email.

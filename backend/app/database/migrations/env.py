@@ -8,8 +8,19 @@ from app.database.models import Base
 from app.settings import get_settings
 
 
+def include_name(name: str | None, type_: str, parent_names: dict) -> bool:
+    if type_ == "table":
+        return name in Base.metadata.tables
+    return True
+
+
 def run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=Base.metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=Base.metadata,
+        include_name=include_name,
+        compare_type=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

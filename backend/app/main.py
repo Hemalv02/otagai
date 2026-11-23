@@ -4,13 +4,16 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from asyncpg import PostgresError
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import Database
+from app.routes.users.route import router as users_router
+from app.services.auth.service import TokenVerifier
 from app.services.errors import ServiceError
 from app.services.redis import create_redis
 from app.services.storage.service import Storage
@@ -53,6 +56,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     await storage.ensure_bucket()
                 app.state.storage = storage
                 checks["storage"] = storage.check
+            if settings.supabase_url:
+                app.state.token_verifier = TokenVerifier.from_settings(settings)
             app.state.readiness_checks = checks
             yield
 
@@ -64,6 +69,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(HTTPException)
+    async def http_error(request: Request, error: HTTPException) -> JSONResponse:
+        return JSONResponse(
+            status_code=error.status_code,
+            content={"message": str(error.detail)},
+            headers=error.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(
+        request: Request, error: RequestValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "message": "The request is invalid.",
+                "errors": [
+                    {
+                        "field": ".".join(str(part) for part in item["loc"][1:]),
+                        "message": item["msg"],
+                    }
+                    for item in error.errors()
+                ],
+            },
+        )
+
+    app.include_router(users_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

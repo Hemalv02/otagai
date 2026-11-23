@@ -1,5 +1,8 @@
+import ssl
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy import URL, text
 from sqlalchemy.ext.asyncio import (
@@ -32,11 +35,30 @@ def database_url(settings: Settings, *, migration: bool = False) -> URL:
     )
 
 
+def ssl_option(settings: Settings) -> ssl.SSLContext | str | None:
+    if settings.database_ssl_mode == "disable":
+        return None
+    if settings.database_ssl_mode == "require":
+        return "require"
+    context = ssl.create_default_context(cafile=str(settings.database_ssl_root_cert))
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    return context
+
+
+def prepared_statement_name() -> str:
+    return f"__asyncpg_{uuid.uuid4().hex}__"
+
+
 def create_engine(settings: Settings, *, migration: bool = False) -> AsyncEngine:
-    connect_args = {"timeout": 5}
+    connect_args: dict[str, Any] = {"timeout": 5}
+    ssl_value = ssl_option(settings)
+    if ssl_value is not None:
+        connect_args["ssl"] = ssl_value
     if not migration:
         connect_args["prepared_statement_cache_size"] = 0
         connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_name_func"] = prepared_statement_name
     return create_async_engine(
         database_url(settings, migration=migration),
         poolclass=NullPool,
