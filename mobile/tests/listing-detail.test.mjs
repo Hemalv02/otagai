@@ -175,6 +175,7 @@ const labels = {
   help_only: "Help offered",
   lend_or_help: "Lending or help offered",
   lentOut: "Lent out",
+  paused: "Paused",
 };
 
 test("a lend listing reads as available to lend", () => {
@@ -212,4 +213,10 @@ test("a photo uses its display url and falls back to the thumbnail", () => {
     { id: "m1", url: "https://img.example/d1" },
     { id: "m2", url: "https://img.example/t2" },
   ]);
+});
+
+test("a paused listing reads as paused in every lend mode", () => {
+  for (const lend_mode of ["lend", "help_only", "lend_or_help"]) {
+    assert.equal(availabilityLabel(listing({ lend_mode, status: "paused" }), labels), "Paused");
+  }
 });

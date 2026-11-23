@@ -124,6 +124,7 @@ export default function ToolListingScreen() {
   const lendState = availabilityLabel(listing, {
     ...readCopy,
     lentOut: copy.lentOut,
+    paused: copy.paused,
   });
   const availableAgain = listing.available_again_at
     ? new Date(listing.available_again_at).toLocaleDateString(locale)

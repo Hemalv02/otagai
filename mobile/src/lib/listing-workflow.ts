@@ -336,8 +336,10 @@ export function availabilityLabel(
     help_only: string;
     lend_or_help: string;
     lentOut: string;
+    paused: string;
   },
 ) {
+  if (listing.status === "paused") return labels.paused;
   return listing.status === "lent_out" ? labels.lentOut : labels[listing.lend_mode];
 }
 
