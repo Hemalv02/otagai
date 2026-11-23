@@ -23,7 +23,7 @@ from app.repositories.pair_stats import PairStatsRepository
 from app.repositories.requests import RequestRepository
 from app.services.actors.service import Actor, ProxyScope
 from app.services.errors import BadRequestError, ConflictError, NotFoundError
-from app.services.exchanges.handover import require_pickup_check
+from app.services.exchanges.handover import require_pickup_actor, require_pickup_check
 
 AVAILABLE_AGAIN_DELAY = timedelta(hours=1)
 
@@ -112,6 +112,8 @@ async def hand_over(
         exchange = await _load_participant_exchange(
             session, actor, exchange_id, for_update=True
         )
+        if exchange.mode == ExchangeMode.LOAN.value:
+            require_pickup_actor(actor)
         if exchange.status == ExchangeStatus.ACTIVE.value:
             return exchange
         if exchange.status != ExchangeStatus.SCHEDULED.value:

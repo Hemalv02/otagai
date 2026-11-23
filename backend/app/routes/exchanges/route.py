@@ -134,6 +134,12 @@ class PickupSuggestionsBody(BaseModel):
     lang: Language
 
 
+class ConfirmCheckBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
 class ExchangeModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -187,9 +193,12 @@ class CheckModel(BaseModel):
     phase: str
     lender_confirmed_at: datetime | None
     borrower_confirmed_at: datetime | None
+    lender_confirmed_by_user_id: uuid.UUID | None
+    borrower_confirmed_by_user_id: uuid.UUID | None
     created_at: datetime
     items: list[ItemModel]
     media_ids: list[uuid.UUID]
+    revision: str
 
 
 class CheckList(BaseModel):
@@ -209,15 +218,18 @@ def check_model(view: CheckView) -> CheckModel:
         id=view.check.id,
         exchange_id=view.check.exchange_id,
         phase=view.check.phase,
-        lender_confirmed_at=None
-        if view.requires_reconfirmation
-        else view.check.lender_confirmed_at,
-        borrower_confirmed_at=None
-        if view.requires_reconfirmation
-        else view.check.borrower_confirmed_at,
+        lender_confirmed_at=view.lender_confirmed_at,
+        borrower_confirmed_at=view.borrower_confirmed_at,
+        lender_confirmed_by_user_id=view.check.lender_confirmed_by_user_id
+        if view.lender_confirmed_at is not None
+        else None,
+        borrower_confirmed_by_user_id=view.check.borrower_confirmed_by_user_id
+        if view.borrower_confirmed_at is not None
+        else None,
         created_at=view.check.created_at,
         items=[ItemModel.model_validate(item) for item in view.items],
         media_ids=view.media_ids,
+        revision=view.revision,
     )
 
 
@@ -440,6 +452,11 @@ async def remove_item(
 
 @checks_router.post("/{check_id}/confirm")
 async def confirm_handover_check(
-    check_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
+    check_id: uuid.UUID,
+    actor: ActorDep,
+    database: DatabaseDep,
+    body: ConfirmCheckBody | None = None,
 ) -> CheckModel:
-    return check_model(await confirm_check(database, actor, check_id))
+    return check_model(
+        await confirm_check(database, actor, check_id, body.revision if body else None)
+    )

@@ -447,15 +447,15 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 |---|---|---|---|---|
 | `POST /exchanges/{exchange_id}/handover-checks` | Start a pickup or return check with optional `media_ids`. The checklist starts with the listing's parts. 409 if that phase already has a check | 201 | 24, 26 | MVP |
 | `GET /exchanges/{exchange_id}/handover-checks` | The exchange's pickup and return checks | 200 | 24, 26 | MVP |
-| `GET /handover-checks/{check_id}` | One checklist with its items and `media_ids` | 200 | 24, 26 | MVP |
+| `GET /handover-checks/{check_id}` | One checklist with its items, `media_ids`, and `revision` | 200 | 24, 26 | MVP |
 | `POST /handover-checks/{check_id}/media` | Attach the caller's handover uploads using `media_ids`, up to eight photos total. Either participant can read attached media | 200 | 24 | MVP |
 | `POST /handover-checks/{check_id}/suggestions` | Suggest additional visible items and quantities from the pickup photos in `lang`. Add accepted items separately | 200 | 24 | MVP |
 | `POST /handover-checks/{check_id}/items` | Add an item by hand | 201 | 24 | MVP |
 | `PATCH /handover-checks/{check_id}/items/{item_id}` | Edit the label, quantity, present flag or dispute note. The person who flagged an issue can clear its note with `null` | 200 | 24, 26 | MVP |
 | `DELETE /handover-checks/{check_id}/items/{item_id}` | Remove an item from the checklist | 204 | 24 | MVP |
-| `POST /handover-checks/{check_id}/confirm` | The lender or borrower confirms. Loan pickup needs at least one item, all items present, and any disputes resolved. Both confirmations lock the checklist | 200 | 24, 26 | MVP |
+| `POST /handover-checks/{check_id}/confirm` | Send the reviewed `revision` to confirm a scheduled loan pickup. A stale revision returns 409. The checklist must be nonempty, with every item present and every dispute resolved. Two distinct signers lock the checklist | 200 | 24, 26 | MVP |
 
-Edits to a loan pickup checklist reset any existing confirmation. Photos and AI suggestions are optional.
+Edits to a loan pickup checklist reset any existing confirmation. Photos and AI suggestions are optional. Caretakers need `can_view_activity` to view a pickup checklist, its photos, or suggestions. Participants with their own sign-in manage and confirm pickup directly. A caretaker can act for a managed participant with both `can_view_activity` and `can_post_requests`. The same person cannot sign both sides.
 
 ## 10. Chat
 

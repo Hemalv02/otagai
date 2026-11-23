@@ -226,9 +226,12 @@ async def confirmed_pickup(client, exchange_id, requester, helper):
             json={"present": True},
         )
         assert marked.status_code == 200, marked.text
+        check = marked.json()
     for participant in (requester, helper):
         confirmed = await client.post(
-            f"/handover-checks/{check['id']}/confirm", headers=auth(participant)
+            f"/handover-checks/{check['id']}/confirm",
+            headers=auth(participant),
+            json={"revision": check["revision"]},
         )
         assert confirmed.status_code == 200, confirmed.text
 

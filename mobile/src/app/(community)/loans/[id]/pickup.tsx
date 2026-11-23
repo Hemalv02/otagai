@@ -94,6 +94,8 @@ function LivePickup({
   const otherConfirmation = lender
     ? check?.borrower_confirmed_at
     : check?.lender_confirmed_at;
+  const bothConfirmed = Boolean(yourConfirmation && otherConfirmation);
+  const mutable = editable && !bothConfirmed;
   const ready = Boolean(
     check?.items.length &&
       check.items.every((item) => item.present && !item.disputed_by_user_id),
@@ -101,7 +103,7 @@ function LivePickup({
   const disabled = Boolean(busy || resource.loading || resource.error);
   const labelStyle = localizedType("field-label", locale);
   const bodyStyle = localizedType("body", locale);
-  const canAddPhoto = editable && (check?.media_ids.length ?? 0) < 8;
+  const canAddPhoto = mutable && (check?.media_ids.length ?? 0) < 8;
 
   async function perform(
     key: string,
@@ -162,7 +164,6 @@ function LivePickup({
     );
   }
 
-  const bothConfirmed = Boolean(yourConfirmation && otherConfirmation);
   const confirmation =
     editable && check ? (
       <Button
@@ -175,8 +176,16 @@ function LivePickup({
         onPress={() =>
           void perform("confirm", async () => {
             if (!bothConfirmed) {
-              const latest = await client.confirm(check.id);
-              if (!latest.lender_confirmed_at || !latest.borrower_confirmed_at)
+              const latest = await client
+                .confirm(check.id, check.revision)
+                .catch((failure: unknown) => {
+                  if (failure instanceof ApiError && failure.status === 409) {
+                    setError(copy.reviewChanged);
+                    return null;
+                  }
+                  throw failure;
+                });
+              if (!latest?.lender_confirmed_at || !latest.borrower_confirmed_at)
                 return;
             }
             await client.record(id);
@@ -193,14 +202,25 @@ function LivePickup({
       eyebrow={title}
       title={copy.title}
       subtitle={copy.intro}
-      footer={confirmation}
+      footer={
+        confirmation && (
+          <View style={styles.confirmation}>
+            {error === copy.reviewChanged ? (
+              <ErrorText>{error}</ErrorText>
+            ) : null}
+            {confirmation}
+          </View>
+        )
+      }
     >
       <ActivityStatus
         loading={resource.loading}
         error={resource.error}
         retry={resource.reload}
       />
-      {error && !editor ? <ErrorText>{error}</ErrorText> : null}
+      {error && error !== copy.reviewChanged && !editor ? (
+        <ErrorText>{error}</ErrorText>
+      ) : null}
       {exchange?.handed_over_at ? (
         <View style={styles.panel}>
           <ActivityText strong>{copy.complete}</ActivityText>
@@ -276,7 +296,7 @@ function LivePickup({
       ) : null}
       {check ? (
         <>
-          {editable && check.media_ids.length > 0 ? (
+          {mutable && check.media_ids.length > 0 ? (
             <Button
               label={copy.suggest}
               variant="text"
@@ -308,7 +328,7 @@ function LivePickup({
               }
             />
           ) : null}
-          {editable && suggestions ? (
+          {mutable && suggestions ? (
             <View style={styles.panel}>
               <ActivityText strong>{copy.suggestions}</ActivityText>
               <ActivityText>
@@ -355,9 +375,9 @@ function LivePickup({
                     accessibilityLabel={`${item.label}, ${item.present === true ? copy.present : item.present === false ? copy.missing : copy.unchecked}`}
                     accessibilityState={{
                       checked: item.present === true,
-                      disabled: disabled || !editable,
+                      disabled: disabled || !mutable,
                     }}
-                    disabled={disabled || !editable}
+                    disabled={disabled || !mutable}
                     style={[styles.row, styles.flex]}
                     onPress={() =>
                       void perform(item.id, async () => {
@@ -390,7 +410,7 @@ function LivePickup({
                       </ActivityText>
                     </View>
                   </Pressable>
-                  {editable ? (
+                  {mutable ? (
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`${copy.edit} · ${item.label}`}
@@ -414,7 +434,7 @@ function LivePickup({
               </View>
             ))}
           </View>
-          {editable ? (
+          {mutable ? (
             <Button
               label={copy.add}
               variant="secondary"
@@ -453,7 +473,7 @@ function LivePickup({
           ) : null}
         </>
       ) : null}
-      {editable && editor && check ? (
+      {mutable && editor && check ? (
         <ItemEditor
           copy={copy}
           locale={locale}
@@ -643,6 +663,7 @@ const styles = StyleSheet.create({
     gap: spacing["related-gap"],
   },
   flex: { flex: 1, minWidth: 0 },
+  confirmation: { gap: spacing["related-gap"] },
   edit: {
     minHeight: 44,
     minWidth: 44,

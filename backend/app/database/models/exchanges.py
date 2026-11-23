@@ -102,6 +102,10 @@ class HandoverCheck(UUIDPrimaryKey, Timestamps, Base):
     __tablename__ = "handover_checks"
     __table_args__ = (
         check_in("phase", HandoverPhase),
+        CheckConstraint(
+            "lender_confirmed_by_user_id <> borrower_confirmed_by_user_id",
+            name="distinct_pickup_signers",
+        ),
         Index(
             "uq_handover_checks_exchange_id_phase",
             "exchange_id",
@@ -117,6 +121,12 @@ class HandoverCheck(UUIDPrimaryKey, Timestamps, Base):
     created_by_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     lender_confirmed_at: Mapped[datetime | None]
     borrower_confirmed_at: Mapped[datetime | None]
+    lender_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id")
+    )
+    borrower_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id")
+    )
     ai_run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("ai_runs.id", ondelete="SET NULL")
     )

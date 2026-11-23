@@ -33,6 +33,14 @@ async def _image(client, headers, purpose="handover"):
     return uploaded.json()["id"]
 
 
+async def _confirm(client, check, headers):
+    return await client.post(
+        f"/handover-checks/{check['id']}/confirm",
+        headers=headers,
+        json={"revision": check["revision"]},
+    )
+
+
 async def test_pickup_needs_clean_check_and_two_confirmations(client):
     match = await matched_exchange(client, loan=True, pickup_ready=False)
     path = f"/exchanges/{match['exchange_id']}"
@@ -57,13 +65,11 @@ async def test_pickup_needs_clean_check_and_two_confirmations(client):
     (item,) = check["items"]
     assert item["label"] == "Cordless drill"
     item_path = f"{check_path}/items/{item['id']}"
-    assert (
-        await client.post(f"{check_path}/confirm", headers=lender)
-    ).status_code == 409
+    assert (await _confirm(client, check, lender)).status_code == 409
 
     marked = await client.patch(item_path, headers=lender, json={"present": True})
     assert marked.status_code == 200, marked.text
-    first = await client.post(f"{check_path}/confirm", headers=lender)
+    first = await _confirm(client, marked.json(), lender)
     assert first.status_code == 200, first.text
     assert first.json()["lender_confirmed_at"]
     assert (await client.post(f"{path}/hand-over", headers=lender)).status_code == 409
@@ -75,9 +81,7 @@ async def test_pickup_needs_clean_check_and_two_confirmations(client):
     )
     assert flagged.status_code == 200, flagged.text
     assert flagged.json()["lender_confirmed_at"] is None
-    assert (
-        await client.post(f"{check_path}/confirm", headers=borrower)
-    ).status_code == 409
+    assert (await _confirm(client, flagged.json(), borrower)).status_code == 409
     unauthorized_clear = await client.patch(
         item_path, headers=lender, json={"dispute_note": None}
     )
@@ -93,11 +97,9 @@ async def test_pickup_needs_clean_check_and_two_confirmations(client):
         },
     )
     assert resolved.status_code == 200, resolved.text
-    assert (
-        await client.post(f"{check_path}/confirm", headers=lender)
-    ).status_code == 200
+    assert (await _confirm(client, resolved.json(), lender)).status_code == 200
     confirmed, pickup = await asyncio.gather(
-        client.post(f"{check_path}/confirm", headers=borrower),
+        _confirm(client, resolved.json(), borrower),
         client.post(f"{path}/hand-over", headers=lender),
     )
     assert confirmed.status_code == 200, confirmed.text
@@ -115,9 +117,8 @@ async def test_pickup_needs_clean_check_and_two_confirmations(client):
     ).status_code == 200
 
 
-async def test_unclean_confirmations_from_an_old_scheduled_pickup_can_be_corrected(
-    client,
-):
+@pytest.mark.parametrize("was_clean", [True, False])
+async def test_unsigned_legacy_pickup_confirmations_must_be_repeated(client, was_clean):
     match = await matched_exchange(client, loan=True, pickup_ready=False)
     lender, borrower = auth(match["helper"]), auth(match["requester"])
     path = f"/exchanges/{match['exchange_id']}"
@@ -126,6 +127,13 @@ async def test_unclean_confirmations_from_an_old_scheduled_pickup_can_be_correct
     )
     assert created.status_code == 201, created.text
     check = created.json()
+    check_path = f"/handover-checks/{check['id']}"
+    item = check["items"][0]["id"]
+    if was_clean:
+        marked = await client.patch(
+            f"{check_path}/items/{item}", headers=lender, json={"present": True}
+        )
+        assert marked.status_code == 200, marked.text
     database = Database(_settings())
     try:
         async with database.session() as session:
@@ -136,24 +144,23 @@ async def test_unclean_confirmations_from_an_old_scheduled_pickup_can_be_correct
     finally:
         await database.close()
 
-    check_path = f"/handover-checks/{check['id']}"
     current = (await client.get(check_path, headers=borrower)).json()
     assert current["lender_confirmed_at"] is None
     assert current["borrower_confirmed_at"] is None
-    assert (
-        await client.post(f"{check_path}/confirm", headers=borrower)
-    ).status_code == 409
     assert (await client.post(f"{path}/hand-over", headers=lender)).status_code == 409
-
-    item = check["items"][0]["id"]
-    fixed = await client.patch(
-        f"{check_path}/items/{item}", headers=lender, json={"present": True}
-    )
-    assert fixed.status_code == 200, fixed.text
-    assert fixed.json()["lender_confirmed_at"] is None
+    if not was_clean:
+        assert (await _confirm(client, current, borrower)).status_code == 409
+        fixed = await client.patch(
+            f"{check_path}/items/{item}", headers=lender, json={"present": True}
+        )
+        assert fixed.status_code == 200, fixed.text
+        current = fixed.json()
+        assert current["lender_confirmed_at"] is None
     for participant in (borrower, lender):
-        confirmed = await client.post(f"{check_path}/confirm", headers=participant)
+        confirmed = await _confirm(client, current, participant)
         assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["lender_confirmed_by_user_id"]
+    assert confirmed.json()["borrower_confirmed_by_user_id"]
     assert (await client.post(f"{path}/hand-over", headers=lender)).status_code == 200
 
 
@@ -189,16 +196,13 @@ async def test_a_racing_edit_cannot_leave_an_invalid_confirmed_pickup(client):
     check = created.json()
     check_path = f"/handover-checks/{check['id']}"
     item_path = f"{check_path}/items/{check['items'][0]['id']}"
-    assert (
-        await client.patch(item_path, headers=lender, json={"present": True})
-    ).status_code == 200
-    assert (
-        await client.post(f"{check_path}/confirm", headers=lender)
-    ).status_code == 200
+    marked = await client.patch(item_path, headers=lender, json={"present": True})
+    assert marked.status_code == 200, marked.text
+    assert (await _confirm(client, marked.json(), lender)).status_code == 200
 
     edited, confirmed = await asyncio.gather(
         client.patch(item_path, headers=lender, json={"present": False}),
-        client.post(f"{check_path}/confirm", headers=borrower),
+        _confirm(client, marked.json(), borrower),
     )
     final = (await client.get(check_path, headers=lender)).json()
     pickup = await client.post(f"{path}/hand-over", headers=lender)
@@ -213,6 +217,198 @@ async def test_a_racing_edit_cannot_leave_an_invalid_confirmed_pickup(client):
         assert confirmed.status_code == 200
         assert final["items"][0]["present"] is True
         assert pickup.status_code == 200
+
+
+async def test_stale_pickup_snapshot_cannot_confirm_newly_edited_clean_check(client):
+    match = await matched_exchange(client, loan=True, pickup_ready=False)
+    lender, borrower = auth(match["helper"]), auth(match["requester"])
+    exchange_path = f"/exchanges/{match['exchange_id']}"
+    created = await client.post(
+        f"{exchange_path}/handover-checks", headers=lender, json={"phase": "pickup"}
+    )
+    assert created.status_code == 201, created.text
+    check = created.json()
+    check_path = f"/handover-checks/{check['id']}"
+    item_path = f"{check_path}/items/{check['items'][0]['id']}"
+    marked = await client.patch(item_path, headers=lender, json={"present": True})
+    assert marked.status_code == 200, marked.text
+    snapshot = (await client.get(check_path, headers=borrower)).json()
+    old_revision = snapshot["revision"]
+
+    edited = await client.patch(
+        item_path, headers=lender, json={"quantity": 2, "present": True}
+    )
+    assert edited.status_code == 200, edited.text
+    attached = await client.post(
+        f"{check_path}/media",
+        headers=lender,
+        json={"media_ids": [await _image(client, lender)]},
+    )
+    assert attached.status_code == 200, attached.text
+    new_revision = attached.json()["revision"]
+    stale, fresh = await asyncio.gather(
+        client.post(
+            f"{check_path}/confirm", headers=borrower, json={"revision": old_revision}
+        ),
+        client.post(
+            f"{check_path}/confirm", headers=lender, json={"revision": new_revision}
+        ),
+    )
+    assert stale.status_code == 409, stale.text
+    assert fresh.status_code == 200, fresh.text
+    assert old_revision != edited.json()["revision"] != new_revision
+    assert fresh.json()["revision"] == new_revision
+    assert fresh.json()["borrower_confirmed_at"] is None
+    assert (
+        await client.post(f"{check_path}/confirm", headers=borrower)
+    ).status_code == 400
+    assert (
+        await client.post(f"{exchange_path}/hand-over", headers=lender)
+    ).status_code == 409
+
+    accepted = await client.post(
+        f"{check_path}/confirm", headers=borrower, json={"revision": new_revision}
+    )
+    assert accepted.status_code == 200, accepted.text
+    assert (
+        await client.post(f"{exchange_path}/hand-over", headers=lender)
+    ).status_code == 200
+
+
+async def test_pickup_proxy_scope_allows_viewing_but_never_personal_actions(client):
+    match = await matched_exchange(client, loan=True, pickup_ready=False)
+    lender, borrower = auth(match["helper"]), auth(match["requester"])
+    exchange_path = f"/exchanges/{match['exchange_id']}"
+    checks_path = f"{exchange_path}/handover-checks"
+    photo = await _image(client, borrower)
+    created = await client.post(
+        checks_path, headers=borrower, json={"phase": "pickup", "media_ids": [photo]}
+    )
+    assert created.status_code == 201, created.text
+    check = created.json()
+    check_path = f"/handover-checks/{check['id']}"
+    item_path = f"{check_path}/items/{check['items'][0]['id']}"
+    borrower_id = (await client.get("/users/me", headers=borrower)).json()["id"]
+
+    for can_view in (False, True):
+        caretaker = auth(await make_user(client))
+        caretaker_id = (await client.get("/users/me", headers=caretaker)).json()["id"]
+        grant = await client.post(
+            "/proxy-grants",
+            headers=borrower,
+            json={
+                "member_user_id": borrower_id,
+                "caretaker_user_id": caretaker_id,
+                "caretaker_role": "family",
+                "consent_method": "in_person",
+                "scopes": {"can_view_activity": can_view, "can_post_requests": True},
+            },
+        )
+        assert grant.status_code == 201, grant.text
+        proxy = {**caretaker, "X-Acting-For": borrower_id}
+        for path in (check_path, checks_path, f"/media/{photo}"):
+            read = await client.get(path, headers=proxy)
+            assert read.status_code == (200 if can_view else 403), read.text
+        suggestion = await client.post(
+            f"{check_path}/suggestions", headers=proxy, json={"lang": "en"}
+        )
+        assert suggestion.status_code == (503 if can_view else 403), suggestion.text
+
+        for method, path, payload in (
+            ("POST", checks_path, {"phase": "pickup"}),
+            ("POST", f"{check_path}/media", {"media_ids": [photo]}),
+            ("POST", f"{check_path}/items", {"label": "Spare part"}),
+            ("PATCH", item_path, {"present": True}),
+            ("DELETE", item_path, None),
+            ("POST", f"{check_path}/confirm", {"revision": check["revision"]}),
+            ("POST", f"{exchange_path}/hand-over", None),
+        ):
+            result = await client.request(method, path, headers=proxy, json=payload)
+            assert result.status_code == 403, result.text
+
+    direct = await client.patch(item_path, headers=lender, json={"present": True})
+    assert direct.status_code == 200, direct.text
+
+
+async def test_managed_pickup_uses_distinct_caretaker_signatures(client):
+    match = await matched_exchange(client, loan=True, pickup_ready=False)
+    caretaker = auth(match["helper"])
+    second_caretaker = auth(await make_user(client))
+    caretaker_id = (await client.get("/users/me", headers=caretaker)).json()["id"]
+    second_id = (await client.get("/users/me", headers=second_caretaker)).json()["id"]
+    consent = {"caretaker_role": "family", "consent_method": "in_person"}
+    subjects = []
+    for name in ("Managed borrower", "Managed lender"):
+        created = await client.post(
+            "/managed-users",
+            headers=caretaker,
+            json={
+                "display_name": name,
+                "preferred_language": "en",
+                "region": "jp",
+                "grant": consent,
+            },
+        )
+        assert created.status_code == 201, created.text
+        subjects.append(created.json()["user"]["id"])
+    borrower_id, lender_id = subjects
+    grant = await client.post(
+        "/proxy-grants",
+        headers=caretaker,
+        json={
+            **consent,
+            "member_user_id": borrower_id,
+            "caretaker_user_id": second_id,
+            "scopes": {"can_view_activity": True, "can_post_requests": False},
+        },
+    )
+    assert grant.status_code == 201, grant.text
+
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            exchange = await session.get(Exchange, uuid.UUID(match["exchange_id"]))
+            exchange.requester_user_id = uuid.UUID(borrower_id)
+            exchange.helper_user_id = uuid.UUID(lender_id)
+    finally:
+        await database.close()
+
+    exchange_path = f"/exchanges/{match['exchange_id']}"
+    as_lender = {**caretaker, "X-Acting-For": lender_id}
+    as_borrower = {**caretaker, "X-Acting-For": borrower_id}
+    alternate = {**second_caretaker, "X-Acting-For": borrower_id}
+    prepared = await client.post(
+        f"{exchange_path}/handover-checks", headers=as_lender, json={"phase": "pickup"}
+    )
+    assert prepared.status_code == 201, prepared.text
+    check = prepared.json()
+    check_path = f"/handover-checks/{check['id']}"
+    marked = await client.patch(
+        f"{check_path}/items/{check['items'][0]['id']}",
+        headers=as_lender,
+        json={"present": True},
+    )
+    assert marked.status_code == 200, marked.text
+    first = await _confirm(client, marked.json(), as_lender)
+    assert first.status_code == 200, first.text
+    assert first.json()["lender_confirmed_by_user_id"] == caretaker_id
+    duplicate = await _confirm(client, marked.json(), as_borrower)
+    assert duplicate.status_code == 409, duplicate.text
+    assert (await client.get(check_path, headers=alternate)).status_code == 200
+    assert (await _confirm(client, marked.json(), alternate)).status_code == 403
+
+    granted_post = await client.patch(
+        f"/proxy-grants/{grant.json()['id']}",
+        headers=caretaker,
+        json={"can_post_requests": True},
+    )
+    assert granted_post.status_code == 200, granted_post.text
+    accepted = await _confirm(client, marked.json(), alternate)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["borrower_confirmed_by_user_id"] == second_id
+    assert (
+        await client.post(f"{exchange_path}/hand-over", headers=as_lender)
+    ).status_code == 200
 
 
 async def test_handover_photos_are_private_to_the_check_participants(client):

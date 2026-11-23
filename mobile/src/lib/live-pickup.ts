@@ -17,6 +17,7 @@ export type PickupItem = {
 
 export type PickupCheck = {
   id: string;
+  revision: string;
   phase: string;
   items: PickupItem[];
   media_ids: string[];
@@ -75,7 +76,8 @@ export function pickupApi(authUserId: string) {
       send<PickupCheck>(`${check(id)}/items/${itemId}`, "PATCH", body),
     remove: (id: string, itemId: string) =>
       send<void>(`${check(id)}/items/${itemId}`, "DELETE"),
-    confirm: (id: string) => send<PickupCheck>(`${check(id)}/confirm`, "POST"),
+    confirm: (id: string, revision: string) =>
+      send<PickupCheck>(`${check(id)}/confirm`, "POST", { revision }),
     record: (id: string) =>
       send<Exchange>(`/exchanges/${id}/hand-over`, "POST"),
   };
@@ -108,7 +110,6 @@ const en = {
   unchecked: "To check",
   dispute: "What needs checking?",
   note: "Note from your neighbour",
-  clear: "Clear note",
   discard: "Remove item",
   save: "Save",
   confirmed: "Confirmed",
@@ -120,6 +121,7 @@ const en = {
   refresh: "Refresh checklist",
   complete: "Pickup recorded",
   change: "Changes clear any previous confirmations.",
+  reviewChanged: "The checklist changed. Review it again before confirming.",
   failure: "Couldn’t save the change. Refresh and try again.",
   changedPhoto:
     "The photo couldn’t be attached. Try again with a supported image.",
@@ -153,7 +155,6 @@ const ja: typeof en = {
   unchecked: "未確認",
   dispute: "確認が必要な点",
   note: "相手からのメモ",
-  clear: "メモを消去",
   discard: "品物を削除",
   save: "保存",
   confirmed: "確認済み",
@@ -165,6 +166,7 @@ const ja: typeof en = {
   refresh: "リストを再読み込み",
   complete: "受け渡しを記録しました",
   change: "変更すると、これまでの確認が取り消されます。",
+  reviewChanged: "リストが変更されました。内容を見直してから確認してください。",
   failure: "変更を保存できませんでした。再読み込みしてお試しください。",
   changedPhoto:
     "写真を添付できませんでした。対応している画像でお試しください。",
@@ -197,7 +199,6 @@ const bn: typeof en = {
   unchecked: "যাচাই বাকি",
   dispute: "কী মিলিয়ে দেখতে হবে?",
   note: "প্রতিবেশীর নোট",
-  clear: "নোট মুছুন",
   discard: "জিনিস সরান",
   save: "সংরক্ষণ",
   confirmed: "নিশ্চিত",
@@ -209,6 +210,7 @@ const bn: typeof en = {
   refresh: "তালিকা আবার লোড করুন",
   complete: "হস্তান্তর নথিভুক্ত হয়েছে",
   change: "পরিবর্তন করলে আগের নিশ্চিতকরণ মুছে যাবে।",
+  reviewChanged: "তালিকা বদলেছে। নিশ্চিত করার আগে আবার মিলিয়ে নিন।",
   failure: "পরিবর্তন সংরক্ষণ করা যায়নি। আবার লোড করে চেষ্টা করুন।",
   changedPhoto: "ছবি যুক্ত করা যায়নি। সমর্থিত ছবি দিয়ে চেষ্টা করুন।",
   aiFailure:
