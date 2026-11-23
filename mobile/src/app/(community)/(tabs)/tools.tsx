@@ -341,8 +341,19 @@ export default function BrowseToolsScreen() {
       </View>
       <View style={styles.results}>
         {view.status === "loading" ? (
-          <View style={styles.centered}>
-            <ActivityIndicator accessibilityLabel={copy.loadingListings} />
+          <View
+            accessibilityRole="progressbar"
+            accessibilityLabel={copy.loadingListings}
+          >
+            {[0, 1, 2, 3].map((index) => (
+              <View key={index} style={styles.row} accessible={false}>
+                <View style={[styles.thumbnail, styles.skeleton]} />
+                <View style={styles.rowCopy}>
+                  <View style={[styles.skeletonTitle, styles.skeleton]} />
+                  <View style={[styles.skeletonMeta, styles.skeleton]} />
+                </View>
+              </View>
+            ))}
           </View>
         ) : view.status === "error" ? (
           <View style={styles.empty}>
@@ -366,6 +377,11 @@ export default function BrowseToolsScreen() {
             >
               {copy.empty}
             </Text>
+            <Button
+              label={copy.askForIt}
+              labelStyle={labelType}
+              onPress={() => router.push("/ask")}
+            />
             {filtersActive ? (
               <Button
                 label={copy.clearFilters}
@@ -565,6 +581,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.wash,
   },
+  skeleton: { backgroundColor: colors.wash },
+  skeletonTitle: {
+    height: 16,
+    width: "60%",
+    borderRadius: 4,
+    marginBottom: spacing["related-gap"],
+  },
+  skeletonMeta: { height: 12, width: "35%", borderRadius: 4 },
   empty: { paddingTop: spacing["card-inset"], gap: spacing["related-gap"] },
   action: { color: colors.action },
   secondary: { color: colors.secondary },
