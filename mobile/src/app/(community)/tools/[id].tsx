@@ -21,6 +21,8 @@ import {
   photoUrls,
 } from "@/lib/listing-workflow";
 import { listingReadCopy, requestApiError } from "@/lib/listing-read";
+import { listingRequestCopy } from "@/lib/listing-request-copy";
+import { listingRequestState } from "@/lib/listing-request";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -72,7 +74,9 @@ export default function ToolListingScreen() {
 
   const view = account ? detailView(state, current) : "auth";
   const listing =
-    view === "loaded" && state.status === "loaded" && isCurrentDetail(state, current)
+    view === "loaded" &&
+    state.status === "loaded" &&
+    isCurrentDetail(state, current)
       ? state.listing
       : null;
 
@@ -120,6 +124,18 @@ export default function ToolListingScreen() {
   }
 
   const own = isListingOwner(listing, profileId);
+  const requestCopy = listingRequestCopy[locale];
+  const requestState = listingRequestState(listing, profileId);
+  const readOnlyNote =
+    requestState.mode === "readOnly"
+      ? requestState.reason === "paused"
+        ? requestCopy.pausedReadOnly
+        : requestState.reason === "lent_out"
+          ? requestCopy.lentOutReadOnly
+          : requestState.reason === "noOwner"
+            ? requestCopy.noOwner
+            : null
+      : null;
   const skill = listing.kind === "skill";
   const photos = photoUrls(listing);
   const lendState = availabilityLabel(listing, copy);
@@ -185,7 +201,12 @@ export default function ToolListingScreen() {
         detail={
           own
             ? availabilityDetail || copy.noAvailabilityNote
-            : [availabilityDetail, readCopy.readOnly]
+            : [
+                availabilityDetail,
+                requestState.mode === "actions"
+                  ? null
+                  : (readOnlyNote ?? readCopy.readOnly),
+              ]
                 .filter(Boolean)
                 .join("\n")
         }
@@ -198,6 +219,25 @@ export default function ToolListingScreen() {
           onPress={() => router.push("/my-listings")}
         />
       ) : null}
+      {requestState.mode === "actions"
+        ? requestState.actions.map((kind) => (
+            <Button
+              key={kind}
+              label={
+                kind === "borrow"
+                  ? requestCopy.askToBorrow
+                  : requestCopy.askForHelp
+              }
+              labelStyle={localizedType("button", locale)}
+              onPress={() =>
+                router.push({
+                  pathname: "/listing-request/[id]",
+                  params: { id: listing.id, kind },
+                })
+              }
+            />
+          ))
+        : null}
     </CommunityScreen>
   );
 }

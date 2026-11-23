@@ -22,10 +22,20 @@ export type RequestSummary = {
   polite_text: string;
   lang: Language;
   status: RequestStatus;
+  listing_id: string | null;
   direct_to_user_id: string | null;
   needed_from: string | null;
   needed_until: string | null;
   created_at: string;
+};
+
+export type NewDirectRequest = {
+  kind: "borrow" | "help";
+  raw_text: string;
+  lang: Language;
+  listing_id: string;
+  direct_to_user_id: string;
+  ripple_max_stage: "direct";
 };
 
 export type RequestDetail = RequestSummary & {
@@ -109,4 +119,5 @@ export const requestsApi = {
     }),
   person: (id: string) => request<{ display_name: string }>(`/users/${id}`),
   exchange: (id: string) => request<ExchangeDetail>(`/exchanges/${id}`),
+  create: (body: NewDirectRequest) => post<RequestDetail>("/requests", body),
 };
