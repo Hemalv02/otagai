@@ -1,6 +1,8 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import type { Page } from "@/lib/api";
+import { AppState } from "react-native";
+import { ApiError, type Page } from "@/lib/api";
+import { mergeRefreshedPage } from "@/lib/page-refresh";
 
 export function useCurrentTime() {
   const [now, setNow] = useState(() => Date.now());
@@ -51,9 +53,10 @@ export function useLiveResource<T>(loader: () => Promise<T>) {
 
 export function usePagedResource<T extends { id: string }>(
   loader: (cursor?: string | null) => Promise<Page<T>>,
+  refreshInterval?: number,
 ) {
-  const [items, setItems] = useState<T[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [page, setPage] = useState<Page<T>>({ items: [], next_cursor: null });
+  const cursor = page.next_cursor;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [failedPage, setFailedPage] = useState(false);
@@ -61,33 +64,49 @@ export function usePagedResource<T extends { id: string }>(
   const generation = useRef(0);
   const busy = useRef(false);
   const run = useCallback(
-    async (next?: string | null) => {
-      if (next && busy.current) return;
+    async (next?: string | null, background = false) => {
+      if ((next || background) && busy.current) return;
       const ticket = ++generation.current;
       busy.current = true;
-      setLoading(true);
-      setError(false);
+      if (!background) {
+        setLoading(true);
+        setError(false);
+      }
       try {
-        const page = await loader(next);
+        const result = await loader(next);
         if (active.current && ticket === generation.current) {
-          setItems((previous) =>
+          setPage((previous) =>
             next
-              ? [
-                  ...previous,
-                  ...page.items.filter(
-                    (item) =>
-                      !previous.some((existing) => existing.id === item.id),
-                  ),
-                ]
-              : page.items,
+              ? {
+                  items: [
+                    ...previous.items,
+                    ...result.items.filter(
+                      (item) =>
+                        !previous.items.some(
+                          (existing) => existing.id === item.id,
+                        ),
+                    ),
+                  ],
+                  next_cursor: result.next_cursor,
+                }
+              : background
+                ? mergeRefreshedPage(previous, result)
+                : result,
           );
-          setCursor(page.next_cursor);
+          setError(false);
           setFailedPage(false);
         }
-      } catch {
+      } catch (cause) {
         if (active.current && ticket === generation.current) {
-          setError(true);
-          setFailedPage(Boolean(next));
+          const accessLost =
+            cause instanceof ApiError && [401, 403, 404].includes(cause.status);
+          if (refreshInterval && accessLost) {
+            setPage({ items: [], next_cursor: null });
+          }
+          if (!background || accessLost) {
+            setError(true);
+            setFailedPage(Boolean(next));
+          }
         }
       } finally {
         if (active.current && ticket === generation.current) {
@@ -96,24 +115,29 @@ export function usePagedResource<T extends { id: string }>(
         }
       }
     },
-    [loader],
+    [loader, refreshInterval],
   );
   const reload = useCallback(() => run(), [run]);
   useFocusEffect(
     useCallback(() => {
       active.current = true;
-      setItems([]);
-      setCursor(null);
+      setPage({ items: [], next_cursor: null });
       void reload();
+      const timer = refreshInterval
+        ? setInterval(() => {
+            if (AppState.currentState === "active") void run(null, true);
+          }, refreshInterval)
+        : undefined;
       return () => {
+        if (timer) clearInterval(timer);
         active.current = false;
         generation.current++;
         busy.current = false;
       };
-    }, [reload]),
+    }, [refreshInterval, reload, run]),
   );
   return {
-    items,
+    items: page.items,
     cursor,
     loading,
     error,
