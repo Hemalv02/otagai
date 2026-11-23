@@ -11,6 +11,7 @@ import {
   formatAvailableAgain,
   initialBrowseState,
   listingStatusLabel,
+  nearbyRows,
   nextPageFailed,
   nextPageLoaded,
   normalizeSearch,
@@ -261,4 +262,29 @@ test("the empty message depends on the search text and on whether any filter is 
   assert.equal(emptyMessage(true, "drill"), "emptyQuery");
   assert.equal(emptyMessage(true, ""), "emptyFiltered");
   assert.equal(emptyMessage(false, ""), "emptyCircle");
+});
+
+test("nearbyRows skips your own listings and keeps the first three", () => {
+  const rows = [
+    row("a"),
+    { ...row("b"), owner_user_id: "me" },
+    row("c"),
+    row("d"),
+    row("e"),
+  ];
+  assert.deepEqual(
+    nearbyRows(rows, "me", 3).map((item) => item.id),
+    ["a", "c", "d"],
+  );
+});
+
+test("nearbyRows keeps every row when the profile is unknown", () => {
+  assert.deepEqual(
+    nearbyRows([row("a"), row("b")], null, 3).map((item) => item.id),
+    ["a", "b"],
+  );
+});
+
+test("nearbyRows of no rows is empty", () => {
+  assert.deepEqual(nearbyRows([], "me", 3), []);
 });

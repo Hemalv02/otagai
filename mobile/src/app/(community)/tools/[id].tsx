@@ -156,7 +156,7 @@ export default function ToolListingScreen() {
             {listing.owner.display_name}
           </Text>
           <Text style={[localizedType("supporting", locale), styles.secondary]}>
-            {copy.neighbour}
+            {own ? copy.yourListing : copy.neighbour}
           </Text>
         </View>
       ) : null}

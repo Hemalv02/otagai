@@ -394,3 +394,16 @@ export function formatAvailableAgain(iso: string | null, locale: string) {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString(locale);
 }
+
+export const NEARBY_LIMIT = 3;
+export const NEARBY_FETCH = 6;
+
+export function nearbyRows(
+  rows: ListingSummary[],
+  profileId: string | null,
+  limit: number,
+) {
+  return rows
+    .filter((row) => row.owner_user_id !== profileId)
+    .slice(0, limit);
+}
