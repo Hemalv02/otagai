@@ -47,6 +47,24 @@ export type NewProfile = {
   happy_to_help_with?: string;
 };
 
+export type Circle = {
+  id: string;
+  region: Region;
+  unit_type: string;
+  name: string;
+  name_translations: Partial<Record<Language, unknown>>;
+};
+
+export type CircleMembership = {
+  circle_id: string;
+  status: "pending" | "approved" | "rejected" | "removed" | "left";
+  circle: Circle | null;
+};
+
+export type CircleJoin = { invite_code: string } | { circle_id: string };
+
+type Page<T> = { items: T[]; next_cursor: string | null };
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { data, error } = await supabase.auth.getSession();
   if (error) {
@@ -93,4 +111,34 @@ export const api = {
       method: "POST",
       body: JSON.stringify(profile),
     }),
+  previewCircleInvite: (code: string) =>
+    request<{ circle: Circle; auto_approve: boolean }>(
+      `/circle-invites/${encodeURIComponent(code)}`,
+    ),
+  findNearbyCircles: (latitude: number, longitude: number, cursor?: string) => {
+    const query = new URLSearchParams({
+      near: `${latitude.toFixed(4)},${longitude.toFixed(4)}`,
+      ...(cursor ? { cursor } : {}),
+    });
+    return request<Page<Circle>>(`/circles?${query}`);
+  },
+  joinCircle: (target: CircleJoin) =>
+    request<CircleMembership>("/users/me/memberships", {
+      method: "POST",
+      body: JSON.stringify(target),
+    }),
+  listMemberships: async () => {
+    const items: CircleMembership[] = [];
+    let cursor: string | null = null;
+    do {
+      const query = new URLSearchParams({ limit: "50" });
+      if (cursor) query.set("cursor", cursor);
+      const page: Page<CircleMembership> = await request(
+        `/users/me/memberships?${query}`,
+      );
+      items.push(...page.items);
+      cursor = page.next_cursor;
+    } while (cursor);
+    return items;
+  },
 };

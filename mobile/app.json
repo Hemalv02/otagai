@@ -40,7 +40,13 @@
         }
       ],
       "expo-audio",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Otagai to find neighbourhood circles near you."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

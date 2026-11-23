@@ -4,7 +4,7 @@ Supabase Auth signs users in. The API verifies the Supabase access token on each
 
 ## How it works
 
-1. The app signs in with a phone or email one-time code through `supabase-js`.
+1. The app creates an account or signs in with an email address and password through `supabase-js`. When email confirmation is enabled, the user opens the confirmation link before signing in.
 2. The app sends the access token as `Authorization: Bearer <token>`.
 3. `TokenVerifier` in `app/services/auth/service.py` checks the token against the project JWKS at `<SUPABASE_URL>/auth/v1/.well-known/jwks.json`.
 4. The verifier accepts only `ES256` or `RS256` keys from the JWKS. It checks the signature, `exp`, `iss`, `aud`, and `role`.
@@ -29,6 +29,6 @@ A managed account has `kind = managed` and no `auth_user_id`. A caretaker create
 
 ## Supabase dashboard
 
-- Turn on **Phone** under Authentication > Sign In / Providers before phone sign-in works. Add test phone numbers and codes for the demo.
-- The email code needs `{{ .Token }}` in the Magic Link email template.
-- The built-in Supabase mailer sends only to project team addresses. Add custom SMTP to send codes to other people.
+- Enable the **Email** provider and allow new user sign-ups.
+- When email confirmation is enabled, keep the confirmation link in the Confirm signup template.
+- The built-in Supabase mailer sends only to project team addresses. Configure custom SMTP for confirmation emails to other people.

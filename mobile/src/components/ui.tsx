@@ -1,7 +1,9 @@
 import type { PropsWithChildren } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
+  StyleSheet,
   Text,
   TextInput,
   type StyleProp,
@@ -11,16 +13,32 @@ import {
   View,
 } from "react-native";
 
-import { colors } from "@/theme/tokens.json";
+import { colors, fonts, spacing, typography } from "@/theme/tokens.json";
 
 type ButtonProps = {
   label: string;
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "text";
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
+};
+
+const buttonVariants = {
+  primary: {
+    container: "min-h-primary-control items-center bg-action px-card-inset",
+    label: "text-center text-on-action",
+  },
+  secondary: {
+    container:
+      "min-h-primary-control items-center border border-rule bg-canvas px-card-inset",
+    label: "text-center text-ink",
+  },
+  text: {
+    container: "min-h-touch-target items-start self-start",
+    label: "text-action",
+  },
 };
 
 export function Button({
@@ -32,7 +50,7 @@ export function Button({
   style,
   labelStyle,
 }: ButtonProps) {
-  const primary = variant === "primary";
+  const appearance = buttonVariants[variant];
   const inactive = disabled || busy;
   return (
     <Pressable
@@ -42,17 +60,14 @@ export function Button({
       disabled={inactive}
       onPress={onPress}
       style={style}
-      className={`min-h-primary-control items-center justify-center rounded-control px-card-inset ${
-        primary ? "bg-action" : "border border-rule bg-canvas"
-      } ${inactive ? "opacity-50" : ""}`}
+      className={`justify-center rounded-control ${appearance.container} ${inactive ? "opacity-50" : ""}`}
     >
       {busy ? (
-        <ActivityIndicator color={primary ? colors["on-action"] : colors.ink} />
+        <ActivityIndicator
+          color={variant === "primary" ? colors["on-action"] : colors.ink}
+        />
       ) : (
-        <Text
-          style={labelStyle}
-          className={`type-button text-center ${primary ? "text-on-action" : "text-ink"}`}
-        >
+        <Text style={labelStyle} className={`type-button ${appearance.label}`}>
           {label}
         </Text>
       )}
@@ -63,11 +78,15 @@ export function Button({
 export function Field({
   label,
   labelStyle,
+  multiline,
+  style,
   ...props
 }: TextInputProps & {
   label: string;
   labelStyle?: StyleProp<TextStyle>;
 }) {
+  const { lineHeight, ...inputType } = StyleSheet.flatten(style) ?? {};
+
   return (
     <View className="gap-related-gap">
       <Text className="type-body text-secondary" style={labelStyle}>
@@ -76,12 +95,42 @@ export function Field({
       <TextInput
         accessibilityLabel={label}
         placeholderTextColor={colors.control}
-        className="type-body min-h-touch-target rounded-control border border-control bg-canvas px-control-gap text-ink"
+        className="min-h-touch-target rounded-control border border-control bg-canvas px-control-gap text-ink"
+        multiline={multiline}
+        style={[
+          fieldStyles.text,
+          multiline
+            ? [
+                fieldStyles.multiline,
+                { lineHeight: lineHeight ?? typography.body.lineHeight.en },
+              ]
+            : fieldStyles.singleLine,
+          inputType,
+        ]}
         {...props}
       />
     </View>
   );
 }
+
+const fieldStyles = StyleSheet.create({
+  text: {
+    fontFamily: fonts.en.regular,
+    fontSize: typography.body.size,
+    includeFontPadding: false,
+  },
+  singleLine: {
+    // Use UIKit’s natural line height and balance its lower text baseline.
+    lineHeight: Platform.OS === "ios" ? 0 : undefined,
+    paddingVertical: 0,
+    paddingBottom: Platform.OS === "ios" ? 4 : 0,
+    textAlignVertical: "center",
+  },
+  multiline: {
+    paddingVertical: spacing["related-gap"],
+    textAlignVertical: "top",
+  },
+});
 
 type ChoiceProps<T extends string> = {
   options: readonly { value: T; label: string }[];
@@ -89,6 +138,7 @@ type ChoiceProps<T extends string> = {
   onChange: (value: T) => void;
   labelStyle?: (value: T) => StyleProp<TextStyle>;
   stacked?: boolean;
+  disabled?: boolean;
 };
 
 export function Choice<T extends string>({
@@ -97,6 +147,7 @@ export function Choice<T extends string>({
   onChange,
   labelStyle,
   stacked = false,
+  disabled = false,
 }: ChoiceProps<T>) {
   return (
     <View
@@ -110,7 +161,8 @@ export function Choice<T extends string>({
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ selected }}
+            accessibilityState={{ selected, disabled }}
+            disabled={disabled}
             onPress={() => onChange(option.value)}
             className={`min-h-touch-target justify-center rounded-control border px-card-inset ${
               selected ? "border-action bg-wash" : "border-rule bg-canvas"

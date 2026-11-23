@@ -5,6 +5,7 @@ import {
   advanceOnboarding,
   defaultOnboarding,
   finishOnboarding,
+  getCircleAccess,
   getLaunchRoute,
   readOnboarding,
 } from "../src/lib/onboarding-state.ts";
@@ -83,4 +84,24 @@ test("keeps saved preferences but requires the new walkthrough for legacy comple
     readOnboarding(JSON.stringify({ ...legacy, step: 2 })).completed,
     false,
   );
+});
+
+test("a signed-in profile without an approved circle enters circle setup", () => {
+  const account = { signedIn: true, needsProfile: false, completed: true };
+  assert.equal(
+    getLaunchRoute({ ...account, needsCircle: true }),
+    "find-circle",
+  );
+  assert.equal(
+    getLaunchRoute({ ...account, needsProfile: true, needsCircle: true }),
+    "profile-setup",
+  );
+  assert.equal(getLaunchRoute({ ...account, needsCircle: false }), "index");
+});
+
+test("an approved circle takes priority over pending or rejected requests", () => {
+  assert.equal(getCircleAccess([]), "none");
+  assert.equal(getCircleAccess(["rejected", "removed"]), "rejected");
+  assert.equal(getCircleAccess(["rejected", "pending"]), "pending");
+  assert.equal(getCircleAccess(["pending", "approved"]), "approved");
 });

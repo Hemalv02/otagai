@@ -1,4 +1,4 @@
-import type { Language, Region } from "./api";
+import type { CircleMembership, Language, Region } from "./api";
 
 export type OnboardingPreferences = {
   language: Language;
@@ -63,12 +63,26 @@ export function finishOnboarding(state: OnboardingState): OnboardingState {
 export function getLaunchRoute({
   signedIn,
   needsProfile,
+  needsCircle = false,
   completed,
 }: {
   signedIn: boolean;
   needsProfile: boolean;
+  needsCircle?: boolean;
   completed: boolean;
 }) {
-  if (signedIn) return needsProfile ? "profile-setup" : "index";
+  if (signedIn && needsProfile) return "profile-setup";
+  if (signedIn && needsCircle) return "find-circle";
+  if (signedIn) return "index";
   return completed ? "sign-in" : "welcome";
+}
+
+export function getCircleAccess(
+  statuses: readonly CircleMembership["status"][],
+) {
+  if (statuses.includes("approved")) return "approved";
+  if (statuses.includes("pending")) return "pending";
+  if (statuses.includes("rejected") || statuses.includes("removed"))
+    return "rejected";
+  return "none";
 }

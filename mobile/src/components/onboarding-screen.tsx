@@ -7,7 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button, ErrorText } from "@/components/ui";
@@ -18,8 +25,9 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type ScreenProps = PropsWithChildren<{
   action: ReactNode;
-  footer: ReactNode;
+  footer?: ReactNode;
   paper?: boolean;
+  keyboard?: boolean;
 }>;
 
 export function OnboardingScreen({
@@ -27,30 +35,39 @@ export function OnboardingScreen({
   children,
   footer,
   paper,
+  keyboard = false,
 }: ScreenProps) {
   return (
     <SafeAreaView
       style={[styles.safeArea, paper ? styles.paper : styles.canvas]}
     >
-      <ScrollView contentContainerStyle={styles.viewport}>
-        <View style={styles.column}>
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <View style={styles.brand}>
-                <Image
-                  source={require("../../assets/images/otagai-mark.png")}
-                  style={styles.mark}
-                  accessible={false}
-                />
-                <Text className="type-wordmark text-action">Otagai</Text>
+      <KeyboardAvoidingView
+        style={styles.safeArea}
+        behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.viewport}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.column}>
+            <View style={styles.content}>
+              <View style={styles.header}>
+                <View style={styles.brand}>
+                  <Image
+                    source={require("../../assets/images/otagai-mark.png")}
+                    style={styles.mark}
+                    accessible={false}
+                  />
+                  <Text className="type-wordmark text-action">Otagai</Text>
+                </View>
+                {action}
               </View>
-              {action}
+              {children}
             </View>
-            {children}
+            {footer ? <View style={styles.actions}>{footer}</View> : null}
           </View>
-          <View style={styles.actions}>{footer}</View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -147,14 +164,17 @@ export function OnboardingFinish() {
 export function OnboardingLink({
   label,
   onPress,
+  disabled,
 }: {
   label: string;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   const { locale } = useOnboardingText();
   return (
     <Button
       label={label}
+      disabled={disabled}
       labelStyle={[localizedType("button", locale), styles.secondaryLabel]}
       variant="secondary"
       style={styles.secondary}

@@ -1,7 +1,10 @@
-import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useRef, useState } from "react";
+import { Text, View } from "react-native";
 
+import {
+  OnboardingLink,
+  OnboardingScreen,
+} from "@/components/onboarding-screen";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Language, type Region } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
@@ -17,23 +20,22 @@ const languages = [
 export default function ProfileSetup() {
   const { state } = useOnboarding();
   const { t, locale } = useOnboardingText();
-  const bodyStyle = localizedType("body", locale);
-  const buttonStyle = localizedType("button", locale);
-  const regions = [
-    { value: "jp", label: t("japanCountry") },
-    { value: "bd", label: t("bangladeshCountry") },
-  ] as const;
   const { setProfile, reloadProfile, signOut } = useSession();
   const [name, setName] = useState("");
   const [language, setLanguage] = useState<Language>(state.language);
   const [region, setRegion] = useState<Region>(state.region);
   const [helpWith, setHelpWith] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
+  const body = localizedType("body", locale);
+  const fieldLabel = localizedType("field-label", locale);
 
   async function save() {
+    if (!name.trim() || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
-    setError(null);
+    setFailed(false);
     try {
       const profile = await api.createProfile({
         display_name: name.trim(),
@@ -42,92 +44,100 @@ export default function ProfileSetup() {
         happy_to_help_with: helpWith.trim() || undefined,
       });
       setProfile(profile);
-    } catch (saveError) {
-      if (saveError instanceof ApiError && saveError.status === 409) {
+    } catch (failure) {
+      if (failure instanceof ApiError && failure.status === 409) {
         await reloadProfile();
         return;
       }
-      setError(
-        saveError instanceof Error ? saveError.message : "Could not save.",
-      );
+      setFailed(true);
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-canvas">
-      <ScrollView
-        contentContainerClassName="gap-card-inset px-screen-gutter py-card-inset"
-        keyboardShouldPersistTaps="handled"
-      >
+    <OnboardingScreen
+      keyboard
+      action={
+        <OnboardingLink
+          label={t("signOut")}
+          disabled={busy}
+          onPress={signOut}
+        />
+      }
+      footer={
+        <Button
+          label={t("continue")}
+          labelStyle={localizedType("button", locale)}
+          busy={busy}
+          disabled={!name.trim()}
+          onPress={save}
+        />
+      }
+    >
+      <View className="gap-related-gap">
         <Text
-          className="type-screen-title text-ink"
           accessibilityRole="header"
+          className="text-ink"
           style={localizedType("screen-title", locale)}
         >
           {t("aboutYou")}
         </Text>
-        <Text className="type-body text-secondary" style={bodyStyle}>
+        <Text className="text-secondary" style={body}>
           {t("profileBody")}
         </Text>
-        <Field
-          label={t("name")}
-          style={bodyStyle}
-          labelStyle={bodyStyle}
-          value={name}
-          onChangeText={setName}
-          maxLength={80}
-          autoComplete="name"
-          placeholder={t("nameExample")}
+      </View>
+      <Field
+        label={t("name")}
+        style={body}
+        labelStyle={fieldLabel}
+        value={name}
+        onChangeText={setName}
+        maxLength={80}
+        autoComplete="name"
+        placeholder={t("nameExample")}
+        editable={!busy}
+      />
+      <View className="gap-related-gap">
+        <Text className="text-ink" style={fieldLabel}>
+          {t("language")}
+        </Text>
+        <Choice
+          options={languages}
+          labelStyle={(selected) => localizedType("body", selected)}
+          value={language}
+          onChange={setLanguage}
+          disabled={busy}
         />
-        <View className="gap-related-gap">
-          <Text className="type-body text-secondary" style={bodyStyle}>
-            {t("language")}
-          </Text>
-          <Choice
-            options={languages}
-            labelStyle={(value) => localizedType("body", value)}
-            value={language}
-            onChange={setLanguage}
-          />
-        </View>
-        <View className="gap-related-gap">
-          <Text className="type-body text-secondary" style={bodyStyle}>
-            {t("whereYouLive")}
-          </Text>
-          <Choice
-            options={regions}
-            labelStyle={() => bodyStyle}
-            value={region}
-            onChange={setRegion}
-          />
-        </View>
-        <Field
-          label={t("helpWith")}
-          style={bodyStyle}
-          labelStyle={bodyStyle}
-          value={helpWith}
-          onChangeText={setHelpWith}
-          maxLength={500}
-          multiline
-          placeholder={t("helpWithExample")}
+      </View>
+      <View className="gap-related-gap">
+        <Text className="text-ink" style={fieldLabel}>
+          {t("whereYouLive")}
+        </Text>
+        <Choice
+          options={[
+            { value: "jp", label: t("japanCountry") },
+            { value: "bd", label: t("bangladeshCountry") },
+          ]}
+          labelStyle={() => body}
+          value={region}
+          onChange={setRegion}
+          disabled={busy}
         />
-        <ErrorText>{error}</ErrorText>
-        <Button
-          label={t("continue")}
-          labelStyle={buttonStyle}
-          onPress={save}
-          busy={busy}
-          disabled={name.trim().length === 0}
-        />
-        <Button
-          label={t("signOut")}
-          labelStyle={buttonStyle}
-          variant="secondary"
-          onPress={signOut}
-        />
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+      <Field
+        label={t("helpWith")}
+        style={body}
+        labelStyle={fieldLabel}
+        value={helpWith}
+        onChangeText={setHelpWith}
+        maxLength={500}
+        multiline
+        editable={!busy}
+        placeholder={t("helpWithExample")}
+      />
+      {failed ? <ErrorText>{t("saveError")}</ErrorText> : null}
+    </OnboardingScreen>
   );
 }

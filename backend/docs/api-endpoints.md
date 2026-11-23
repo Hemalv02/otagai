@@ -278,7 +278,7 @@ Apply per-user limits through Redis to AI helpers, uploads, profile creation, re
 
 # Part 2: Endpoints
 
-Each row gives the success status, the screens it serves, and whether it's needed for the 24 Nov demo (**MVP**) or can wait (**Later**). **Done** means it already exists. Sign-in itself (phone or email code) goes straight to Supabase Auth from the app, so it has no backend endpoint.
+Each row gives the success status, the screens it serves, and whether it's needed for the 24 Nov demo (**MVP**) or can wait (**Later**). **Done** means it already exists. Email/password registration and sign-in go straight to Supabase Auth from the app.
 
 There is deliberately no "decline" endpoint for a request. Not answering is the no.
 
@@ -310,7 +310,7 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `GET /circles?near=lat,lng` or `?q=` | Search circles near me or by name. Returns approximate locations only | 200 | 4 | MVP |
+| `GET /circles?near=lat,lng` or `?q=` | Search open circles in the profile's region. Nearby results are limited to 3 km and ordered by distance. Returns approximate locations only | 200 | 4 | MVP |
 | `GET /circles/{circle_id}` | Circle details. Members whose membership isn't approved get a limited view | 200 | 4, 38 | MVP |
 | `POST /circles` | Start a circle; the creator becomes its leader | 201 | 4 | MVP |
 | `PATCH /circles/{circle_id}` | Leader edits the name, translations or `open_to_nearby` | 200 | 40 | Later |

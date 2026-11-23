@@ -6,6 +6,7 @@ import { DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
+import { MembershipProvider, useMemberships } from "@/lib/memberships";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { getLaunchRoute } from "@/lib/onboarding-state";
 import { SessionProvider, useSession } from "@/lib/session";
@@ -31,6 +32,7 @@ SplashScreen.preventAutoHideAsync().catch((error: unknown) => {
 function RootNavigator() {
   const { session, isLoading, profile } = useSession();
   const { ready, state } = useOnboarding();
+  const memberships = useMemberships();
   const [fontsLoaded, fontError] = useFonts(fontAssets);
 
   useEffect(() => {
@@ -49,6 +51,10 @@ function RootNavigator() {
   const launchRoute = getLaunchRoute({
     signedIn: session !== null,
     needsProfile: profile.status === "missing",
+    needsCircle:
+      profile.status === "ready" &&
+      memberships.state.status === "ready" &&
+      memberships.access !== "approved",
     completed: state.completed,
   });
 
@@ -77,6 +83,9 @@ function RootNavigator() {
       <Stack.Protected guard={launchRoute === "profile-setup"}>
         <Stack.Screen name="profile-setup" />
       </Stack.Protected>
+      <Stack.Protected guard={launchRoute === "find-circle"}>
+        <Stack.Screen name="find-circle" />
+      </Stack.Protected>
       <Stack.Protected guard={launchRoute === "index"}>
         <Stack.Screen name="index" />
       </Stack.Protected>
@@ -90,7 +99,9 @@ export default function RootLayout() {
       <StatusBar style="dark" />
       <SessionProvider>
         <OnboardingProvider>
-          <RootNavigator />
+          <MembershipProvider>
+            <RootNavigator />
+          </MembershipProvider>
         </OnboardingProvider>
       </SessionProvider>
     </ThemeProvider>

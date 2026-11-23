@@ -1,6 +1,7 @@
 import { createInstance } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { accountCopy } from "@/lib/account-copy";
 import type { Language } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
 import { fonts, typography } from "@/theme/tokens.json";
@@ -42,15 +43,7 @@ const en = {
   save: "Save preferences",
   saveError: "Could not save your choices. Try again.",
   signIn: "Sign in",
-  phone: "Phone",
   email: "Email",
-  japanCode: "Japan +81",
-  bangladeshCode: "Bangladesh +880",
-  phoneNumber: "Phone number",
-  sendCode: "Send code",
-  code: "Code",
-  codeSent: "We sent a 6-digit code to {{target}}.",
-  changeTarget: "Use a different number or email",
   aboutYou: "About you",
   profileBody: "Your neighbours will see this name.",
   name: "Name",
@@ -102,15 +95,7 @@ const ja: typeof en = {
   save: "設定を保存",
   saveError: "設定を保存できませんでした。もう一度お試しください。",
   signIn: "ログイン",
-  phone: "電話番号",
   email: "メール",
-  japanCode: "日本 +81",
-  bangladeshCode: "バングラデシュ +880",
-  phoneNumber: "電話番号",
-  sendCode: "認証コードを送る",
-  code: "認証コード",
-  codeSent: "{{target}} に6桁の認証コードを送信しました。",
-  changeTarget: "別の電話番号またはメールアドレスを使う",
   aboutYou: "プロフィール",
   profileBody: "ここで入力した名前は、ご近所の方に表示されます。",
   name: "名前",
@@ -160,15 +145,7 @@ const bn: typeof en = {
   save: "সেটিংস সংরক্ষণ করুন",
   saveError: "আপনার পছন্দ সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।",
   signIn: "সাইন ইন",
-  phone: "ফোন",
   email: "ইমেইল",
-  japanCode: "জাপান +৮১",
-  bangladeshCode: "বাংলাদেশ +৮৮০",
-  phoneNumber: "ফোন নম্বর",
-  sendCode: "কোড পাঠান",
-  code: "কোড",
-  codeSent: "{{target}}-এ ৬ অঙ্কের কোড পাঠানো হয়েছে।",
-  changeTarget: "অন্য নম্বর বা ইমেইল ব্যবহার করুন",
   aboutYou: "আপনার পরিচয়",
   profileBody: "আপনার প্রতিবেশীরা এই নামটি দেখতে পাবেন।",
   name: "নাম",
@@ -191,9 +168,9 @@ void i18n.init({
   initAsync: false,
   interpolation: { escapeValue: false },
   resources: {
-    en: { onboarding: en },
-    ja: { onboarding: ja },
-    bn: { onboarding: bn },
+    en: { onboarding: { ...en, ...accountCopy.en } },
+    ja: { onboarding: { ...ja, ...accountCopy.ja } },
+    bn: { onboarding: { ...bn, ...accountCopy.bn } },
   },
 });
 

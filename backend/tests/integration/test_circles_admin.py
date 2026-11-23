@@ -39,9 +39,7 @@ async def test_patch_and_archive_circle(client):
     assert patched.status_code == 200
     assert patched.json()["open_to_nearby"] is False
 
-    archived = await client.post(
-        f"/circles/{circle_id}/archive", headers=auth(leader)
-    )
+    archived = await client.post(f"/circles/{circle_id}/archive", headers=auth(leader))
     assert archived.status_code == 200
     assert archived.json()["status"] == "archived"
 
@@ -57,9 +55,7 @@ async def test_memberships_roster_and_role_changes(client):
     assert mine.status_code == 200
     assert circle_id in [m["circle_id"] for m in mine.json()["items"]]
 
-    roster = await client.get(
-        f"/circles/{circle_id}/memberships", headers=auth(leader)
-    )
+    roster = await client.get(f"/circles/{circle_id}/memberships", headers=auth(leader))
     assert roster.status_code == 200
 
     promoted = await client.patch(
@@ -122,3 +118,55 @@ async def test_revoke_invite_and_leave_circle(client):
         f"/users/me/memberships/{circle_id}", headers=auth(member)
     )
     assert left.status_code == 204
+
+
+async def test_nearby_search_returns_open_local_circles_in_distance_order(client):
+    leader = await make_user(client)
+    visitor = await make_user(client)
+
+    async def create(name, latitude, *, discoverable=True):
+        result = await client.post(
+            "/circles",
+            headers=auth(leader),
+            json={
+                "name": name,
+                "unit_type": "han",
+                "approx_lat": latitude,
+                "approx_lng": 129.8737,
+                "open_to_nearby": discoverable,
+            },
+        )
+        assert result.status_code == 201, result.text
+        return result.json()["id"]
+
+    nearest = await create("Nearest", 32.7505)
+    second = await create("Next nearest", 32.7700)
+    await create("Out of range", 32.7800)
+    closed = await create("Invite only", 32.7504, discoverable=False)
+
+    query = {"near": "32.7503,129.8737", "limit": 1}
+    first = await client.get("/circles", headers=auth(visitor), params=query)
+    assert first.status_code == 200
+    assert [row["id"] for row in first.json()["items"]] == [nearest]
+    cursor = first.json()["next_cursor"]
+    assert cursor
+    following = await client.get(
+        "/circles", headers=auth(visitor), params={**query, "cursor": cursor}
+    )
+    assert following.status_code == 200
+    assert [row["id"] for row in following.json()["items"]] == [second]
+    assert following.json()["next_cursor"] is None
+
+    denied = await client.post(
+        "/users/me/memberships", headers=auth(visitor), json={"circle_id": closed}
+    )
+    assert denied.status_code == 404
+    invite = await client.post(
+        f"/circles/{closed}/invites", headers=auth(leader), json={}
+    )
+    code = invite.headers["Location"].rsplit("/", 1)[-1]
+    joined = await client.post(
+        "/users/me/memberships", headers=auth(visitor), json={"invite_code": code}
+    )
+    assert joined.status_code == 201
+    assert joined.json()["status"] == "pending"

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -15,7 +15,17 @@ from app.database.models.enums import (
     MembershipStatus,
 )
 from app.repositories.errors import violates
-from app.repositories.pagination import PageRequest, PageResult, paginate
+from app.repositories.pagination import (
+    MAX_PAGE_SIZE,
+    PageRequest,
+    PageResult,
+    decode_cursor,
+    encode_cursor,
+    paginate,
+)
+
+NEARBY_RADIUS_METERS = 3000
+EARTH_RADIUS_METERS = 6371000
 
 
 class DuplicateMembershipError(Exception):
@@ -80,18 +90,48 @@ class CircleRepository:
     async def search(
         self, criteria: CircleSearch, page: PageRequest
     ) -> PageResult[Circle]:
-        statement = select(Circle).where(Circle.status == CircleStatus.ACTIVE.value)
+        statement = select(Circle).where(
+            Circle.status == CircleStatus.ACTIVE.value, Circle.open_to_nearby.is_(True)
+        )
         if criteria.region:
             statement = statement.where(Circle.region == criteria.region)
         if criteria.query:
             statement = statement.where(Circle.name.ilike(f"%{criteria.query}%"))
         if criteria.lat is not None and criteria.lng is not None:
-            distance = func.abs(Circle.approx_lat - criteria.lat) + func.abs(
-                Circle.approx_lng - criteria.lng
+            origin_lat = func.radians(criteria.lat)
+            circle_lat = func.radians(Circle.approx_lat)
+            lng_delta = func.radians(Circle.approx_lng - criteria.lng)
+            cosine = func.sin(origin_lat) * func.sin(circle_lat) + (
+                func.cos(origin_lat) * func.cos(circle_lat) * func.cos(lng_delta)
             )
-            statement = statement.where(
-                Circle.approx_lat.is_not(None), Circle.approx_lng.is_not(None)
-            ).order_by(distance.asc())
+            meters = EARTH_RADIUS_METERS * func.acos(
+                func.least(1.0, func.greatest(-1.0, cosine))
+            )
+            distance = cast(meters, Integer).label("distance_m")
+            nearby = statement.where(
+                Circle.approx_lat.is_not(None),
+                Circle.approx_lng.is_not(None),
+                meters <= NEARBY_RADIUS_METERS,
+            ).add_columns(distance)
+            cursor_name = "circle_distance_m,id:asc"
+            if page.cursor is not None:
+                position = decode_cursor(
+                    page.cursor, (distance, Circle.id), cursor_name
+                )
+                nearby = nearby.where(tuple_(distance, Circle.id) > tuple_(*position))
+            limit = min(max(page.limit, 1), MAX_PAGE_SIZE)
+            result = await self._session.execute(
+                nearby.order_by(distance.asc(), Circle.id.asc()).limit(limit + 1)
+            )
+            rows = result.all()
+            items = [circle for circle, _ in rows[:limit]]
+            if len(rows) <= limit:
+                return PageResult(items=items, next_cursor=None)
+            last, last_meters = rows[limit - 1]
+            return PageResult(
+                items=items,
+                next_cursor=encode_cursor([last_meters, last.id], cursor_name),
+            )
         return await paginate(
             self._session, statement, page, Circle.created_at, Circle.id
         )

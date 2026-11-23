@@ -172,7 +172,11 @@ async def join_circle(
         circle = await circles.get(target_circle_id)
         if circle is None or circle.status != CircleStatus.ACTIVE.value:
             raise CircleNotFoundError
-        existing = await memberships.get(target_circle_id, user.id)
+        if invite is None and (
+            not circle.open_to_nearby or circle.region != user.region
+        ):
+            raise CircleNotFoundError
+        existing = await memberships.get_for_update(target_circle_id, user.id)
         if existing is not None and existing.status in (
             MembershipStatus.APPROVED.value,
             MembershipStatus.PENDING.value,
@@ -192,6 +196,8 @@ async def join_circle(
                 JoinMethod.INVITE.value if invite else JoinMethod.SEARCH.value
             ),
             "invite_id": invite.id if invite else None,
+            "decided_by_user_id": None,
+            "decided_at": None,
         }
         if auto_approve:
             values["decided_at"] = datetime.now(UTC)

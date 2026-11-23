@@ -58,18 +58,9 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [entry, setEntry] = useState<ProfileEntry | null>(null);
 
   useEffect(() => {
-    supabase.auth
-      .getSession()
-      .then(({ data, error }) => {
-        if (error) {
-          console.warn("Could not restore the session.", error.message);
-        }
-        setSession(data.session);
-      })
-      .finally(() => setIsLoading(false));
-
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next);
+      setIsLoading(false);
     });
     return () => data.subscription.unsubscribe();
   }, []);
