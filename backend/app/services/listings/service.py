@@ -399,6 +399,12 @@ async def update_listing(
         listing = await _load_owned_for_update(session, actor, listing_id)
         if listing.status == ListingStatus.LENT_OUT.value:
             raise ListingLentOutError
+        if "lend_mode" in changes:
+            target = await CategoryRepository(session).get(listing.category_id)
+            if listing.kind == ListingKind.SKILL.value or (
+                target is not None and target.is_risky
+            ):
+                changes = {**changes, "lend_mode": RISKY_LEND_MODE}
         if changes:
             await ListingRepository(session).update(listing, changes)
         return await _detail_view(session, storage, settings, listing)
