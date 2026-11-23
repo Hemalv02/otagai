@@ -15,7 +15,7 @@ from app.database.models.enums import (
 from app.repositories.blocks import BlockRepository
 from app.repositories.circles import CircleRepository
 from app.repositories.media import MediaRepository
-from app.services.actors.service import Actor
+from app.services.actors.service import Actor, ProxyScope
 from app.services.errors import (
     ConflictError,
     NotFoundError,
@@ -157,6 +157,10 @@ async def _can_view(session, actor: Actor, media: MediaFile) -> bool:
         return True
     if media.purpose == MediaPurpose.ASK.value:
         return False
+    if media.purpose == MediaPurpose.HANDOVER.value:
+        return await MediaRepository(session).is_handover_participant(
+            media.id, viewer_id
+        )
     if await BlockRepository(session).is_blocked_either_way(
         viewer_id, media.owner_user_id
     ):
@@ -176,6 +180,8 @@ async def read_media(
             raise MediaNotFoundError
         if not await _can_view(session, actor, media):
             raise MediaNotFoundError
+        if media.purpose == MediaPurpose.HANDOVER.value:
+            actor.require(ProxyScope.VIEW_ACTIVITY)
         variants = await repository.get_variants(media_id)
     urls = await _sign_variants(storage, settings, variants)
     return MediaView(media=media, urls=urls)

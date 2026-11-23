@@ -433,7 +433,7 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 | `GET /users/me/exchanges?status=` | My scheduled, active and finished exchanges, as lender or borrower | 200 | 25 | MVP |
 | `GET /exchanges/{exchange_id}` | Detail: time, place note, due date, both confirmations | 200 | 23–27 | MVP |
 | `PATCH /exchanges/{exchange_id}` | Set the agreed time, place note or due date | 200 | 23 | MVP |
-| `POST /exchanges/{exchange_id}/hand-over` | Mark the item as handed over (scheduled → active) | 200 | 24 | MVP |
+| `POST /exchanges/{exchange_id}/hand-over` | Move a scheduled exchange to active. Loans require a completed pickup checklist | 200 | 24 | MVP |
 | `POST /exchanges/{exchange_id}/return` | Mark the item as returned | 200 | 26 | MVP |
 | `POST /exchanges/{exchange_id}/confirm` | My side confirms it's done. When both have confirmed: completed, pair stats updated, listing available again | 200 | 26, 27 | MVP |
 | `POST /exchanges/{exchange_id}/cancel` | Cancel. 409 after the handover | 200 | 17 | MVP |
@@ -452,13 +452,17 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `POST /exchanges/{exchange_id}/handover-checks` | Start a pickup or return check with `media_ids`. Items are filled from the listing's parts and the AI. 409 if that phase already has a check | 201 | 24, 26 | MVP |
+| `POST /exchanges/{exchange_id}/handover-checks` | Start a pickup or return check with optional `media_ids`. The checklist starts with the listing's parts. 409 if that phase already has a check | 201 | 24, 26 | MVP |
 | `GET /exchanges/{exchange_id}/handover-checks` | The exchange's pickup and return checks | 200 | 24, 26 | MVP |
-| `GET /handover-checks/{check_id}` | One checklist with its items and photos | 200 | 24, 26 | MVP |
+| `GET /handover-checks/{check_id}` | One checklist with its items, `media_ids`, and `revision` | 200 | 24, 26 | MVP |
+| `POST /handover-checks/{check_id}/media` | Attach the caller's handover uploads using `media_ids`, up to eight photos total. Either participant can read attached media | 200 | 24 | MVP |
+| `POST /handover-checks/{check_id}/suggestions` | Suggest additional visible items and quantities from the pickup photos in `lang`. Add accepted items separately | 200 | 24 | MVP |
 | `POST /handover-checks/{check_id}/items` | Add an item by hand | 201 | 24 | MVP |
-| `PATCH /handover-checks/{check_id}/items/{item_id}` | Mark an item present or missing, or dispute it with a note | 200 | 24, 26 | MVP |
-| `DELETE /handover-checks/{check_id}/items/{item_id}` | Remove an item. 409 once anyone has confirmed | 204 | 24 | MVP |
-| `POST /handover-checks/{check_id}/confirm` | The lender or borrower confirms. Locked once both have confirmed | 200 | 24, 26 | MVP |
+| `PATCH /handover-checks/{check_id}/items/{item_id}` | Edit the label, quantity, present flag or dispute note. The person who flagged an issue can clear its note with `null` | 200 | 24, 26 | MVP |
+| `DELETE /handover-checks/{check_id}/items/{item_id}` | Remove an item from the checklist | 204 | 24 | MVP |
+| `POST /handover-checks/{check_id}/confirm` | Send the reviewed `revision` to confirm a scheduled loan pickup. A stale revision returns 409. The checklist must be nonempty, with every item present and every dispute resolved. Two distinct signers lock the checklist | 200 | 24, 26 | MVP |
+
+Edits to a loan pickup checklist reset any existing confirmation. Photos and AI suggestions are optional. Caretakers need `can_view_activity` to view a pickup checklist, its photos, or suggestions. Participants with their own sign-in manage and confirm pickup directly. A caretaker can act for a managed participant with both `can_view_activity` and `can_post_requests`. The same person cannot sign both sides.
 
 ## 10. Chat
 
