@@ -11,6 +11,7 @@ import {
 
 import { ApiError, api, type UserProfile } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
+import { removeDeviceRegistration } from "@/lib/device-push";
 
 type ProfileState =
   | { status: "loading" }
@@ -102,11 +103,12 @@ export function SessionProvider({ children }: PropsWithChildren) {
   );
 
   const signOut = useCallback(async () => {
+    if (userId) await removeDeviceRegistration(userId).catch(() => undefined);
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.warn("Could not sign out cleanly.", error.message);
     }
-  }, []);
+  }, [userId]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

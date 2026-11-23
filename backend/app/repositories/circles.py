@@ -28,6 +28,16 @@ NEARBY_RADIUS_METERS = 3000
 EARTH_RADIUS_METERS = 6371000
 
 
+def circle_distance_meters(lat: float, lng: float):
+    origin_lat = func.radians(lat)
+    circle_lat = func.radians(Circle.approx_lat)
+    lng_delta = func.radians(Circle.approx_lng - lng)
+    cosine = func.sin(origin_lat) * func.sin(circle_lat) + (
+        func.cos(origin_lat) * func.cos(circle_lat) * func.cos(lng_delta)
+    )
+    return EARTH_RADIUS_METERS * func.acos(func.least(1.0, func.greatest(-1.0, cosine)))
+
+
 class DuplicateMembershipError(Exception):
     pass
 
@@ -98,15 +108,7 @@ class CircleRepository:
         if criteria.query:
             statement = statement.where(Circle.name.ilike(f"%{criteria.query}%"))
         if criteria.lat is not None and criteria.lng is not None:
-            origin_lat = func.radians(criteria.lat)
-            circle_lat = func.radians(Circle.approx_lat)
-            lng_delta = func.radians(Circle.approx_lng - criteria.lng)
-            cosine = func.sin(origin_lat) * func.sin(circle_lat) + (
-                func.cos(origin_lat) * func.cos(circle_lat) * func.cos(lng_delta)
-            )
-            meters = EARTH_RADIUS_METERS * func.acos(
-                func.least(1.0, func.greatest(-1.0, cosine))
-            )
+            meters = circle_distance_meters(criteria.lat, criteria.lng)
             distance = cast(meters, Integer).label("distance_m")
             nearby = statement.where(
                 Circle.approx_lat.is_not(None),

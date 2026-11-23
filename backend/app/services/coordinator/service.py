@@ -57,7 +57,7 @@ async def list_circle_requests(
     async with database.session() as session:
         await _require_coordinator(session, circle_id, user.id)
         return await RequestRepository(session).list_for_circle(
-            circle_id, statuses, page
+            circle_id, user.id, statuses, page
         )
 
 
@@ -66,7 +66,7 @@ async def list_unmet_needs(
 ) -> PageResult[HelpRequest]:
     async with database.session() as session:
         await _require_coordinator(session, circle_id, user.id)
-        return await RequestRepository(session).list_unmet(circle_id, page)
+        return await RequestRepository(session).list_unmet(circle_id, user.id, page)
 
 
 async def list_helpers(
@@ -94,6 +94,7 @@ async def map_pins(
     database: Database, actor: Actor, bbox: tuple[float, float, float, float]
 ) -> list[MapPin]:
     min_lng, min_lat, max_lng, max_lat = bbox
+    can_view_requests = actor.grant is None or actor.grant.can_view_activity
     async with database.session() as session:
         circles_repo = CircleRepository(session)
         memberships_repo = MembershipRepository(session)
@@ -108,8 +109,12 @@ async def map_pins(
             lng = float(circle.approx_lng)
             if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
                 continue
-            open_requests = await requests_repo.list_for_circle(
-                circle.id, ("open",), PageRequest(limit=50)
+            open_requests = (
+                await requests_repo.count_open_for_circle(
+                    circle.id, actor.subject_id, actor.user.id
+                )
+                if can_view_requests
+                else 0
             )
             member_ids = await memberships_repo.approved_member_ids(circle.id)
             listing_counts = await ListingRepository(session).count_active_for_owners(
@@ -118,7 +123,7 @@ async def map_pins(
             pins.append(
                 MapPin(
                     circle=circle,
-                    open_requests=len(open_requests.items),
+                    open_requests=open_requests,
                     active_listings=sum(listing_counts.values()),
                 )
             )

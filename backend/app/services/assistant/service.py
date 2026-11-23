@@ -57,6 +57,7 @@ from app.services.listings.service import (
     assistant_listings_by_id,
     match_assistant_listings,
 )
+from app.services.requests.ripple import RippleStartStage
 from app.services.requests.service import (
     NewRequest,
     NoCircleError,
@@ -237,6 +238,8 @@ class Confirmation(BaseModel):
     needed_from: AwareDatetime | None = None
     needed_until: AwareDatetime | None = None
     home_circle_id: uuid.UUID | None = None
+    ripple_max_stage: RippleStage | None = None
+    ripple_start_stage: RippleStartStage | None = None
 
     @model_validator(mode="after")
     def check_dates(self) -> "Confirmation":
@@ -246,6 +249,14 @@ class Confirmation(BaseModel):
             and self.needed_until < self.needed_from
         ):
             raise ValueError("The end time must be after the start time.")
+        direct = self.direct_to_user_id is not None or self.listing_id is not None
+        if direct and (
+            self.ripple_start_stage is not None
+            or self.ripple_max_stage not in (None, RippleStage.DIRECT)
+        ):
+            raise ValueError("A request to one person cannot widen.")
+        if not direct and self.ripple_max_stage is RippleStage.DIRECT:
+            raise ValueError("Set a direct recipient for a direct request.")
         return self
 
 
@@ -577,8 +588,9 @@ async def confirm_turn(
                 needed_until=approval.needed_until,
                 ripple_max_stage=RippleStage.DIRECT.value
                 if recipient_id
-                else RippleStage.HAN.value,
+                else (approval.ripple_max_stage or RippleStage.HAN).value,
                 home_circle_id=home_circle_id,
+                ripple_start_stage=approval.ripple_start_stage,
             ),
         )
         if approval.listing_id:

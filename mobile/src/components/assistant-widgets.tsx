@@ -19,7 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Button, ErrorText, Field } from "@/components/ui";
+import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import type { Circle, Language } from "@/lib/api";
 import {
   assistantApi,
@@ -34,6 +34,11 @@ import {
 } from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { localizedType } from "@/lib/onboarding-i18n";
+import {
+  rippleCopy,
+  rippleScopes,
+  type RippleScope,
+} from "@/lib/request-ripple";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export const assistantIcons = {
@@ -468,14 +473,21 @@ export function ReviewSheet({
   const copy = assistantCopy[locale];
   const [description, setDescription] = useState(review.text);
   const [when, setWhen] = useState(review.when);
-  const body = confirmationBody(review, description, when, homeCircle?.id);
+  const [scope, setScope] = useState<RippleScope>("han");
+  const delivery = rippleCopy[locale];
+  const body = confirmationBody(
+    review,
+    description,
+    when,
+    homeCircle?.id,
+    scope,
+  );
   const needsCircle = !review.listingId && !homeCircle;
   const localizedCircleName = homeCircle?.name_translations[locale];
-  const recipient =
-    review.recipient ??
-    (typeof localizedCircleName === "string"
+  const circleName =
+    typeof localizedCircleName === "string"
       ? localizedCircleName
-      : homeCircle?.name);
+      : homeCircle?.name;
   let validation = null;
   if (!description.trim()) validation = copy.requestRequired;
   else if (hasClearedTiming(review, description, when))
@@ -517,9 +529,9 @@ export function ReviewSheet({
             {review.title}
           </Text>
         ) : null}
-        {recipient ? (
+        {review.recipient ? (
           <Text style={[localizedType("supporting", locale), styles.secondary]}>
-            {copy.to} · {recipient}
+            {copy.to} · {review.recipient}
           </Text>
         ) : null}
       </View>
@@ -544,6 +556,27 @@ export function ReviewSheet({
         style={text}
         labelStyle={label}
       />
+      {!review.listingId && homeCircle ? (
+        <View style={styles.reviewHeading}>
+          <Text style={[label, styles.ink]}>{delivery.limit}</Text>
+          <Choice
+            options={rippleScopes.map((value) => ({
+              value,
+              label:
+                value === "han"
+                  ? (circleName ?? delivery.stages.han)
+                  : delivery.stages[value],
+            }))}
+            value={scope}
+            onChange={setScope}
+            disabled={busy}
+            labelStyle={() => label}
+          />
+          <Text style={[localizedType("supporting", locale), styles.secondary]}>
+            {delivery.startsWithFamily}
+          </Text>
+        </View>
+      ) : null}
       {validation || error || needsCircle ? (
         <ErrorText>{validation ?? error ?? copy.circleRequired}</ErrorText>
       ) : null}

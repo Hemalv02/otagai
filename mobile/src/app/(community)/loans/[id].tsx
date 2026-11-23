@@ -21,6 +21,7 @@ import {
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
+import { livePickupCopy } from "@/lib/live-pickup";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -96,14 +97,11 @@ export default function LoanDetailsScreen() {
   const stage = exchange && loanStage(exchange, profileId);
   const active = stage === "return";
   const progression = {
-    pickup: { label: screen.recordPickup, advance: "hand-over" },
     return: { label: screen.recordReturn, advance: "return" },
     confirm: { label: screen.confirmReturn, advance: "confirm" },
   } as const;
   const next =
-    stage === "pickup" || stage === "return" || stage === "confirm"
-      ? progression[stage]
-      : null;
+    stage === "return" || stage === "confirm" ? progression[stage] : null;
   const itemName = title || copy.unnamedLoan;
   const messageAction = (
     <Button
@@ -158,13 +156,7 @@ export default function LoanDetailsScreen() {
       if (failure instanceof ApiError && failure.status === 409) {
         const latest = await loan.reload();
         if (latest) {
-          setNotice(
-            "advance" in action &&
-              action.advance === "hand-over" &&
-              latest.exchange.status === "scheduled"
-              ? screen.pickupUnavailable
-              : copy.conflict,
-          );
+          setNotice(copy.conflict);
         }
       } else setError(copy.actionError);
     } finally {
@@ -234,6 +226,17 @@ export default function LoanDetailsScreen() {
           </View>
           {notice ? <ActivityText>{notice}</ActivityText> : null}
           {error ? <ErrorText>{error}</ErrorText> : null}
+          {stage === "pickup" || exchange.handed_over_at ? (
+            <Button
+              label={livePickupCopy[locale].title}
+              variant={stage === "pickup" ? "primary" : "secondary"}
+              labelStyle={localizedType("button", locale)}
+              disabled={loan.loading || loan.error}
+              onPress={() =>
+                router.push({ pathname: "/loans/[id]/pickup", params: { id } })
+              }
+            />
+          ) : null}
           {next ? (
             <Button
               label={next.label}
