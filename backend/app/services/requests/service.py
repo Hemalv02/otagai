@@ -10,6 +10,7 @@ from app.database.models.enums import (
     ConversationKind,
     ExchangeMode,
     ExchangeStatus,
+    ListingStatus,
     MediaPurpose,
     MessageKind,
     NotificationType,
@@ -24,11 +25,13 @@ from app.database.models.enums import (
 )
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
-from app.repositories.circles import CircleRepository, MembershipRepository
+from app.repositories.circles import CircleRepository
 from app.repositories.exchanges import ExchangeRepository
+from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.repositories.notifications import NotificationRepository
 from app.repositories.pagination import PageRequest, PageResult
+from app.repositories.request_ripple import RippleRepository
 from app.repositories.requests import (
     LiveResponseExistsError,
     RecipientRepository,
@@ -44,14 +47,17 @@ from app.services.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.services.requests.ripple import (
+    RippleReceipt,
+    advance_ripple,
+    deliver_from,
+    delivery_receipt,
+    initial_stage,
+    next_stage,
+    reopen_after_match,
+    schedule_after,
+)
 
-RIPPLE_ORDER = [
-    RippleStage.DIRECT,
-    RippleStage.FAMILY,
-    RippleStage.HAN,
-    RippleStage.ASSOCIATION,
-    RippleStage.NEARBY,
-]
 DEFAULT_EXPIRY = timedelta(days=7)
 MAX_MEDIA = 6
 
@@ -115,6 +121,7 @@ class NewRequest:
     needed_until: datetime | None
     ripple_max_stage: str
     home_circle_id: uuid.UUID | None
+    ripple_start_stage: RippleStage | None = None
     media_ids: list[uuid.UUID] = field(default_factory=list)
 
 
@@ -132,14 +139,6 @@ class ReceivedView:
     request: HelpRequest
     recipient: RequestRecipient
     my_response_status: str | None
-
-
-async def _connected(session, viewer_id: uuid.UUID, other_id: uuid.UUID) -> bool:
-    if viewer_id == other_id:
-        return True
-    if await BlockRepository(session).is_blocked_either_way(viewer_id, other_id):
-        return False
-    return await CircleRepository(session).share_approved_circle(viewer_id, other_id)
 
 
 async def _visible_recipient(
@@ -166,78 +165,61 @@ async def create_request_in_session(
     actor.require(ProxyScope.POST_REQUESTS)
     requester_id = actor.subject_id
     now = datetime.now(UTC)
-    circles = CircleRepository(session)
-    approved = await circles.approved_circle_ids(requester_id)
-    home_circle_id = new_request.home_circle_id
-    if home_circle_id is not None:
-        if home_circle_id not in approved:
-            raise NoCircleError
-    elif approved:
-        home_circle_id = approved[0]
-    else:
+    if new_request.needed_until is not None and new_request.needed_until <= now:
+        raise BadRequestError("Choose an end time in the future.")
+    audiences = RippleRepository(session)
+    home_choices = (
+        [new_request.home_circle_id]
+        if new_request.home_circle_id is not None
+        else await CircleRepository(session).approved_circle_ids(requester_id)
+    )
+    lineage = []
+    for home_id in home_choices:
+        lineage = await audiences.home_lineage(requester_id, home_id)
+        if lineage:
+            break
+    if not lineage:
         raise NoCircleError
 
     media_ids = await _validated_media(session, requester_id, new_request.media_ids)
-    is_direct = new_request.direct_to_user_id is not None
-    if is_direct:
-        target_id = new_request.direct_to_user_id
-        if target_id == requester_id or not await _connected(
-            session, requester_id, target_id
-        ):
+    target_id = new_request.direct_to_user_id
+    if new_request.listing_id is not None:
+        listing = await ListingRepository(session).get(new_request.listing_id)
+        if listing is None or listing.status != ListingStatus.ACTIVE.value:
             raise RecipientUnreachableError
-        ripple_max = RippleStage.DIRECT.value
-        ripple_stage = RippleStage.DIRECT.value
+        if target_id is not None and target_id != listing.owner_user_id:
+            raise RecipientUnreachableError
+        target_id = listing.owner_user_id
+    if target_id is not None:
+        if not await audiences.can_send_direct(requester_id, target_id):
+            raise RecipientUnreachableError
+        ripple_max = ripple_stage = RippleStage.DIRECT
     else:
-        ripple_max = new_request.ripple_max_stage
-        ripple_stage = RippleStage.HAN.value
+        ripple_max = RippleStage(new_request.ripple_max_stage)
+        ripple_stage = initial_stage(ripple_max, new_request.ripple_start_stage)
 
-    requester = await UserRepository(session).get(requester_id)
     values = {
         "requester_user_id": requester_id,
         "acted_by_user_id": actor.user.id,
-        "region": requester.region,
+        "region": lineage[0].region,
         "kind": new_request.kind,
         "category_id": new_request.category_id,
         "listing_id": new_request.listing_id,
-        "direct_to_user_id": new_request.direct_to_user_id,
+        "direct_to_user_id": target_id,
         "raw_text": new_request.raw_text,
         "polite_text": new_request.polite_text or new_request.raw_text,
         "tone": new_request.tone,
         "lang": new_request.lang,
         "needed_from": new_request.needed_from,
         "needed_until": new_request.needed_until,
-        "home_circle_id": home_circle_id,
-        "ripple_stage": ripple_stage,
-        "ripple_max_stage": ripple_max,
+        "home_circle_id": lineage[0].id,
+        "ripple_stage": ripple_stage.value,
+        "ripple_max_stage": ripple_max.value,
         "status": RequestStatus.OPEN.value,
         "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
     }
     request = await RequestRepository(session).create(values, media_ids)
-
-    blocked = await BlockRepository(session).blocked_either_way(requester_id)
-    if is_direct:
-        recipients = [new_request.direct_to_user_id]
-        notification_type = NotificationType.REQUEST_DIRECT.value
-    else:
-        members = await MembershipRepository(session).approved_member_ids(
-            home_circle_id
-        )
-        recipients = [
-            member
-            for member in members
-            if member != requester_id and member not in set(blocked)
-        ]
-        notification_type = NotificationType.REQUEST_NEARBY.value
-    if recipients:
-        await RecipientRepository(session).add_many(
-            request.id, ripple_stage, recipients
-        )
-        await NotificationRepository(session).create_many(
-            recipients,
-            notification_type,
-            {"request_id": str(request.id)},
-        )
-    return request
+    return await deliver_from(session, request, ripple_stage, lineage, now)
 
 
 async def _validated_media(
@@ -328,10 +310,22 @@ async def update_request(
     actor.require(ProxyScope.POST_REQUESTS)
     async with database.session() as session:
         request = await _load_own_request_for_update(session, actor, request_id)
-        if request.status != RequestStatus.OPEN.value:
+        now = datetime.now(UTC)
+        if request.status != RequestStatus.OPEN.value or request.expires_at <= now:
             raise RequestNotOpenError
         if not changes:
             return request
+        start = changes.get("needed_from", request.needed_from)
+        end = changes.get("needed_until", request.needed_until)
+        if end is not None and (end <= now or (start is not None and end < start)):
+            raise BadRequestError("Choose a future end time after the start time.")
+        if "needed_until" in changes:
+            expires_at = end or now + DEFAULT_EXPIRY
+            changes = {
+                **changes,
+                "expires_at": expires_at,
+                "next_widen_at": schedule_after(request, now, expires_at),
+            }
         return await RequestRepository(session).update(request, changes)
 
 
@@ -375,6 +369,7 @@ async def cancel_request(
             {
                 "status": RequestStatus.CANCELLED.value,
                 "cancelled_at": now,
+                "next_widen_at": None,
             },
         )
         targets = [
@@ -393,55 +388,50 @@ async def cancel_request(
 
 
 async def widen_request(
-    database: Database, actor: Actor, request_id: uuid.UUID
+    database: Database,
+    actor: Actor,
+    request_id: uuid.UUID,
+    *,
+    expected_stage: RippleStage | None = None,
 ) -> HelpRequest:
     actor.require(ProxyScope.POST_REQUESTS)
-    now = datetime.now(UTC)
     async with database.session() as session:
         request = await _load_own_request_for_update(session, actor, request_id)
-        if request.status == RequestStatus.EXPIRED.value:
+        now = datetime.now(UTC)
+        if request.status == RequestStatus.EXPIRED.value or (
+            request.status == RequestStatus.OPEN.value and request.expires_at <= now
+        ):
+            expires_at = now + DEFAULT_EXPIRY
             return await RequestRepository(session).update(
                 request,
                 {
                     "status": RequestStatus.OPEN.value,
-                    "expires_at": now + DEFAULT_EXPIRY,
+                    "expires_at": expires_at,
+                    "next_widen_at": schedule_after(request, now, expires_at),
                 },
             )
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         if request.direct_to_user_id is not None:
             raise RequestNotOpenError
-        current = RippleStage(request.ripple_stage)
-        maximum = RippleStage(request.ripple_max_stage)
-        if RIPPLE_ORDER.index(current) >= RIPPLE_ORDER.index(maximum):
+        if next_stage(request) is None or (
+            expected_stage is not None and request.ripple_stage != expected_stage.value
+        ):
             return request
-        next_stage = RIPPLE_ORDER[RIPPLE_ORDER.index(current) + 1]
-        blocked = set(
-            await BlockRepository(session).blocked_either_way(actor.subject_id)
-        )
-        existing = set(await RecipientRepository(session).recipient_ids(request_id))
-        members = await MembershipRepository(session).approved_member_ids(
-            request.home_circle_id
-        )
-        new_recipients = [
-            member
-            for member in members
-            if member != request.requester_user_id
-            and member not in blocked
-            and member not in existing
-        ]
-        if new_recipients:
-            await RecipientRepository(session).add_many(
-                request_id, next_stage.value, new_recipients
-            )
-            await NotificationRepository(session).create_many(
-                new_recipients,
-                NotificationType.REQUEST_NEARBY.value,
-                {"request_id": str(request_id)},
-            )
-        return await RequestRepository(session).update(
-            request, {"ripple_stage": next_stage.value}
-        )
+        if expected_stage is None and (
+            request.next_widen_at is None or request.next_widen_at > now
+        ):
+            return request
+        return await advance_ripple(session, request, now)
+
+
+async def get_receipt(
+    database: Database, actor: Actor, request_id: uuid.UUID
+) -> RippleReceipt:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
+    async with database.session() as session:
+        request = await _load_own_request_for_update(session, actor, request_id)
+        return await delivery_receipt(session, request, datetime.now(UTC))
 
 
 async def list_responses(
@@ -518,11 +508,14 @@ async def create_response(
     database: Database, actor: Actor, request_id: uuid.UUID, new_response: dict
 ) -> RequestResponse:
     async with database.session() as session:
-        request = await RequestRepository(session).get(request_id)
+        request = await RequestRepository(session).get_for_update(request_id)
         if request is None:
             raise RequestNotFoundError
         await _visible_recipient(session, request, actor.subject_id)
-        if request.status != RequestStatus.OPEN.value:
+        if (
+            request.status != RequestStatus.OPEN.value
+            or request.expires_at <= datetime.now(UTC)
+        ):
             raise RequestNotOpenError
         values = {
             "request_id": request_id,
@@ -609,7 +602,7 @@ async def withdraw_response(
                 )
             if request is not None and request.status == RequestStatus.MATCHED.value:
                 await RequestRepository(session).update(
-                    request, {"status": RequestStatus.OPEN.value}
+                    request, reopen_after_match(request, datetime.now(UTC))
                 )
                 await NotificationRepository(session).create(
                     request.requester_user_id,
@@ -626,13 +619,13 @@ async def accept_response(
     response_id: uuid.UUID,
 ) -> RequestResponse:
     actor.require(ProxyScope.POST_REQUESTS)
-    now = datetime.now(UTC)
     async with database.session() as session:
         request = await _load_own_request_for_update(session, actor, request_id)
+        now = datetime.now(UTC)
         if request.status not in (
             RequestStatus.OPEN.value,
             RequestStatus.MATCHED.value,
-        ):
+        ) or (request.status == RequestStatus.OPEN.value and request.expires_at <= now):
             raise RequestNotOpenError
         response_repo = ResponseRepository(session)
         response = await response_repo.get_for_update(response_id)
@@ -713,7 +706,7 @@ async def accept_response(
         )
         await ConversationRepository(session).touch_last_message(conversation.id, now)
         await RequestRepository(session).update(
-            request, {"status": RequestStatus.MATCHED.value}
+            request, {"status": RequestStatus.MATCHED.value, "next_widen_at": None}
         )
         await NotificationRepository(session).create(
             response.responder_user_id,

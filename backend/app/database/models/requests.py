@@ -59,6 +59,11 @@ class HelpRequest(UUIDPrimaryKey, Timestamps, Base):
             postgresql_where=text("status = 'open'"),
         ),
         Index(
+            "ix_help_requests_open_expires",
+            "expires_at",
+            postgresql_where=text("status = 'open'"),
+        ),
+        Index(
             "ix_help_requests_direct_to_user_id",
             "direct_to_user_id",
             postgresql_where=text("direct_to_user_id IS NOT NULL"),
@@ -86,6 +91,9 @@ class HelpRequest(UUIDPrimaryKey, Timestamps, Base):
     home_circle_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("circles.id"))
     ripple_stage: Mapped[str]
     ripple_max_stage: Mapped[str]
+    ripple_history: Mapped[dict[str, str]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
     next_widen_at: Mapped[datetime | None]
     status: Mapped[str] = mapped_column(server_default=RequestStatus.OPEN.value)
     expires_at: Mapped[datetime]

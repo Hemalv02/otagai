@@ -210,6 +210,9 @@ export const activityCopy: Record<Language, ActivityCopy> = {
 const events: Record<Language, Record<string, string>> = {
   en: {
     request_nearby: "A neighbour has asked for help nearby.",
+    request_family: "A family member shared a request.",
+    request_han: "Your circle received a request.",
+    request_association: "Your association received a request.",
     request_direct: "A neighbour sent you a request.",
     response_received: "You received a response to your request.",
     response_accepted: "Your offer was accepted.",
@@ -226,6 +229,9 @@ const events: Record<Language, Record<string, string>> = {
   },
   ja: {
     request_nearby: "近所で助けを求めている人がいます。",
+    request_family: "家族から依頼が届きました。",
+    request_han: "サークルに依頼が届きました。",
+    request_association: "町内会に依頼が届きました。",
     request_direct: "あなたに依頼が届きました。",
     response_received: "依頼に返事が届きました。",
     response_accepted: "あなたの申し出が承認されました。",
@@ -242,6 +248,9 @@ const events: Record<Language, Record<string, string>> = {
   },
   bn: {
     request_nearby: "কাছাকাছি একজন প্রতিবেশী সাহায্য চেয়েছেন।",
+    request_family: "পরিবারের একজন অনুরোধ পাঠিয়েছেন।",
+    request_han: "আপনার সার্কেলে একটি অনুরোধ এসেছে।",
+    request_association: "আপনার সমিতিতে একটি অনুরোধ এসেছে।",
     request_direct: "একজন প্রতিবেশী আপনাকে অনুরোধ পাঠিয়েছেন।",
     response_received: "আপনার অনুরোধের উত্তর এসেছে।",
     response_accepted: "আপনার প্রস্তাব গ্রহণ করা হয়েছে।",
@@ -259,12 +268,16 @@ const events: Record<Language, Record<string, string>> = {
 };
 
 export function notificationDescription(item: Notification, locale: Language) {
+  const stage = item.payload.ripple_stage;
   const key =
-    item.type === "extension" && typeof item.payload.accepted === "boolean"
-      ? item.payload.accepted
-        ? "accepted"
-        : "declined"
-      : item.type;
+    item.type === "request_nearby" &&
+    (stage === "family" || stage === "han" || stage === "association")
+      ? `request_${stage}`
+      : item.type === "extension" && typeof item.payload.accepted === "boolean"
+        ? item.payload.accepted
+          ? "accepted"
+          : "declined"
+        : item.type;
   const description = events[locale][key] ?? events[locale].unknown;
   const title = item.payload.listing_title ?? item.payload.request_title;
   return typeof title === "string" && title.trim()

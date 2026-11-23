@@ -14,6 +14,7 @@ import { assistantCopy } from "@/lib/assistant-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestCopy } from "@/lib/request-demo-copy";
+import { rippleCopy } from "@/lib/request-ripple";
 import {
   type RequestDetail,
   type RequestResponse,
@@ -386,6 +387,14 @@ function LiveRequestDetail({ id }: { id: string }) {
 
       {owns ? (
         <View style={styles.actions}>
+          <Button
+            variant="secondary"
+            label={rippleCopy[locale].delivery}
+            labelStyle={label}
+            onPress={() =>
+              router.push({ pathname: "/requests/[id]/ripple", params: { id } })
+            }
+          />
           <Text
             accessibilityRole="header"
             style={[localizedType("section-heading", locale), styles.ink]}

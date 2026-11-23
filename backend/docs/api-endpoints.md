@@ -335,7 +335,7 @@ Files never go straight to S3 from the app. The backend strips EXIF and GPS data
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
 | `POST /media` | Multipart upload with a `purpose` (avatar, listing, ask, request, handover, chat, voice). Returns 201 if it's processed in the request, or 202 if processing is queued | 201 / 202 | 3, 11, 19, 23, 24 | MVP |
-| `GET /media/{media_id}` | Status and short-lived signed URLs for the thumb and display variants. Only people who can see the parent record get URLs | 200 | all | MVP |
+| `GET /media/{media_id}` | Status and short-lived signed URLs. Request photos are private to the owner until attached, then available to recipients reached by an attached request. Blocks prevent access, and a proxy must have `can_view_activity` | 200 | all | MVP |
 | `DELETE /media/{media_id}` | Delete my upload if nothing uses it yet, otherwise 409 | 204 | 19 | MVP |
 
 ## 5. Categories
@@ -399,9 +399,10 @@ With Redis configured, repeated text prompts can reuse their interpretation for 
 | `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients | 201 | 14, 15 | MVP |
 | `GET /users/me/requests?status=` | My requests: open, matched, in progress, done, cancelled, expired. `status` takes a comma-separated list; an unknown status or query parameter returns 422. With `X-Acting-For: <member_id>`, lists that member's requests and needs `can_view_activity` (403 without it, or when the grant is missing or revoked) | 200 | 16, 33 | MVP |
 | `GET /requests/{request_id}` | Request detail includes the viewer's role and their response. The matched participants also get `exchange_id` | 200 | 17, 18 | MVP |
+| `GET /requests/{request_id}/receipt` | Requester-only delivery timeline. Returns current and maximum stages, next scheduled widening and expiry, plus status and actual inbox recipient count per stage. Acting for the requester requires `can_view_activity` | 200 | 15, 17 | MVP |
 | `PATCH /requests/{request_id}` | Edit the time or wording. 409 unless the request is open | 200 | 17 | MVP |
 | `POST /requests/{request_id}/cancel` | Cancel. Notifies anyone with a pending or accepted response | 200 | 17 | MVP |
-| `POST /requests/{request_id}/widen` | Move to the next ripple stage now, or reopen an expired request | 200 | 15, 16 | MVP |
+| `POST /requests/{request_id}/widen` | Advance a due stage. For immediate widening, pass the observed `expected_stage` so retries can't advance another stage. On an expired request, this explicitly reopens the request under its existing cap | 200 | 15, 16 | MVP |
 | `GET /requests/{request_id}/responses` | Offers, questions and other suggested times. Only the requester sees all of them | 200 | 17 | MVP |
 | `POST /requests/{request_id}/responses/{response_id}/accept` | Accept an offer or suggested time to create the exchange and chat and supersede the other responses. Retrying the same match returns the accepted response. Choosing a different response after matching returns 409 | 200 | 17 | MVP |
 
@@ -416,6 +417,12 @@ With Redis configured, repeated text prompts can reuse their interpretation for 
 | `POST /requests/{request_id}/responses/{response_id}/withdraw` | Withdraw. If it was already accepted, the request goes back to open and the exchange is cancelled | 200 | 17, 18 | MVP |
 
 Questions on a request use responses with `kind=question`, so there is no separate comments endpoint.
+
+Both request creation and Assistant draft confirmation accept `ripple_max_stage` (`family`, `han`, `association`, or `nearby`) and optional `ripple_start_stage` (`family` or `han`). A direct recipient or listing owner receives only a direct request. Without an explicit start, `han` starts in the home circle and wider audiences start with family. The home circle must be active and the sender must have an approved membership.
+
+Family delivery uses accepted family links. The Han stage uses approved members of the home circle, including buildings or para that serve as the home circle. The association stage uses approved members of the enclosing association or moholla and its active, same-region child circles. The nearby stage uses approved members of other active, open circles within 3 km of the nearest approximate coordinates in the home circle's hierarchy. Without those coordinates, there is no nearby delivery. All stages exclude suspended or deleted users, both directions of a block, and anyone already reached by the request.
+
+Empty stages are recorded and skipped immediately under the chosen cap. After a nonempty stage, an open request waits six hours before widening, provided it will still be open at that time. The receipt distinguishes `sent`, `no_recipients`, `scheduled`, `pending`, and `stopped`. A sent count describes committed in-app delivery and does not disclose identities, reads, or device push state.
 
 With `X-Acting-For`, request detail, response lists, and incoming requests require `can_view_activity`. Request edits use the separate `can_post_requests` scope.
 
@@ -551,10 +558,10 @@ These have no table yet. Add a migration (with row-level security on) when one i
 |---|---|---|
 | `GET/POST /circles/{circle_id}/notices`, `GET/PATCH/DELETE /notices/{notice_id}` | Digital *kairanban* notices | 38, 40 |
 | `GET/POST /circles/{circle_id}/events`, `GET/PATCH /events/{event_id}`, `POST /events/{event_id}/cancel`, `POST /events/{event_id}/signups`, `DELETE /events/{event_id}/signups/me` | Cleaning days and festival volunteer slots | 38, 39 |
-| `GET /circles/{circle_id}/requests`, `GET /circles/{circle_id}/unmet-needs`, `GET /circles/{circle_id}/helpers` | Coordinator dashboard (coordinator role only) | 41 |
+| `GET /circles/{circle_id}/requests`, `GET /circles/{circle_id}/unmet-needs`, `GET /circles/{circle_id}/helpers` | Coordinator dashboard for approved leaders and coordinators. Request views require the home-circle audience to have been reached and respect delivery and blocks for the viewer | 41 |
 | `POST /circles/{circle_id}/disaster-alerts`, `POST /disaster-alerts/{alert_id}/check-ins`, `GET /disaster-alerts/{alert_id}/check-ins` | Disaster safety check-ins | 42 |
 | `GET/PUT /users/me/check-in-settings` | Gentle check-in buddy | 37 |
-| `GET /map-pins?bbox=` | Listings and requests by approximate location | 10 |
+| `GET /map-pins?bbox=` | Approximate pins for approved circles. Request counts use the same active home-circle, delivery, and viewer access rules as the dashboard | 10 |
 
 ## 17. Already there
 
@@ -573,6 +580,8 @@ These run on a schedule or a queue, not behind an HTTP call:
 - Translate new messages, requests and listings into each reader's language.
 - Process uploaded media, and delete unattached uploads after `delete_after`.
 - Process stored payment events.
+
+Docker Compose starts `ripple-scheduler` and `push-dispatch` with the backend. Apply database migrations before running the workers. For local QA, run `uv run python -m app.services.requests.scheduler --once --request-id <uuid>` from `backend/` to process a due request. Add `--at <timezone-aware ISO timestamp>` to advance that disposable request against a test clock without editing its database row. The normal worker always uses the current time.
 
 ## Demo build order
 
