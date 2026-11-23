@@ -143,6 +143,9 @@ async def update_me(
     body: UpdateProfileBody, user: CurrentUserDep, database: DatabaseDep
 ) -> UserProfile:
     changes = body.model_dump(mode="json", exclude_unset=True)
+    for field in ("quiet_hours_start", "quiet_hours_end"):
+        if field in changes:
+            changes[field] = getattr(body, field)
     for required in ("display_name", "preferred_language", "languages"):
         if required in changes and changes[required] is None:
             raise HTTPException(
