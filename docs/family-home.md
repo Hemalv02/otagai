@@ -18,7 +18,7 @@ Branch: `feature/family-home`. Spec: `screens.md` section 7, task notes for `mit
 
 ### Mobile
 
-- New Family tab: `src/app/(community)/(tabs)/family.tsx`, plus a trigger in the tabs layout (SF `person.2`, Material `group`).
+- Family opens from **Home → Family** and is served by `src/app/(community)/family.tsx`.
 - `src/lib/use-family.ts`:
   - Reads `GET /users/me`, `GET /users/me/family-links` and `GET /users/me/proxy-grants?as=caretaker` with no proxy header.
   - Loads the selected account's open requests. Only that call sends `X-Acting-For`, and only for a member account.
@@ -139,4 +139,4 @@ The combined Family and Live Requests build was checked on an iPhone 18 Pro simu
 
   The fix is to move each filter into a `PageQuery` subclass, as `MyRequestsQuery` does.
 - When you are the member on an accepted link, the caretaker shows as "no permission to help yet". That is accurate, but it could instead read "can act for you" by also loading `GET /users/me/proxy-grants?as=member`.
-- Opening `/family` as a cold-start deep link lands on Home first, because of the protected community route guard. Tapping the tab works.
+- Open Family from Home. The screen uses the same `/family` path and returns to Home with Back.
