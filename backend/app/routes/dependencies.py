@@ -1,21 +1,22 @@
+import uuid
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from redis.asyncio import Redis
 
 from app.database.connection import Database
 from app.database.models import User
+from app.services.actors.service import Actor, resolve_actor
 from app.services.auth.service import (
     AuthClaims,
     AuthUnavailableError,
     InvalidTokenError,
     TokenVerifier,
 )
-from app.services.users.service import (
-    AccountInactiveError,
-    ProfileNotFoundError,
-    get_active_profile,
-)
+from app.services.storage.service import Storage
+from app.services.users.service import get_active_profile
+from app.settings import Settings, get_settings
 
 MAX_TOKEN_LENGTH = 8192
 
@@ -37,6 +38,23 @@ def get_database(request: Request) -> Database:
             status.HTTP_503_SERVICE_UNAVAILABLE, "The database is not configured."
         )
     return database
+
+
+def get_storage(request: Request) -> Storage:
+    storage = getattr(request.app.state, "storage", None)
+    if storage is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Media storage is not configured."
+        )
+    return storage
+
+
+def get_app_settings(request: Request) -> Settings:
+    return getattr(request.app.state, "settings", None) or get_settings()
+
+
+def get_redis(request: Request) -> "Redis | None":
+    return getattr(request.app.state, "redis", None)
 
 
 def get_token_verifier(request: Request) -> TokenVerifier:
@@ -68,14 +86,29 @@ async def get_current_user(
     claims: Annotated[AuthClaims, Depends(get_auth_claims)],
     database: Annotated[Database, Depends(get_database)],
 ) -> User:
-    try:
-        return await get_active_profile(database, claims.auth_user_id)
-    except ProfileNotFoundError as error:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
-    except AccountInactiveError as error:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+    return await get_active_profile(database, claims.auth_user_id)
+
+
+async def get_actor(
+    user: Annotated[User, Depends(get_current_user)],
+    database: Annotated[Database, Depends(get_database)],
+    acting_for: Annotated[str | None, Header(alias="X-Acting-For")] = None,
+) -> Actor:
+    subject_id = None
+    if acting_for is not None:
+        try:
+            subject_id = uuid.UUID(acting_for.strip())
+        except ValueError as error:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "X-Acting-For must be a user id."
+            ) from error
+    return await resolve_actor(database, user, subject_id)
 
 
 DatabaseDep = Annotated[Database, Depends(get_database)]
+StorageDep = Annotated[Storage, Depends(get_storage)]
+SettingsDep = Annotated[Settings, Depends(get_app_settings)]
+RedisDep = Annotated[Redis | None, Depends(get_redis)]
 AuthClaimsDep = Annotated[AuthClaims, Depends(get_auth_claims)]
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+ActorDep = Annotated[Actor, Depends(get_actor)]

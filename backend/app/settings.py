@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     expo_access_token: SecretStr | None = None
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None
+    openai_transcribe_model: str = "whisper-1"
+
+    media_max_image_bytes: int = Field(default=15 * 1024 * 1024, ge=1)
+    media_max_audio_bytes: int = Field(default=25 * 1024 * 1024, ge=1)
+    media_signed_url_ttl_seconds: int = Field(default=900, ge=60, le=86400)
+
+    stripe_secret_key: SecretStr | None = None
+    stripe_webhook_secret: SecretStr | None = None
+    demo_payments_enabled: bool = True
 
     @field_validator("cors_allowed_origins")
     @classmethod

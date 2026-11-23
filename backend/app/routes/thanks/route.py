@@ -48,6 +48,10 @@ class WallBody(BaseModel):
     show_on_wall: bool
 
 
+class ThankYouQuery(PageQuery):
+    direction: Literal["sent", "received"] = "received"
+
+
 class ThankYouModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,12 +137,11 @@ async def decline_thank_you_money(
 
 @me_router.get("/thank-yous")
 async def my_thank_yous(
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ThankYouQuery, Query()],
     actor: ActorDep,
     database: DatabaseDep,
-    direction: Annotated[Literal["sent", "received"], Query()] = "received",
 ) -> Page[ThankYouModel]:
-    result = await list_my_thank_yous(database, actor, direction, query.page())
+    result = await list_my_thank_yous(database, actor, query.direction, query.page())
     return Page.build(result, ThankYouModel)
 
 

@@ -118,6 +118,19 @@ class Storage:
         except (BotoCoreError, ClientError) as error:
             raise StorageError("Could not delete the object.") from error
 
+    async def presigned_get_url(self, key: str, *, expires_in: int = 900) -> str:
+        self._validate_key(key)
+        if not 1 <= expires_in <= 7 * 24 * 60 * 60:
+            raise ValueError("Use a presigned URL lifetime of up to seven days.")
+        try:
+            return await self._client.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": self._bucket, "Key": key},
+                ExpiresIn=expires_in,
+            )
+        except (BotoCoreError, ClientError) as error:
+            raise StorageError("Could not sign the object URL.") from error
+
     @staticmethod
     def _validate_key(key: str) -> None:
         if "\\" in key or any(part in ("", ".", "..") for part in key.split("/")):

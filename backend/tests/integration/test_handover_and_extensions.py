@@ -1,14 +1,17 @@
+from datetime import UTC, datetime, timedelta
+
 from tests.integration.conftest import auth, make_user, matched_exchange
 
 
 async def test_exchange_patch_return_and_dispute(client):
-    ctx = await matched_exchange(client)
+    ctx = await matched_exchange(client, loan=True)
     exch, helper, requester = ctx["exchange_id"], ctx["helper"], ctx["requester"]
+    due_at = datetime.now(UTC) + timedelta(days=7)
 
     patched = await client.patch(
         f"/exchanges/{exch}",
         headers=auth(requester),
-        json={"meet_place_note": "By the shrine gate", "due_at": "2026-12-10T10:00:00Z"},
+        json={"meet_place_note": "By the shrine gate", "due_at": due_at.isoformat()},
     )
     assert patched.status_code == 200
     assert patched.json()["meet_place_note"] == "By the shrine gate"
@@ -30,14 +33,15 @@ async def test_exchange_patch_return_and_dispute(client):
 
 
 async def test_loan_extension_flow(client):
-    ctx = await matched_exchange(client)
+    ctx = await matched_exchange(client, loan=True)
     exch, helper, requester = ctx["exchange_id"], ctx["helper"], ctx["requester"]
     await client.post(f"/exchanges/{exch}/hand-over", headers=auth(helper))
+    new_due_at = datetime.now(UTC) + timedelta(days=7)
 
     created = await client.post(
         f"/exchanges/{exch}/extensions",
         headers=auth(requester),
-        json={"new_due_at": "2026-12-20T10:00:00Z", "message": "One more week?"},
+        json={"new_due_at": new_due_at.isoformat(), "message": "One more week?"},
     )
     assert created.status_code == 201, created.text
     extension_id = created.json()["id"]
@@ -52,7 +56,7 @@ async def test_loan_extension_flow(client):
     dup = await client.post(
         f"/exchanges/{exch}/extensions",
         headers=auth(requester),
-        json={"new_due_at": "2026-12-21T10:00:00Z"},
+        json={"new_due_at": (new_due_at + timedelta(days=1)).isoformat()},
     )
     assert dup.status_code == 409
 
@@ -68,7 +72,7 @@ async def test_loan_extension_flow(client):
         await client.post(
             f"/exchanges/{exch}/extensions",
             headers=auth(requester),
-            json={"new_due_at": "2026-12-22T10:00:00Z"},
+            json={"new_due_at": (new_due_at + timedelta(days=2)).isoformat()},
         )
     ).json()["id"]
     accepted = await client.post(

@@ -210,7 +210,7 @@ def pytest_sessionfinish(session, exitstatus):
             handle.write(f"UNTESTED {method} {path}\n")
 
 
-async def matched_exchange(client: httpx2.AsyncClient) -> dict:
+async def matched_exchange(client: httpx2.AsyncClient, *, loan: bool = False) -> dict:
     """Two circle-sharing users up to an accepted offer (exchange scheduled)."""
     requester = await make_user(client, display_name="Requester")
     helper = await make_user(client, display_name="Helper")
@@ -223,11 +223,28 @@ async def matched_exchange(client: httpx2.AsyncClient) -> dict:
             json={"kind": "borrow", "raw_text": "Borrow a drill", "lang": "ja"},
         )
     ).json()["id"]
+    offer = {"kind": "offer"}
+    if loan:
+        categories = await client.get("/categories?kind=tool", headers=auth(helper))
+        assert categories.status_code == 200, categories.text
+        listing = await client.post(
+            "/listings",
+            headers=auth(helper),
+            json={
+                "kind": "tool",
+                "category_id": categories.json()["items"][0]["id"],
+                "title": "Cordless drill",
+                "lang": "ja",
+            },
+        )
+        assert listing.status_code == 201, listing.text
+        offer["listing_id"] = listing.json()["id"]
+
     response_id = (
         await client.post(
             f"/requests/{request_id}/responses",
             headers=auth(helper),
-            json={"kind": "offer"},
+            json=offer,
         )
     ).json()["id"]
     await client.post(

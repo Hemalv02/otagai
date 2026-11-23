@@ -28,6 +28,7 @@ Read the [root `CLAUDE.md`](../CLAUDE.md) first for the shared rules.
 
 ## REST API design
 
+- Read [the API guide](docs/api-endpoints.md) before you add or change an endpoint.
 - Name each collection with a plural noun.
 - Use GET to read.
 - Use POST to create.

@@ -6,6 +6,7 @@ from app.database.connection import Database
 from app.database.models import CheckInSetting, User
 from app.database.models.enums import UserStatus
 from app.repositories.check_in_settings import CheckInSettingRepository
+from app.repositories.users import UserRepository
 from app.services.errors import BadRequestError
 
 DEFAULT_FREQUENCY_DAYS = 3
@@ -65,7 +66,7 @@ async def put_settings(
         if data.buddy_user_id is not None:
             if data.buddy_user_id == user.id:
                 raise InvalidBuddyError
-            buddy = await session.get(User, data.buddy_user_id)
+            buddy = await UserRepository(session).get(data.buddy_user_id)
             if buddy is None or buddy.status != UserStatus.ACTIVE.value:
                 raise InvalidBuddyError
         setting = await CheckInSettingRepository(session).upsert(
