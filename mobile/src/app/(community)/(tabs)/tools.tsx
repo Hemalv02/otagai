@@ -230,7 +230,7 @@ export default function BrowseToolsScreen() {
   const flatCategoryItems =
     categoryLoad.state === "ready" ? categoryLoad.items : [];
   const rows = view.rows;
-  const filtersActive = Boolean(rawQuery.trim() || categoryId || kindFilter !== "all");
+  const filtersActive = Boolean(debouncedQuery || categoryId || kindFilter !== "all");
 
   function clearFilters() {
     setRawQuery("");
@@ -328,9 +328,9 @@ export default function BrowseToolsScreen() {
               return (
                 <Pressable
                   key={item.id}
-                  accessibilityRole="button"
+                  accessibilityRole="radio"
                   accessibilityLabel={categoryName(item, locale)}
-                  accessibilityState={{ selected }}
+                  accessibilityState={{ checked: selected }}
                   style={styles.link}
                   onPress={() =>
                     setCategoryId(selectCategory(filters, item.id).categoryId)
@@ -416,13 +416,7 @@ export default function BrowseToolsScreen() {
             (item) => item.id === listing.category_id,
           );
           const catLabel = catNode ? categoryName(catNode, locale) : null;
-          const statusLabel = listingStatusLabel(listing, own, {
-            yourListing: copy.yourListing,
-            available: copy.available,
-            askForTime: copy.askForTime,
-            lentOut: copy.lentOut,
-            paused: copy.paused,
-          });
+          const statusLabel = listingStatusLabel(listing, own, copy);
 
           return (
             <ListingRow

@@ -108,6 +108,7 @@ function CircleHome({ circleName }: { circleName: string }) {
   const account = session?.user.id ?? null;
   const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = homeCopy[locale];
+  const sectionTitle = localizedType("section-heading", locale);
   const label = localizedType("field-label", locale);
   const button = localizedType("button", locale);
   const supporting = localizedType("supporting", locale);
@@ -166,7 +167,6 @@ function CircleHome({ circleName }: { circleName: string }) {
       onPress={retryNearby}
     />
   );
-  const sectionTitle = localizedType("section-heading", locale);
   const openRequests = requests.filter(
     (request) => request.createdBy !== actor && request.status === "open",
   );
@@ -206,13 +206,15 @@ function CircleHome({ circleName }: { circleName: string }) {
             <ListingRowSkeleton />
           </View>
         ) : view.status === "error" ? (
-          <View style={styles.notice}>
+          <View style={styles.section}>
             <Text style={[supporting, styles.secondary]}>
-              {view.firstError === "auth" ? readCopy.auth : copy.nearbyError}
+              {view.firstError === "transient" || view.firstError === null
+                ? copy.nearbyError
+                : readCopy[view.firstError]}
             </Text>
             {canRetry(view.firstError) ? retryButton : null}
           </View>
-        ) : rows.length === 0 ? (
+        ) : rows.length === 0 && !view.refreshError ? (
           <RequestNotice
             title={copy.nearbyEmptyTitle}
             detail={copy.nearbyEmptyDetail}
@@ -229,13 +231,7 @@ function CircleHome({ circleName }: { circleName: string }) {
                   ? listingCopy.oneSkill
                   : listingCopy.toolOrItem
               }
-              detail={listingStatusLabel(listing, false, {
-                yourListing: listingCopy.yourListing,
-                available: listingCopy.available,
-                askForTime: listingCopy.askForTime,
-                lentOut: listingCopy.lentOut,
-                paused: listingCopy.paused,
-              })}
+              detail={listingStatusLabel(listing, false, listingCopy)}
               photo={listing.photo_url ? { uri: listing.photo_url } : undefined}
               onPress={() =>
                 router.push({
@@ -247,7 +243,7 @@ function CircleHome({ circleName }: { circleName: string }) {
           ))
         )}
         {view.refreshError ? (
-          <View style={styles.notice}>
+          <View style={styles.section}>
             <Text style={[supporting, styles.secondary]}>
               {listingCopy.refreshError}
             </Text>
@@ -315,7 +311,6 @@ const styles = StyleSheet.create({
   secondary: { color: colors.secondary },
   green: { color: colors.action },
   section: { gap: spacing["related-gap"] },
-  notice: { gap: spacing["related-gap"] },
   demo: {
     borderTopWidth: 1,
     borderColor: colors.rule,

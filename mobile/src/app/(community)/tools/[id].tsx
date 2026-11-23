@@ -122,12 +122,7 @@ export default function ToolListingScreen() {
   const own = isListingOwner(listing, profileId);
   const skill = listing.kind === "skill";
   const photos = photoUrls(listing);
-  const lendState = availabilityLabel(listing, {
-    available: copy.available,
-    askForTime: copy.askForTime,
-    lentOut: copy.lentOut,
-    paused: copy.paused,
-  });
+  const lendState = availabilityLabel(listing, copy);
   const availableAgain = formatAvailableAgain(
     listing.available_again_at,
     locale,
