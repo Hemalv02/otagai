@@ -1,0 +1,35 @@
+# Pre-commit hooks for the Otagai monorepo.
+# Ruff lints and formats the backend; Prettier formats the mobile app.
+# Run from the repository root: `uvx pre-commit run --all-files`.
+#
+# These are local hooks that invoke each sub-project's own tooling, so results
+# match what you get from `uv run ruff check .` (backend) and the mobile app's
+# Prettier (with prettier-plugin-tailwindcss) exactly. The backend hooks need
+# `uv sync` in backend/; the Prettier hook needs `pnpm install` in mobile/.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (backend)
+        entry: uv run --directory backend ruff check --force-exclude
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format (backend)
+        entry: uv run --directory backend ruff format --check
+        language: system
+        files: ^backend/.*\.py$
+        pass_filenames: false
+
+      # The mobile app declares prettier-plugin-tailwindcss but has no prettier
+      # binary installed yet. This hook enforces Prettier on the app source once
+      # the mobile team adds it (`pnpm add -D prettier`), and no-ops with an
+      # instruction until then, so it never blocks or reformats unrelated files.
+      - id: prettier-mobile
+        name: prettier (mobile)
+        entry: bash -c 'cd mobile && if pnpm exec prettier --version >/dev/null 2>&1; then pnpm exec prettier --check src; else echo "[skip] prettier not installed in mobile (pnpm add -D prettier to enable)"; fi'
+        language: system
+        files: ^mobile/src/.*\.(ts|tsx|js|jsx|json)$
+        pass_filenames: false
