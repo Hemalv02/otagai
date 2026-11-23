@@ -1,5 +1,6 @@
 import { NativeTabs } from "expo-router/native-tabs";
 
+import { assistantCopy } from "@/lib/assistant-copy";
 import { useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors } from "@/theme/tokens.json";
 
@@ -45,6 +46,18 @@ export default function CommunityTabs() {
           md="assignment"
         />
         <NativeTabs.Trigger.Label>{copy.requests}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger
+        name="assistant"
+        accessibilityLabel={assistantCopy[locale].tab}
+      >
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "bubble.left", selected: "bubble.left.fill" }}
+          md="chat"
+        />
+        <NativeTabs.Trigger.Label>
+          {assistantCopy[locale].tab}
+        </NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );

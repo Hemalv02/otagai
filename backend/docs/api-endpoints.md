@@ -371,6 +371,25 @@ An ask session holds the AI steps before anything is sent. Nothing reaches a nei
 | `POST /ask-sessions/{session_id}/draft` | Polite message and translations for a chosen tone, time and audience (one person, the *han*, or a widening ripple). Call it again to change the tone | 200 | 14 | MVP |
 | `DELETE /ask-sessions/{session_id}` | Abandon the ask | 204 | 11–14 | MVP |
 
+### Assistant chat
+
+| Method and path | Purpose | Success |
+|---|---|---|
+| `POST /assistant/turns` | Interpret a message or photo and return a reply, result cards and any request draft | 201 |
+| `GET /assistant/threads` | List the signed-in member's conversations, most recent activity first | 200 |
+| `GET /assistant/threads/{thread_id}/turns` | Read saved turns, newest first, with the current visible cards and posted request IDs | 200 |
+| `POST /assistant/turns/{turn_id}/confirm` | Post the member's reviewed text. Retrying the same draft or listing returns its request | 201 or 200 |
+
+Send `text`, `image_media_id`, or both. Upload a photo with `POST /media` and `purpose=ask`. For voice input, upload with `purpose=voice`, transcribe with `POST /ai/transcriptions`, then send the reviewed transcript as `text`. Send `previous_turn_id` to continue a conversation. Use `language` to choose `en`, `ja`, or `bn`. Both history endpoints accept `limit` and `cursor`.
+
+Each turn includes `id`, `thread_id`, `reply`, `cards`, an optional `draft`, and any attachment or posted request ID. A card includes an actual listing and owner. Open tool details with `GET /listings/{id}` or a helper profile with `GET /users/{id}`. A card's `action` is `borrow` or `ask_for_help`, based on the listing's lending mode.
+
+When `clarification` is set, display the follow-up in `reply` and submit the answer as a new turn with the question's `id` as `previous_turn_id`. The turn can show relevant matches during clarification. Its draft is empty and its confirm endpoint returns 409 until the member answers in a new turn. A clear request can be drafted with no timing.
+
+After the member confirms the draft or a card selection, send the reviewed `text` and `kind` to the confirm endpoint. The request may include `listing_id` from the same turn, `direct_to_user_id`, `home_circle_id`, and offset-aware `needed_from` and `needed_until` timestamps. A selected listing goes to its owner. History holds independent receipts for these requests under `listing_requests`. General drafts go to the member's circle unless they choose a recipient. For a broadcast, show the destination in the review and send its `home_circle_id`. The API requires a destination when the member has multiple approved circles. An off-topic turn provides a short redirect and has no draft or matches to post.
+
+With Redis configured, repeated text prompts can reuse their interpretation for five minutes. Listings, access checks, and photo URLs are resolved from current data on every lookup.
+
 ## 8. Help requests
 
 ### Requester side

@@ -2,6 +2,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import HelpRequest, RequestRecipient, RequestResponse
 from app.database.models.enums import (
@@ -139,82 +141,88 @@ async def _connected(session, viewer_id: uuid.UUID, other_id: uuid.UUID) -> bool
 async def create_request(
     database: Database, actor: Actor, new_request: NewRequest
 ) -> HelpRequest:
+    async with database.session() as session:
+        return await create_request_in_session(session, actor, new_request)
+
+
+async def create_request_in_session(
+    session: AsyncSession, actor: Actor, new_request: NewRequest
+) -> HelpRequest:
     actor.require(ProxyScope.POST_REQUESTS)
     requester_id = actor.subject_id
     now = datetime.now(UTC)
-    async with database.session() as session:
-        circles = CircleRepository(session)
-        approved = await circles.approved_circle_ids(requester_id)
-        home_circle_id = new_request.home_circle_id
-        if home_circle_id is not None:
-            if home_circle_id not in approved:
-                raise NoCircleError
-        elif approved:
-            home_circle_id = approved[0]
-        else:
+    circles = CircleRepository(session)
+    approved = await circles.approved_circle_ids(requester_id)
+    home_circle_id = new_request.home_circle_id
+    if home_circle_id is not None:
+        if home_circle_id not in approved:
             raise NoCircleError
+    elif approved:
+        home_circle_id = approved[0]
+    else:
+        raise NoCircleError
 
-        media_ids = await _validated_media(session, requester_id, new_request.media_ids)
-        is_direct = new_request.direct_to_user_id is not None
-        if is_direct:
-            target_id = new_request.direct_to_user_id
-            if target_id == requester_id or not await _connected(
-                session, requester_id, target_id
-            ):
-                raise RecipientUnreachableError
-            ripple_max = RippleStage.DIRECT.value
-            ripple_stage = RippleStage.DIRECT.value
-        else:
-            ripple_max = new_request.ripple_max_stage
-            ripple_stage = RippleStage.HAN.value
+    media_ids = await _validated_media(session, requester_id, new_request.media_ids)
+    is_direct = new_request.direct_to_user_id is not None
+    if is_direct:
+        target_id = new_request.direct_to_user_id
+        if target_id == requester_id or not await _connected(
+            session, requester_id, target_id
+        ):
+            raise RecipientUnreachableError
+        ripple_max = RippleStage.DIRECT.value
+        ripple_stage = RippleStage.DIRECT.value
+    else:
+        ripple_max = new_request.ripple_max_stage
+        ripple_stage = RippleStage.HAN.value
 
-        requester = await UserRepository(session).get(requester_id)
-        values = {
-            "requester_user_id": requester_id,
-            "acted_by_user_id": actor.user.id,
-            "region": requester.region,
-            "kind": new_request.kind,
-            "category_id": new_request.category_id,
-            "listing_id": new_request.listing_id,
-            "direct_to_user_id": new_request.direct_to_user_id,
-            "raw_text": new_request.raw_text,
-            "polite_text": new_request.polite_text or new_request.raw_text,
-            "tone": new_request.tone,
-            "lang": new_request.lang,
-            "needed_from": new_request.needed_from,
-            "needed_until": new_request.needed_until,
-            "home_circle_id": home_circle_id,
-            "ripple_stage": ripple_stage,
-            "ripple_max_stage": ripple_max,
-            "status": RequestStatus.OPEN.value,
-            "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
-        }
-        request = await RequestRepository(session).create(values, media_ids)
+    requester = await UserRepository(session).get(requester_id)
+    values = {
+        "requester_user_id": requester_id,
+        "acted_by_user_id": actor.user.id,
+        "region": requester.region,
+        "kind": new_request.kind,
+        "category_id": new_request.category_id,
+        "listing_id": new_request.listing_id,
+        "direct_to_user_id": new_request.direct_to_user_id,
+        "raw_text": new_request.raw_text,
+        "polite_text": new_request.polite_text or new_request.raw_text,
+        "tone": new_request.tone,
+        "lang": new_request.lang,
+        "needed_from": new_request.needed_from,
+        "needed_until": new_request.needed_until,
+        "home_circle_id": home_circle_id,
+        "ripple_stage": ripple_stage,
+        "ripple_max_stage": ripple_max,
+        "status": RequestStatus.OPEN.value,
+        "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
+    }
+    request = await RequestRepository(session).create(values, media_ids)
 
-        blocked = await BlockRepository(session).blocked_either_way(requester_id)
-        if is_direct:
-            recipients = [new_request.direct_to_user_id]
-            notification_type = NotificationType.REQUEST_DIRECT.value
-        else:
-            members = await MembershipRepository(session).approved_member_ids(
-                home_circle_id
-            )
-            recipients = [
-                member
-                for member in members
-                if member != requester_id and member not in set(blocked)
-            ]
-            notification_type = NotificationType.REQUEST_NEARBY.value
-        if recipients:
-            await RecipientRepository(session).add_many(
-                request.id, ripple_stage, recipients
-            )
-            await NotificationRepository(session).create_many(
-                recipients,
-                notification_type,
-                {"request_id": str(request.id)},
-            )
-        return request
+    blocked = await BlockRepository(session).blocked_either_way(requester_id)
+    if is_direct:
+        recipients = [new_request.direct_to_user_id]
+        notification_type = NotificationType.REQUEST_DIRECT.value
+    else:
+        members = await MembershipRepository(session).approved_member_ids(
+            home_circle_id
+        )
+        recipients = [
+            member
+            for member in members
+            if member != requester_id and member not in set(blocked)
+        ]
+        notification_type = NotificationType.REQUEST_NEARBY.value
+    if recipients:
+        await RecipientRepository(session).add_many(
+            request.id, ripple_stage, recipients
+        )
+        await NotificationRepository(session).create_many(
+            recipients,
+            notification_type,
+            {"request_id": str(request.id)},
+        )
+    return request
 
 
 async def _validated_media(
