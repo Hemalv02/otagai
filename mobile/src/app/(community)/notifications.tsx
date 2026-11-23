@@ -14,6 +14,8 @@ import { Button, ErrorText } from "@/components/ui";
 import { api } from "@/lib/api";
 import { activityCopy, notificationDescription } from "@/lib/activity-copy";
 import { activityLocale } from "@/lib/activity-screen-copy";
+import { assistantCopy } from "@/lib/assistant-copy";
+import { requestNotificationId } from "@/lib/request-ripple";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 
@@ -160,6 +162,10 @@ export default function NotificationsScreen() {
             const exchangeId = item.payload.exchange_id;
             const hasLoan =
               item.type === "extension" && typeof exchangeId === "string";
+            const requestId = requestNotificationId(
+              item.type,
+              item.payload.request_id,
+            );
             const isUnread = !item.read_at;
 
             return (
@@ -190,6 +196,20 @@ export default function NotificationsScreen() {
                     </Text>
                     {validDate ? (
                       <ActivityText>{timeLabel.format(date)}</ActivityText>
+                    ) : null}
+                    {requestId ? (
+                      <Button
+                        label={assistantCopy[locale].viewRequest}
+                        variant="text"
+                        labelStyle={localizedType("field-label", locale)}
+                        onPress={() => {
+                          if (isUnread) void markRead(item.id);
+                          router.push({
+                            pathname: "/requests/[id]",
+                            params: { id: requestId },
+                          });
+                        }}
+                      />
                     ) : null}
                     {hasLoan ? (
                       <Button

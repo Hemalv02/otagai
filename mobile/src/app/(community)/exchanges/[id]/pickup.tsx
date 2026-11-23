@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -61,6 +61,16 @@ type Exchange = NonNullable<ExchangeContext["exchange"]>;
 type Mode = "check" | "edit" | "report";
 
 export default function PickupScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  if (/^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i.test(id)) {
+    return (
+      <Redirect href={{ pathname: "/loans/[id]/pickup", params: { id } }} />
+    );
+  }
+  return <DemoPickupScreen />;
+}
+
+function DemoPickupScreen() {
   const context = useExchange();
   const { exchange, locale, request } = context;
   const { listings, ready } = useDemoListings();
