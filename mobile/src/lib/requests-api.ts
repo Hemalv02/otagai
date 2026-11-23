@@ -39,6 +39,7 @@ export type NewDirectRequest = {
 };
 
 export type RequestDetail = RequestSummary & {
+  listing: { id: string; title: string } | null;
   raw_text: string;
   my_role: "requester" | "recipient";
   my_response_status: ResponseStatus | null;

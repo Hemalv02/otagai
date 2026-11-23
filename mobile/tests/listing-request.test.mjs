@@ -6,7 +6,6 @@ import {
   isListingRequestKind,
   listingRequestError,
   listingRequestState,
-  singleFlight,
 } from "../src/lib/listing-request.ts";
 
 const owner = { id: "owner-1", display_name: "Owner" };
@@ -88,10 +87,10 @@ test("buildListingRequest validates and trims", () => {
   });
 });
 
-test("error mapping", () => {
+test("error mapping: a rejected listing request is unavailable, bad input is invalid", () => {
   const map = (status) => listingRequestError({ status });
   assert.equal(map(0), "transient");
-  assert.equal(map(400), "invalid");
+  assert.equal(map(400), "unavailable");
   assert.equal(map(422), "invalid");
   assert.equal(map(401), "auth");
   assert.equal(map(403), "auth");
@@ -102,31 +101,4 @@ test("error mapping", () => {
   assert.equal(map(418), "error");
   assert.equal(listingRequestError("boom"), "error");
   assert.equal(listingRequestError(null), "error");
-});
-
-test("singleFlight runs once while pending and resets after settling", async () => {
-  let calls = 0;
-  let release;
-  const gate = new Promise((resolve) => (release = resolve));
-  const send = singleFlight(async () => {
-    calls += 1;
-    await gate;
-    return "ok";
-  });
-  const first = send();
-  assert.equal(await send(), undefined);
-  release();
-  assert.equal(await first, "ok");
-  assert.equal(calls, 1);
-  assert.equal(await send(), "ok");
-  assert.equal(calls, 2);
-
-  let attempts = 0;
-  const flaky = singleFlight(async () => {
-    attempts += 1;
-    if (attempts === 1) throw new Error("fail");
-    return "fine";
-  });
-  await assert.rejects(flaky());
-  assert.equal(await flaky(), "fine");
 });

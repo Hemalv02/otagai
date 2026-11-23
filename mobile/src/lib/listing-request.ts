@@ -65,26 +65,11 @@ export function listingRequestError(error: unknown): ListingRequestError {
       ? (error as { status: unknown }).status
       : null;
   if (typeof status !== "number") return "error";
-  if (status === 404 || status === 409) return "unavailable";
-  if (status === 400 || status === 422) return "invalid";
+  if (status === 400 || status === 404 || status === 409) return "unavailable";
+  if (status === 422) return "invalid";
   if (status === 401 || status === 403) return "auth";
   if (status === 0 || status === 408 || status === 429 || status >= 500) {
     return "transient";
   }
   return "error";
-}
-
-export function singleFlight<T>(
-  run: () => Promise<T>,
-): () => Promise<T | undefined> {
-  let pending = false;
-  return async () => {
-    if (pending) return undefined;
-    pending = true;
-    try {
-      return await run();
-    } finally {
-      pending = false;
-    }
-  };
 }

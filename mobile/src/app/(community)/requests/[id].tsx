@@ -14,7 +14,7 @@ import { DemoRequestDetail } from "@/components/demo-request-detail";
 import { RequestNotice } from "@/components/request-notice";
 import { RequestResponseForm } from "@/components/request-response-form";
 import { Button, ErrorText } from "@/components/ui";
-import { api, ApiError, type Page } from "@/lib/api";
+import { ApiError, type Page } from "@/lib/api";
 import { assistantError, assistantApi } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { listingRequestCopy } from "@/lib/listing-request-copy";
@@ -57,7 +57,6 @@ function LiveRequestDetail({ id }: { id: string }) {
     null,
   );
   const [names, setNames] = useState<Record<string, string>>({});
-  const [listingTitle, setListingTitle] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [responseError, setResponseError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
@@ -89,16 +88,6 @@ function LiveRequestDetail({ id }: { id: string }) {
       const data = await requestsApi.detail(id);
       if (current !== version.current) return;
       setDetail(data);
-      setListingTitle(null);
-      if (data.listing_id) {
-        const listingId = data.listing_id;
-        void api
-          .getListing(listingId)
-          .then((listing) => {
-            if (current === version.current) setListingTitle(listing.title);
-          })
-          .catch(() => undefined);
-      }
       if (data.my_role === "requester") {
         try {
           const page = await requestsApi.responses(id);
@@ -281,6 +270,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     .join(" – ");
   const requesterName = names[detail.requester_user_id];
   const disabled = loading || working;
+  const linkedListing = detail.listing;
 
   function startForm(kind: ResponseKind) {
     setActionError(undefined);
@@ -345,19 +335,19 @@ function LiveRequestDetail({ id }: { id: string }) {
           />
         ) : null}
       </View>
-      {detail.listing_id && listingTitle ? (
+      {linkedListing ? (
         <Pressable
           accessibilityRole="link"
           onPress={() =>
             router.push({
               pathname: "/tools/[id]",
-              params: { id: detail.listing_id! },
+              params: { id: linkedListing.id },
             })
           }
         >
           <RequestNotice
             title={listingRequestCopy[locale].requestedListing}
-            detail={listingTitle}
+            detail={linkedListing.title}
             locale={locale}
           />
         </Pressable>

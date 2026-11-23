@@ -5,7 +5,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { Button, ErrorText, Field } from "@/components/ui";
-import { api, type Language, type ListingDetail } from "@/lib/api";
+import { api, type ListingDetail } from "@/lib/api";
 import { lendingCopy } from "@/lib/lending-copy";
 import {
   buildListingRequest,
@@ -14,7 +14,6 @@ import {
   type ListingRequestError,
   listingRequestState,
   MAX_REQUEST_TEXT,
-  singleFlight,
 } from "@/lib/listing-request";
 import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { listingReadCopy, requestApiError } from "@/lib/listing-read";
@@ -73,51 +72,31 @@ export default function ListingRequestScreen() {
   }, [account, id, validRoute, tick, requests]);
 
   const listing = state.status === "loaded" ? state.listing : null;
-  const latest = useRef<{
-    listing: ListingDetail | null;
-    kind: string;
-    message: string | null;
-    locale: string;
-  }>({ listing: null, kind: "", message: null, locale: "en" });
-  useEffect(() => {
-    latest.current = { listing, kind, message, locale };
-  });
+  const sendingRef = useRef(false);
 
-  // eslint-disable-next-line react-hooks/refs
-  const [send] = useState(() =>
-    singleFlight(async () => {
-      const {
-        listing: current,
-        kind: action,
-        message: text,
-        locale: lang,
-      } = latest.current;
-      if (!current || !isListingRequestKind(action)) return;
-      const body = buildListingRequest(
-        current,
-        action,
-        text ?? "",
-        lang as Language,
-      );
-      if (!body) {
-        setFailure("invalid");
-        return;
-      }
-      setSending(true);
-      setFailure(null);
-      try {
-        const created = await requestsApi.create(body);
-        router.replace({
-          pathname: "/requests/[id]",
-          params: { id: created.id },
-        });
-      } catch (cause) {
-        setFailure(listingRequestError(cause));
-      } finally {
-        setSending(false);
-      }
-    }),
-  );
+  async function send() {
+    if (sendingRef.current || !listing || !isListingRequestKind(kind)) return;
+    const body = buildListingRequest(listing, kind, text, locale);
+    if (!body) {
+      setFailure("invalid");
+      return;
+    }
+    sendingRef.current = true;
+    setSending(true);
+    setFailure(null);
+    try {
+      const created = await requestsApi.create(body);
+      router.replace({
+        pathname: "/requests/[id]",
+        params: { id: created.id },
+      });
+    } catch (cause) {
+      setFailure(listingRequestError(cause));
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+    }
+  }
 
   if (!validRoute) {
     return (
@@ -231,7 +210,6 @@ export default function ListingRequestScreen() {
             label={sending ? copy.sending : copy.send}
             labelStyle={buttonType}
             busy={sending}
-            disabled={failure === "unavailable"}
             onPress={() => void send()}
           />
         </View>
@@ -265,7 +243,10 @@ export default function ListingRequestScreen() {
         label={copy.messageLabel}
         labelStyle={localizedType("field-label", locale)}
         value={text}
-        onChangeText={setMessage}
+        onChangeText={(value) => {
+          setMessage(value);
+          setFailure(null);
+        }}
         multiline
         maxLength={MAX_REQUEST_TEXT}
         editable={!sending}
