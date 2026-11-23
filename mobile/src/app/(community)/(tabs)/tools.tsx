@@ -19,6 +19,7 @@ import {
   canRetry,
   changeKind,
   firstPageFailed,
+  SEARCH_MAX_LENGTH,
   firstPageLoaded,
   listingStatusLabel,
   initialBrowseState,
@@ -77,6 +78,8 @@ export default function BrowseToolsScreen() {
 
   const [categoryRequests] = useState(createLatestRequest);
   const [listingRequests] = useState(createLatestRequest);
+  const [nextRequests] = useState(createLatestRequest);
+  const firstPageLoading = useRef(false);
   const focusedOnce = useRef(false);
 
   const filters: BrowseFilters = {
@@ -113,7 +116,9 @@ export default function BrowseToolsScreen() {
   useEffect(() => {
     if (!account) return;
     const key = filterKey;
+    nextRequests.cancel();
     const request = listingRequests.start();
+    firstPageLoading.current = true;
     api
       .listListings(listParams(), {
         authUserId: account,
@@ -121,16 +126,28 @@ export default function BrowseToolsScreen() {
       })
       .then((page) => {
         if (!request.isCurrent()) return;
+        firstPageLoading.current = false;
         setBrowse((current) => firstPageLoaded(current, key, page));
       })
       .catch((error) => {
         if (!request.isCurrent()) return;
+        firstPageLoading.current = false;
         setBrowse((current) =>
           firstPageFailed(current, key, requestApiError(error)),
         );
       });
-    return () => listingRequests.cancel();
-  }, [account, filterKey, refreshTick, listParams, listingRequests]);
+    return () => {
+      listingRequests.cancel();
+      nextRequests.cancel();
+    };
+  }, [
+    account,
+    filterKey,
+    refreshTick,
+    listParams,
+    listingRequests,
+    nextRequests,
+  ]);
 
   useEffect(() => {
     if (!account) return;
@@ -167,10 +184,12 @@ export default function BrowseToolsScreen() {
 
   function loadNextPage() {
     const cursor = view.nextCursor;
-    if (!account || !cursor || view.loadingMore) return;
+    if (!account || !cursor || view.loadingMore || firstPageLoading.current) {
+      return;
+    }
     const key = filterKey;
     setBrowse((current) => startNextPage(current, key));
-    const request = listingRequests.start();
+    const request = nextRequests.start();
     api
       .listListings(listParams(cursor), {
         authUserId: account,
@@ -238,6 +257,7 @@ export default function BrowseToolsScreen() {
         autoCorrect={false}
         clearButtonMode="while-editing"
         returnKeyType="search"
+        maxLength={SEARCH_MAX_LENGTH}
       />
       <View style={styles.filters}>
         <View accessibilityRole="radiogroup" style={styles.segments}>

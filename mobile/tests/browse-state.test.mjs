@@ -6,6 +6,7 @@ import {
   changeKind,
   firstPageFailed,
   firstPageLoaded,
+  formatAvailableAgain,
   initialBrowseState,
   listingStatusLabel,
   nextPageFailed,
@@ -167,4 +168,39 @@ test("a lent-out card shows the lent-out label instead of the lend label", () =>
   assert.equal(listingStatusLabel({ status: "active" }, false, labels), "Available to lend");
   assert.equal(listingStatusLabel({ status: "active" }, true, labels), "Mine · Available to lend");
   assert.equal(listingStatusLabel({ status: "lent_out" }, true, labels), "Mine · Lent out");
+});
+
+test("a failed refresh clears a stale next-page error", () => {
+  const key = browseFilterKey(filters);
+  const loaded = firstPageLoaded(initialBrowseState(), key, {
+    items: [row("1")],
+    next_cursor: "c2",
+  });
+  const nextFailed = nextPageFailed(startNextPage(loaded, key), key, "transient");
+  assert.equal(nextFailed.nextError, "transient");
+  const refreshFailed = firstPageFailed(nextFailed, key, "transient");
+  assert.equal(refreshFailed.refreshError, "transient");
+  assert.equal(refreshFailed.nextError, null);
+});
+
+test("a first page that lands while the next page loads replaces the rows", () => {
+  const key = browseFilterKey(filters);
+  const loaded = firstPageLoaded(initialBrowseState(), key, {
+    items: [row("1")],
+    next_cursor: "c2",
+  });
+  const loadingMore = startNextPage(loaded, key);
+  const refreshed = firstPageLoaded(loadingMore, key, {
+    items: [row("5"), row("6")],
+    next_cursor: "c9",
+  });
+  assert.deepEqual(refreshed.rows.map((r) => r.id), ["5", "6"]);
+  assert.equal(refreshed.nextCursor, "c9");
+  assert.equal(refreshed.loadingMore, false);
+});
+
+test("an available-again date is formatted, and a malformed or missing one is omitted", () => {
+  assert.equal(formatAvailableAgain("2026-12-05T12:00:00Z", "en-US"), "12/5/2026");
+  assert.equal(formatAvailableAgain("not-a-date", "en-US"), null);
+  assert.equal(formatAvailableAgain(null, "en-US"), null);
 });

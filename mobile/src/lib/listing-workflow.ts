@@ -224,7 +224,12 @@ export function firstPageFailed(
   errorKind: BrowseErrorKind,
 ): BrowseState {
   if (state.key === key && state.status === "ready" && errorKind !== "auth") {
-    return { ...state, loadingMore: false, refreshError: errorKind };
+    return {
+      ...state,
+      loadingMore: false,
+      nextError: null,
+      refreshError: errorKind,
+    };
   }
   return { ...initialBrowseState(key), status: "error", firstError: errorKind };
 }
@@ -348,4 +353,10 @@ export function photoUrls(listing: Pick<ListingDetail, "photos">) {
     const url = photo.display_url ?? photo.thumb_url;
     return url ? [{ id: photo.media_id, url }] : [];
   });
+}
+
+export function formatAvailableAgain(iso: string | null, locale: string) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString(locale);
 }

@@ -14,6 +14,7 @@ import {
   type DetailContext,
   type DetailState,
   detailView,
+  formatAvailableAgain,
   isCurrentDetail,
   isListingId,
   isListingOwner,
@@ -126,9 +127,10 @@ export default function ToolListingScreen() {
     lentOut: copy.lentOut,
     paused: copy.paused,
   });
-  const availableAgain = listing.available_again_at
-    ? new Date(listing.available_again_at).toLocaleDateString(locale)
-    : null;
+  const availableAgain = formatAvailableAgain(
+    listing.available_again_at,
+    locale,
+  );
   const availabilityDetail = [
     listing.availability_note,
     availableAgain ? `${copy.availableAgain}: ${availableAgain}` : null,
