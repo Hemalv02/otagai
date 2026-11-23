@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   composeDescription,
+  visibleExtras,
   emptyDraftFields,
   isRiskyCategory,
   listingLendMode,
@@ -120,5 +121,39 @@ test("composeDescription appends only filled details and caps length", () => {
   assert.equal(
     composeDescription("x".repeat(2100), fields, labels).length,
     2000,
+  );
+});
+
+test("visibleExtras shows filled rows except dismissed ones", () => {
+  const fields = {
+    ...emptyDraftFields,
+    brand: "Makita",
+    model: "X1",
+    details: "",
+  };
+  assert.deepEqual(visibleExtras(fields, new Set(["model"])), ["brand"]);
+  assert.deepEqual(visibleExtras(emptyDraftFields, new Set()), []);
+});
+
+test("a row the member edited stays visible and is published", () => {
+  const labels = { brand: "Brand", model: "Model", condition: "Condition" };
+  const fields = { ...emptyDraftFields, brand: "My brand" };
+  assert.deepEqual(visibleExtras(fields, new Set()), ["brand"]);
+  assert.equal(
+    composeDescription("", fields, labels, new Set()),
+    "Brand: My brand",
+  );
+});
+
+test("a dismissed row is never published", () => {
+  const labels = { brand: "Brand", model: "Model", condition: "Condition" };
+  const fields = {
+    ...emptyDraftFields,
+    brand: "Makita",
+    details: "Has a case",
+  };
+  assert.equal(
+    composeDescription("Mine", fields, labels, new Set(["brand"])),
+    "Mine\nHas a case",
   );
 });

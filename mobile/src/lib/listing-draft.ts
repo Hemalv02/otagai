@@ -104,16 +104,28 @@ export function listingLendMode(
     : "lend";
 }
 
+export const extraKeys = ["brand", "model", "condition", "details"] as const;
+export type ExtraKey = (typeof extraKeys)[number];
+
+export function visibleExtras(
+  fields: DraftFields,
+  dismissed: ReadonlySet<DraftKey>,
+): ExtraKey[] {
+  return extraKeys.filter(
+    (key) => fields[key].trim() !== "" && !dismissed.has(key),
+  );
+}
+
 export function composeDescription(
   description: string,
   fields: DraftFields,
   labels: { brand: string; model: string; condition: string },
+  dismissed: ReadonlySet<DraftKey> = new Set(),
 ) {
   const lines = [description.trim()];
-  for (const key of ["brand", "model", "condition"] as const) {
+  for (const key of visibleExtras(fields, dismissed)) {
     const value = fields[key].trim();
-    if (value) lines.push(`${labels[key]}: ${value}`);
+    lines.push(key === "details" ? value : `${labels[key]}: ${value}`);
   }
-  if (fields.details.trim()) lines.push(fields.details.trim());
   return lines.filter(Boolean).join("\n").slice(0, MAX_DESCRIPTION);
 }

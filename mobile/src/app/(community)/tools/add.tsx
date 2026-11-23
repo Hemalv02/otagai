@@ -14,6 +14,8 @@ import { draftCopy } from "@/lib/listing-draft-copy";
 import {
   composeDescription,
   emptyDraftFields,
+  visibleExtras,
+  type ExtraKey,
   isRiskyCategory,
   listingLendMode,
   mergeSuggestion,
@@ -42,7 +44,6 @@ type FormError =
   | "attachmentFailed";
 type SuggestNote =
   "unclear" | "failed" | "rateLimited" | "photoNotReady" | "categoryUnmatched";
-const extraKeys = ["brand", "model", "condition", "details"] as const;
 type CategoryLoad =
   | { state: "loading" }
   | { state: "error" }
@@ -101,6 +102,10 @@ export default function AddListingScreen() {
   const buttonType = localizedType("button", locale);
   const supportingType = localizedType("supporting", locale);
   const tool = kind === "tool";
+  const shownExtras = visibleExtras(
+    { ...emptyDraftFields, ...extras },
+    dismissed,
+  );
   const busy = picking || saving || suggesting;
   const risky = tool && isRiskyCategory(categoryItems(categoryLoad), category);
 
@@ -289,7 +294,7 @@ export default function AddListingScreen() {
       }
     } catch (failure) {
       if (!stillCurrent()) return;
-      if (preparingPhoto) setSuggestNote("photoNotReady");
+      if (preparingPhoto) setError("attachmentFailed");
       else if (failure instanceof ApiError && failure.status === 429)
         setSuggestNote("rateLimited");
       else if (failure instanceof ApiError && failure.status === 404)
@@ -303,7 +308,7 @@ export default function AddListingScreen() {
     }
   }
 
-  function dismissExtra(key: (typeof extraKeys)[number]) {
+  function dismissExtra(key: ExtraKey) {
     setExtras((current) => ({ ...current, [key]: "" }));
     setDismissed((current) => new Set(current).add(key));
   }
@@ -330,6 +335,7 @@ export default function AddListingScreen() {
           description,
           { ...emptyDraftFields, ...extras },
           suggestCopy,
+          dismissed,
         )
       : description.trim();
     const request = formRequests.start();
@@ -427,6 +433,65 @@ export default function AddListingScreen() {
         labelStyle={() => labelType}
         disabled={busy}
       />
+      <View style={styles.photos}>
+        <Text style={[labelType, styles.ink]}>{copy.photoOptional}</Text>
+        {photo ? (
+          <LendingPhoto
+            photo={{ uri: photo.uri }}
+            caption={copy.photoCaption}
+            locale={locale}
+          />
+        ) : null}
+        <View style={styles.photoActions}>
+          <Button
+            label={copy.choosePhoto}
+            labelStyle={labelType}
+            onPress={() => selectPhoto("library")}
+            disabled={busy}
+            variant="text"
+          />
+          <Button
+            label={copy.takePhoto}
+            labelStyle={labelType}
+            onPress={() => selectPhoto("camera")}
+            disabled={busy}
+            variant="text"
+          />
+          {tool && photo ? (
+            <Button
+              label={
+                suggested
+                  ? suggestCopy.suggestAgain
+                  : suggestCopy.suggestDetails
+              }
+              labelStyle={labelType}
+              onPress={suggest}
+              busy={suggesting}
+              disabled={busy}
+              variant="text"
+            />
+          ) : null}
+          {photo ? (
+            <Button
+              label={copy.removePhoto}
+              labelStyle={labelType}
+              onPress={() => {
+                setPhoto(null);
+                setMediaId(null);
+                setSuggestNote(null);
+              }}
+              disabled={busy}
+              variant="text"
+            />
+          ) : null}
+        </View>
+        {tool && photo ? (
+          <Text style={[supportingType, styles.ink]}>
+            {suggesting ? suggestCopy.suggesting : suggestCopy.suggestHint}
+          </Text>
+        ) : null}
+        {suggestNote ? <ErrorText>{suggestCopy[suggestNote]}</ErrorText> : null}
+      </View>
       <Field
         label={tool ? copy.toolName : copy.skillName}
         placeholder={tool ? copy.toolExample : copy.skillExample}
@@ -440,6 +505,7 @@ export default function AddListingScreen() {
         editable={!busy}
         maxLength={120}
       />
+      {unsureHint("title", name)}
       <View style={styles.category}>
         <Text style={[labelType, styles.ink]}>{copy.category}</Text>
         {categoryLoad.state === "loading" ? (
@@ -518,43 +584,37 @@ export default function AddListingScreen() {
           {unsureHint("parts", parts)}
         </>
       ) : null}
-      {tool &&
-      suggested &&
-      extraKeys.some((key) => lastSuggested[key] && !dismissed.has(key)) ? (
+      {tool && shownExtras.length > 0 ? (
         <View style={styles.extras}>
           <Text style={[labelType, styles.ink]}>
             {suggestCopy.suggestedDetails}
           </Text>
-          {extraKeys.map((key) =>
-            lastSuggested[key] && !dismissed.has(key) ? (
-              <View key={key} style={styles.extraRow}>
-                <Field
-                  label={
-                    key === "details"
-                      ? suggestCopy.moreDetails
-                      : suggestCopy[key]
-                  }
-                  value={extras[key]}
-                  onChangeText={(next) =>
-                    setExtras((current) => ({ ...current, [key]: next }))
-                  }
-                  labelStyle={labelType}
-                  style={bodyType}
-                  editable={!busy}
-                  multiline={key === "details"}
-                  maxLength={key === "details" ? 1000 : 200}
-                />
-                {unsureHint(key, extras[key])}
-                <Button
-                  label={suggestCopy.dismiss}
-                  labelStyle={labelType}
-                  variant="text"
-                  disabled={busy}
-                  onPress={() => dismissExtra(key)}
-                />
-              </View>
-            ) : null,
-          )}
+          {shownExtras.map((key) => (
+            <View key={key} style={styles.extraRow}>
+              <Field
+                label={
+                  key === "details" ? suggestCopy.moreDetails : suggestCopy[key]
+                }
+                value={extras[key]}
+                onChangeText={(next) =>
+                  setExtras((current) => ({ ...current, [key]: next }))
+                }
+                labelStyle={labelType}
+                style={bodyType}
+                editable={!busy}
+                multiline={key === "details"}
+                maxLength={key === "details" ? 1000 : 200}
+              />
+              {unsureHint(key, extras[key])}
+              <Button
+                label={suggestCopy.dismiss}
+                labelStyle={labelType}
+                variant="text"
+                disabled={busy}
+                onPress={() => dismissExtra(key)}
+              />
+            </View>
+          ))}
         </View>
       ) : null}
       <Field
@@ -579,65 +639,6 @@ export default function AddListingScreen() {
         />
       ) : null}
       {tool ? unsureHint("safety", safety) : null}
-      <View style={styles.photos}>
-        <Text style={[labelType, styles.ink]}>{copy.photoOptional}</Text>
-        {photo ? (
-          <LendingPhoto
-            photo={{ uri: photo.uri }}
-            caption={copy.photoCaption}
-            locale={locale}
-          />
-        ) : null}
-        <View style={styles.photoActions}>
-          <Button
-            label={copy.choosePhoto}
-            labelStyle={labelType}
-            onPress={() => selectPhoto("library")}
-            disabled={busy}
-            variant="text"
-          />
-          <Button
-            label={copy.takePhoto}
-            labelStyle={labelType}
-            onPress={() => selectPhoto("camera")}
-            disabled={busy}
-            variant="text"
-          />
-          {tool && photo ? (
-            <Button
-              label={
-                suggested
-                  ? suggestCopy.suggestAgain
-                  : suggestCopy.suggestDetails
-              }
-              labelStyle={labelType}
-              onPress={suggest}
-              busy={suggesting}
-              disabled={busy}
-              variant="text"
-            />
-          ) : null}
-          {photo ? (
-            <Button
-              label={copy.removePhoto}
-              labelStyle={labelType}
-              onPress={() => {
-                setPhoto(null);
-                setMediaId(null);
-                setSuggestNote(null);
-              }}
-              disabled={busy}
-              variant="text"
-            />
-          ) : null}
-        </View>
-        {tool && photo ? (
-          <Text style={[supportingType, styles.ink]}>
-            {suggesting ? suggestCopy.suggesting : suggestCopy.suggestHint}
-          </Text>
-        ) : null}
-        {suggestNote ? <ErrorText>{suggestCopy[suggestNote]}</ErrorText> : null}
-      </View>
     </CommunityScreen>
   );
 }
