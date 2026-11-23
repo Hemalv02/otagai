@@ -1,69 +1,208 @@
-import { Button as ExpoButton, Host } from "@expo/ui";
+import { Button as ExpoButton, Host, Picker } from "@expo/ui";
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
-import { ListingCategoryPicker } from "@/components/listing-category-picker";
 import { Button, Field } from "@/components/ui";
-import { useCommunityDemo } from "@/lib/community-demo";
+import { api, type CategoryNode, type ListingKind } from "@/lib/api";
 import {
-  isSampleListing,
-  listingPhotoSource,
-  listingText,
-  type ListingCategory,
-  useDemoListings,
-} from "@/lib/demo-listings";
-import { myListingsCopy } from "@/lib/my-listings-copy";
+  browseFilterKey,
+  canRetry,
+  changeKind,
+  firstPageFailed,
+  firstPageLoaded,
+  initialBrowseState,
+  nextPageFailed,
+  nextPageLoaded,
+  normalizeSearch,
+  startNextPage,
+  visibleBrowseState,
+  type BrowseFilters,
+  type BrowseState,
+  type KindFilter,
+} from "@/lib/browse-state";
 import { lendingCopy } from "@/lib/lending-copy";
+import {
+  categoryName,
+  flattenCategories,
+  listingReadCopy,
+  requestApiError,
+} from "@/lib/listing-read";
+import { createLatestRequest } from "@/lib/listing-workflow";
+import { myListingsCopy } from "@/lib/my-listings-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
-const filters = ["all", "tool", "skill"] as const;
+const KIND_FILTERS = ["all", "tool", "skill"] as const;
 
-function searchString(value: string) {
-  return value.normalize("NFKC").toLowerCase();
-}
+type CategoryLoad =
+  | { state: "loading" }
+  | { state: "error" }
+  | { state: "ready"; items: CategoryNode[] };
 
 export default function BrowseToolsScreen() {
   const { locale } = useOnboardingText();
-  const { actor, people } = useCommunityDemo();
-  const { listings } = useDemoListings();
+  const { session, profile } = useSession();
+  const account = session?.user.id ?? null;
+  const profileId = profile.status === "ready" ? profile.profile.id : null;
+
   const copy = lendingCopy[locale];
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<(typeof filters)[number]>("all");
-  const [category, setCategory] = useState<ListingCategory | "">("");
-  const terms = searchString(query.trim()).split(/\s+/).filter(Boolean);
+  const readCopy = listingReadCopy[locale];
   const labelType = localizedType("field-label", locale);
   const supportingType = localizedType("supporting", locale);
-  const filtersActive = Boolean(
-    query.trim() || category || filter === "tool" || filter === "skill",
+
+  const [rawQuery, setRawQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+  const [categoryId, setCategoryId] = useState("");
+  const [refreshTick, setRefreshTick] = useState(0);
+  const [categoryTick, setCategoryTick] = useState(0);
+  const [categoryLoad, setCategoryLoad] = useState<CategoryLoad>({
+    state: "loading",
+  });
+  const [browse, setBrowse] = useState<BrowseState>(initialBrowseState);
+
+  const [categoryRequests] = useState(createLatestRequest);
+  const [listingRequests] = useState(createLatestRequest);
+  const focusedOnce = useRef(false);
+
+  const filters: BrowseFilters = {
+    account: account ?? "",
+    kind: kindFilter,
+    categoryId,
+    q: debouncedQuery,
+  };
+  const filterKey = browseFilterKey(filters);
+  const view = visibleBrowseState(browse, filterKey);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(normalizeSearch(rawQuery)), 300);
+    return () => clearTimeout(timer);
+  }, [rawQuery]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) setRefreshTick((tick) => tick + 1);
+      focusedOnce.current = true;
+    }, []),
   );
 
-  const rows = listings.filter((listing) => {
-    if ((filter === "tool" || filter === "skill") && listing.kind !== filter)
-      return false;
-    if (category && listing.category !== category) return false;
-    if (terms.length === 0) return true;
+  const listParams = useCallback(
+    (cursor?: string) => ({
+      ...(debouncedQuery ? { q: debouncedQuery } : {}),
+      ...(kindFilter !== "all" ? { kind: kindFilter } : {}),
+      ...(categoryId ? { category_id: categoryId } : {}),
+      ...(cursor ? { cursor } : {}),
+    }),
+    [debouncedQuery, kindFilter, categoryId],
+  );
 
-    const fields = [listing.title, listing.description];
-    if (isSampleListing(listing))
-      fields.push(listing.owner, listing.summary, listing.keywords);
-    const searchable = searchString(
-      [
-        copy.categories[listing.category],
-        ...fields.map((value) => listingText(value, locale)),
-      ].join(" "),
-    );
-    return terms.every((term) => searchable.includes(term));
-  });
+  useEffect(() => {
+    if (!account) return;
+    const key = filterKey;
+    const request = listingRequests.start();
+    api
+      .listListings(listParams(), {
+        authUserId: account,
+        signal: request.signal,
+      })
+      .then((page) => {
+        if (!request.isCurrent()) return;
+        setBrowse((current) => firstPageLoaded(current, key, page));
+      })
+      .catch((error) => {
+        if (!request.isCurrent()) return;
+        setBrowse((current) =>
+          firstPageFailed(current, key, requestApiError(error)),
+        );
+      });
+    return () => listingRequests.cancel();
+  }, [account, filterKey, refreshTick, listParams, listingRequests]);
+
+  useEffect(() => {
+    if (!account) return;
+    const request = categoryRequests.start();
+    const options = { authUserId: account, signal: request.signal };
+    const kinds: ListingKind[] = kindFilter === "all" ? ["tool", "skill"] : [kindFilter];
+    Promise.all(kinds.map((kind) => api.listCategories(kind, options)))
+      .then((results) => {
+        if (!request.isCurrent()) return;
+        setCategoryLoad({
+          state: "ready",
+          items: flattenCategories(results.flatMap((result) => result.items)),
+        });
+      })
+      .catch(() => {
+        if (!request.isCurrent()) return;
+        setCategoryLoad({ state: "error" });
+      });
+    return () => categoryRequests.cancel();
+  }, [account, kindFilter, categoryTick, categoryRequests]);
+
+  function handleKindChange(next: KindFilter) {
+    if (next === kindFilter) return;
+    const changed = changeKind(filters, next);
+    setCategoryLoad({ state: "loading" });
+    setCategoryId(changed.categoryId);
+    setKindFilter(changed.kind);
+  }
+
+  function reloadCategories() {
+    setCategoryLoad({ state: "loading" });
+    setCategoryTick((tick) => tick + 1);
+  }
+
+  function loadNextPage() {
+    const cursor = view.nextCursor;
+    if (!account || !cursor || view.loadingMore) return;
+    const key = filterKey;
+    setBrowse((current) => startNextPage(current, key));
+    const request = listingRequests.start();
+    api
+      .listListings(listParams(cursor), {
+        authUserId: account,
+        signal: request.signal,
+      })
+      .then((page) => {
+        if (!request.isCurrent()) return;
+        setBrowse((current) => nextPageLoaded(current, key, page));
+      })
+      .catch((error) => {
+        if (!request.isCurrent()) return;
+        setBrowse((current) =>
+          nextPageFailed(current, key, requestApiError(error)),
+        );
+      });
+  }
+
+  function retryFirstPage() {
+    setBrowse(initialBrowseState(filterKey));
+    setRefreshTick((tick) => tick + 1);
+  }
+
+  const flatCategoryItems =
+    categoryLoad.state === "ready" ? categoryLoad.items : [];
+  const rows = view.rows;
+  const filtersActive = Boolean(rawQuery.trim() || categoryId || kindFilter !== "all");
 
   function clearFilters() {
-    setQuery("");
-    setCategory("");
-    setFilter("all");
+    setRawQuery("");
+    setDebouncedQuery("");
+    setCategoryId("");
+    if (kindFilter !== "all") {
+      setCategoryLoad({ state: "loading" });
+      setKindFilter("all");
+    }
   }
 
   return (
@@ -80,13 +219,13 @@ export default function BrowseToolsScreen() {
       keyboard
     >
       <Field
-        label={copy.search}
+        label={readCopy.titleSearch}
         labelStyle={labelType}
         style={localizedType("body", locale)}
-        value={query}
-        onChangeText={setQuery}
+        value={rawQuery}
+        onChangeText={setRawQuery}
         placeholder={copy.searchExample}
-        accessibilityHint={copy.searchHint}
+        accessibilityHint={readCopy.titleHint}
         autoCapitalize="none"
         autoCorrect={false}
         clearButtonMode="while-editing"
@@ -94,8 +233,8 @@ export default function BrowseToolsScreen() {
       />
       <View style={styles.filters}>
         <View accessibilityRole="radiogroup" style={styles.segments}>
-          {filters.map((option) => {
-            const selected = filter === option;
+          {KIND_FILTERS.map((option) => {
+            const selected = kindFilter === option;
             return (
               <Pressable
                 key={option}
@@ -103,7 +242,7 @@ export default function BrowseToolsScreen() {
                 accessibilityLabel={copy[option]}
                 accessibilityState={{ checked: selected, selected }}
                 style={[styles.segment, selected && styles.selected]}
-                onPress={() => setFilter(option)}
+                onPress={() => handleKindChange(option)}
               >
                 <Text
                   style={[
@@ -127,15 +266,69 @@ export default function BrowseToolsScreen() {
           <Text style={[supportingType, styles.secondary]}>
             {copy.category}
           </Text>
-          <ListingCategoryPicker
-            value={category}
-            onChange={setCategory}
-            filter
-          />
+          {categoryLoad.state === "loading" ? (
+            <Text style={[supportingType, styles.secondary]}>
+              {copy.loadingCategories}
+            </Text>
+          ) : categoryLoad.state === "error" ? (
+            <View style={styles.categoryError}>
+              <Text style={[supportingType, styles.secondary]}>
+                {copy.categoriesError}
+              </Text>
+              <Button
+                label={copy.retry}
+                labelStyle={labelType}
+                variant="text"
+                onPress={reloadCategories}
+              />
+            </View>
+          ) : (
+            <Host matchContents seedColor={colors.action}>
+              <Picker<string>
+                selectedValue={categoryId}
+                onValueChange={(id) => {
+                  if (
+                    id === "" ||
+                    flatCategoryItems.some((item) => item.id === id)
+                  ) {
+                    setCategoryId(id);
+                  }
+                }}
+                accessibilityLabel={copy.category}
+              >
+                <Picker.Item label={copy.allCategories} value="" />
+                {flatCategoryItems.map((item) => (
+                  <Picker.Item
+                    key={item.id}
+                    value={item.id}
+                    label={categoryName(item, locale)}
+                  />
+                ))}
+              </Picker>
+            </Host>
+          )}
         </View>
       </View>
       <View style={styles.results}>
-        {rows.length === 0 ? (
+        {view.status === "loading" ? (
+          <View style={styles.centered}>
+            <ActivityIndicator accessibilityLabel={copy.loadingListings} />
+          </View>
+        ) : view.status === "error" ? (
+          <View style={styles.empty}>
+            <Text style={[supportingType, styles.secondary]}>
+              {readCopy[view.firstError ?? "error"]}
+            </Text>
+            {canRetry(view.firstError) ? (
+              <Button
+                label={copy.retry}
+                labelStyle={labelType}
+                variant="text"
+                onPress={retryFirstPage}
+              />
+            ) : null}
+          </View>
+        ) : rows.length === 0 ? (
           <View style={styles.empty}>
             <Text
               accessibilityLiveRegion="polite"
@@ -154,27 +347,23 @@ export default function BrowseToolsScreen() {
           </View>
         ) : null}
         {rows.map((listing) => {
-          const sample = isSampleListing(listing) ? listing : null;
-          const title = listingText(listing.title, locale);
-          const owner = sample
-            ? listingText(sample.owner, locale)
-            : people[listing.postedBy ?? "member"].name;
-          const description = sample
-            ? listingText(sample.summary, locale)
-            : copy.categories[listing.category];
-          const own = listing.postedBy === actor;
           const skill = listing.kind === "skill";
-          const status = own
-            ? copy.yourListing
-            : skill
-              ? copy.askForTime
-              : copy.available;
+          const own =
+            profileId !== null && profileId === listing.owner_user_id;
+          const catNode = flatCategoryItems.find(
+            (item) => item.id === listing.category_id,
+          );
+          const catLabel = catNode ? categoryName(catNode, locale) : null;
+          const lendLabel = readCopy[listing.lend_mode];
+          const statusLabel = own ? copy.yourListing : lendLabel;
 
           return (
             <Pressable
               key={listing.id}
               accessibilityRole="link"
-              accessibilityLabel={`${title}, ${owner}, ${status}`}
+              accessibilityLabel={[listing.title, catLabel, statusLabel]
+                .filter(Boolean)
+                .join(", ")}
               style={styles.row}
               onPress={() =>
                 router.push({
@@ -183,9 +372,9 @@ export default function BrowseToolsScreen() {
                 })
               }
             >
-              {listing.photo ? (
+              {listing.photo_url ? (
                 <Image
-                  source={listingPhotoSource(listing.photo)}
+                  source={{ uri: listing.photo_url }}
                   style={styles.thumbnail}
                   accessible={false}
                 />
@@ -214,11 +403,15 @@ export default function BrowseToolsScreen() {
                 </View>
               )}
               <View style={styles.rowCopy}>
-                <Text style={[labelType, styles.ink]}>{title}</Text>
-                <Text style={[supportingType, styles.secondary]}>
-                  {owner} · {description}
+                <Text style={[labelType, styles.ink]}>{listing.title}</Text>
+                {catLabel ? (
+                  <Text style={[supportingType, styles.secondary]}>
+                    {catLabel}
+                  </Text>
+                ) : null}
+                <Text style={[supportingType, styles.action]}>
+                  {statusLabel}
                 </Text>
-                <Text style={[supportingType, styles.action]}>{status}</Text>
               </View>
               <SymbolView
                 name={{
@@ -232,6 +425,34 @@ export default function BrowseToolsScreen() {
             </Pressable>
           );
         })}
+        {view.loadingMore ? (
+          <View style={styles.centered}>
+            <ActivityIndicator accessibilityLabel={copy.loadingListings} />
+          </View>
+        ) : null}
+        {view.nextError ? (
+          <View style={styles.empty}>
+            <Text style={[supportingType, styles.secondary]}>
+              {copy.listingsNextError}
+            </Text>
+            {canRetry(view.nextError) ? (
+              <Button
+                label={copy.retry}
+                labelStyle={labelType}
+                variant="text"
+                onPress={loadNextPage}
+              />
+            ) : null}
+          </View>
+        ) : null}
+        {view.nextCursor && !view.loadingMore && !view.nextError ? (
+          <Button
+            label={copy.loadMore}
+            labelStyle={labelType}
+            variant="text"
+            onPress={loadNextPage}
+          />
+        ) : null}
       </View>
     </CommunityScreen>
   );
@@ -267,9 +488,18 @@ const styles = StyleSheet.create({
     minHeight: 42,
     gap: spacing["related-gap"],
   },
+  categoryError: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing["related-gap"],
+  },
   results: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.rule,
+  },
+  centered: {
+    paddingTop: spacing["card-inset"],
+    alignItems: "center",
   },
   row: {
     flexDirection: "row",

@@ -165,30 +165,6 @@ function CircleHome({ circleName }: { circleName: string }) {
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
         </Text>
-        <HomeRow
-          title={copy.drill}
-          description={people.neighbour.name}
-          detail={copy.available}
-          photo={require("../../../../assets/images/community/home-drill.png")}
-          onPress={() =>
-            router.push({
-              pathname: "/tools/[id]",
-              params: { id: "hammer-drill" },
-            })
-          }
-        />
-        <HomeRow
-          title={copy.cutter}
-          description={people.neighbour.name}
-          detail={copy.weekend}
-          photo={require("../../../../assets/images/community/home-grass-cutter.png")}
-          onPress={() =>
-            router.push({
-              pathname: "/tools/[id]",
-              params: { id: "grass-cutter" },
-            })
-          }
-        />
         <Button
           label={copy.browse}
           labelStyle={label}

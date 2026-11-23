@@ -13,6 +13,7 @@ import {
   createLatestRequest,
   prepareListingMedia,
 } from "@/lib/listing-workflow";
+import { categoryName, flattenCategories } from "@/lib/listing-read";
 import { lendingCopy } from "@/lib/lending-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -440,15 +441,3 @@ const styles = StyleSheet.create({
     gap: spacing["card-inset"],
   },
 });
-
-function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
-  return nodes.flatMap((node) => [node, ...flattenCategories(node.children)]);
-}
-function categoryName(node: CategoryNode, locale: string): string {
-  const name =
-    node.names[locale] ??
-    node.names.en ??
-    node.names.ja ??
-    Object.values(node.names).find((value) => typeof value === "string");
-  return typeof name === "string" ? name : node.slug;
-}
