@@ -1,5 +1,6 @@
 from agents import (
     Agent,
+    FunctionTool,
     ModelSettings,
     OpenAIResponsesModel,
     RunConfig,
@@ -8,13 +9,14 @@ from agents import (
 )
 from agents.exceptions import AgentsException
 from openai import APIError, AsyncOpenAI
+from openai.types.shared import Reasoning
 from pydantic import BaseModel
 
-from app.services.errors import ServiceConfigurationError, ServiceError
+from app.services.errors import ServiceConfigurationError, UpstreamUnavailableError
 from app.settings import Settings
 
 
-class AIDraftError(ServiceError):
+class AIDraftError(UpstreamUnavailableError):
     pass
 
 
@@ -24,6 +26,9 @@ async def draft[Output: BaseModel](
     instructions: str,
     user_input: str | list[TResponseInputItem],
     output_type: type[Output],
+    reasoning: Reasoning | None = None,
+    tool: FunctionTool | None = None,
+    context=None,
 ) -> Output:
     if not settings.openai_api_key or not settings.openai_model:
         raise ServiceConfigurationError("Configure the OpenAI key and model.")
@@ -35,13 +40,21 @@ async def draft[Output: BaseModel](
             name="Otagai drafting assistant",
             instructions=instructions,
             output_type=output_type,
+            tools=[tool] if tool else [],
+            tool_use_behavior="stop_on_first_tool" if tool else "run_llm_again",
             model=OpenAIResponsesModel(settings.openai_model, client),
-            model_settings=ModelSettings(store=False),
+            model_settings=ModelSettings(
+                store=False,
+                reasoning=reasoning,
+                tool_choice="required" if tool else None,
+                parallel_tool_calls=False if tool else None,
+            ),
         )
         try:
             result = await Runner.run(
                 agent,
                 user_input,
+                context=context,
                 max_turns=1,
                 run_config=RunConfig(tracing_disabled=True),
             )
