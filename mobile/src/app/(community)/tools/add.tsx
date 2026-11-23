@@ -8,7 +8,21 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
 import { LendingPhoto } from "@/components/lending-photo";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
-import { api, type CategoryNode, type ListingKind } from "@/lib/api";
+import { api, ApiError, type CategoryNode, type ListingKind } from "@/lib/api";
+import { RequestNotice } from "@/components/request-notice";
+import { draftCopy } from "@/lib/listing-draft-copy";
+import {
+  composeDescription,
+  emptyDraftFields,
+  isRiskyCategory,
+  listingLendMode,
+  mergeSuggestion,
+  parseParts,
+  suggestionFields,
+  unsureKeys,
+  type DraftFields,
+  type DraftKey,
+} from "@/lib/listing-draft";
 import { myListingsCopy } from "@/lib/my-listings-copy";
 import {
   createLatestRequest,
@@ -26,6 +40,9 @@ type FormError =
   | "cameraPermission"
   | "publishFailed"
   | "attachmentFailed";
+type SuggestNote =
+  "unclear" | "failed" | "rateLimited" | "photoNotReady" | "categoryUnmatched";
+const extraKeys = ["brand", "model", "condition", "details"] as const;
 type CategoryLoad =
   | { state: "loading" }
   | { state: "error" }
@@ -42,6 +59,7 @@ export default function AddListingScreen() {
   const { locale } = useOnboardingText();
   const messages = myListingsCopy[locale];
   const copy = lendingCopy[locale];
+  const suggestCopy = draftCopy[locale];
   const [categoryQuery, setCategoryQuery] = useState<{
     kind: ListingKind;
     version: number;
@@ -52,6 +70,20 @@ export default function AddListingScreen() {
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [safety, setSafety] = useState("");
+  const [parts, setParts] = useState("");
+  const [extras, setExtras] = useState({
+    brand: "",
+    model: "",
+    condition: "",
+    details: "",
+  });
+  const [lastSuggested, setLastSuggested] =
+    useState<DraftFields>(emptyDraftFields);
+  const [dismissed, setDismissed] = useState<ReadonlySet<DraftKey>>(new Set());
+  const [unsure, setUnsure] = useState<ReadonlySet<DraftKey>>(new Set());
+  const [suggestNote, setSuggestNote] = useState<SuggestNote | null>(null);
+  const [suggested, setSuggested] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
   const [availability, setAvailability] = useState("");
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [mediaId, setMediaId] = useState<string | null>(null);
@@ -67,8 +99,10 @@ export default function AddListingScreen() {
   const labelType = localizedType("field-label", locale);
   const bodyType = localizedType("body", locale);
   const buttonType = localizedType("button", locale);
+  const supportingType = localizedType("supporting", locale);
   const tool = kind === "tool";
-  const busy = picking || saving;
+  const busy = picking || saving || suggesting;
+  const risky = tool && isRiskyCategory(categoryItems(categoryLoad), category);
 
   useLayoutEffect(() => {
     function cancelFormWork() {
@@ -79,6 +113,7 @@ export default function AddListingScreen() {
       cancelFormWork();
       setPicking(false);
       setSaving(false);
+      setSuggesting(false);
     });
     return () => {
       unsubscribe();
@@ -129,6 +164,7 @@ export default function AddListingScreen() {
         else if (!result.canceled) {
           setPhoto(result.assets[0]);
           setMediaId(null);
+          setSuggestNote(null);
         }
       })
       .catch(() => {
@@ -159,6 +195,7 @@ export default function AddListingScreen() {
       if (stillCurrent() && !result.canceled) {
         setPhoto(result.assets[0]);
         setMediaId(null);
+        setSuggestNote(null);
       }
     } catch {
       if (stillCurrent()) setError("photoFailed");
@@ -168,6 +205,113 @@ export default function AddListingScreen() {
         setPicking(false);
       }
     }
+  }
+
+  function readyMediaId(
+    request: { signal: AbortSignal },
+    options: { authUserId: string; signal: AbortSignal },
+  ) {
+    if (!photo) return Promise.resolve(null);
+    return prepareListingMedia({
+      mediaId,
+      signal: request.signal,
+      upload: async () => {
+        const form = new FormData();
+        form.append("purpose", "listing");
+        if (Platform.OS === "web" && photo.file)
+          form.append("file", photo.file);
+        else form.append("file", new File(photo.uri));
+        return api.uploadListingPhoto(form, options);
+      },
+      getMedia: (id) => api.getMedia(id, options),
+      onAccepted: setMediaId,
+    });
+  }
+
+  async function suggest() {
+    if (working.current || !account || !photo || !navigation.isFocused())
+      return;
+    const request = formRequests.start();
+    const stillCurrent = () => request.isCurrent() && navigation.isFocused();
+    const options = { authUserId: account, signal: request.signal };
+    working.current = true;
+    setSuggesting(true);
+    setSuggestNote(null);
+    setError(null);
+    let preparingPhoto = true;
+    try {
+      const id = await readyMediaId(request, options);
+      if (!stillCurrent() || !id) return;
+      preparingPhoto = false;
+      const result = await api.draftListing(
+        {
+          image_media_id: id,
+          language: locale,
+          ...(name.trim() ? { description: name.trim() } : {}),
+        },
+        options,
+      );
+      if (!stillCurrent()) return;
+      if (!result.recognized) {
+        setSuggestNote("unclear");
+        return;
+      }
+      const items = categoryItems(categoryLoad);
+      const ready = categoryLoad.state === "ready" && categoryLoad.isCurrent();
+      const next = suggestionFields(result, ready ? items : []);
+      const merged = mergeSuggestion(
+        {
+          title: name,
+          categoryId: category,
+          parts,
+          safety,
+          ...extras,
+        },
+        lastSuggested,
+        next,
+        dismissed,
+      );
+      setName(merged.title);
+      setCategory(merged.categoryId);
+      setParts(merged.parts);
+      setSafety(merged.safety);
+      setExtras({
+        brand: merged.brand,
+        model: merged.model,
+        condition: merged.condition,
+        details: merged.details,
+      });
+      setLastSuggested(next);
+      setUnsure(unsureKeys(result));
+      setSuggested(true);
+      if (result.category_id && !next.categoryId) {
+        setSuggestNote("categoryUnmatched");
+      }
+    } catch (failure) {
+      if (!stillCurrent()) return;
+      if (preparingPhoto) setSuggestNote("photoNotReady");
+      else if (failure instanceof ApiError && failure.status === 429)
+        setSuggestNote("rateLimited");
+      else if (failure instanceof ApiError && failure.status === 404)
+        setSuggestNote("photoNotReady");
+      else setSuggestNote("failed");
+    } finally {
+      if (request.isCurrent()) {
+        working.current = false;
+        setSuggesting(false);
+      }
+    }
+  }
+
+  function dismissExtra(key: (typeof extraKeys)[number]) {
+    setExtras((current) => ({ ...current, [key]: "" }));
+    setDismissed((current) => new Set(current).add(key));
+  }
+
+  function unsureHint(key: DraftKey, value: string) {
+    return unsure.has(key) && value !== "" && value === lastSuggested[key] ? (
+      <Text style={[supportingType, styles.unsure]}>{suggestCopy.unsure}</Text>
+    ) : null;
   }
 
   async function submit() {
@@ -181,6 +325,13 @@ export default function AddListingScreen() {
       return;
     }
 
+    const composedDescription = tool
+      ? composeDescription(
+          description,
+          { ...emptyDraftFields, ...extras },
+          suggestCopy,
+        )
+      : description.trim();
     const request = formRequests.start();
     const stillCurrent = () => request.isCurrent() && navigation.isFocused();
     const options = { authUserId: account, signal: request.signal };
@@ -190,22 +341,7 @@ export default function AddListingScreen() {
     let preparingPhoto = Boolean(photo);
     let navigating = false;
     try {
-      const id = photo
-        ? await prepareListingMedia({
-            mediaId,
-            signal: request.signal,
-            upload: async () => {
-              const form = new FormData();
-              form.append("purpose", "listing");
-              if (Platform.OS === "web" && photo.file)
-                form.append("file", photo.file);
-              else form.append("file", new File(photo.uri));
-              return api.uploadListingPhoto(form, options);
-            },
-            getMedia: (id) => api.getMedia(id, options),
-            onAccepted: setMediaId,
-          })
-        : null;
+      const id = await readyMediaId(request, options);
       if (!stillCurrent()) return;
       preparingPhoto = false;
       const listing = await api.createListing(
@@ -214,9 +350,12 @@ export default function AddListingScreen() {
           category_id: category,
           title: name.trim(),
           lang: locale,
-          lend_mode: tool ? "lend" : "help_only",
+          lend_mode: listingLendMode(kind, categoryLoad.items, category),
           media_ids: id ? [id] : [],
-          ...(description.trim() ? { description: description.trim() } : {}),
+          ...(composedDescription ? { description: composedDescription } : {}),
+          ...(tool && parseParts(parts).length > 0
+            ? { parts: parseParts(parts) }
+            : {}),
           ...(tool && safety.trim() ? { safety_notes: safety.trim() } : {}),
           ...(availability.trim()
             ? { availability_note: availability.trim() }
@@ -250,6 +389,13 @@ export default function AddListingScreen() {
       keyboard
       footer={
         <View style={styles.submit}>
+          {risky ? (
+            <RequestNotice
+              title={suggestCopy.riskyTitle}
+              detail={suggestCopy.riskyDetail}
+              locale={locale}
+            />
+          ) : null}
           {error ? (
             <ErrorText>
               {error === "attachmentFailed" ? messages.photoError : copy[error]}
@@ -344,8 +490,9 @@ export default function AddListingScreen() {
           </Host>
         )}
       </View>
+      {unsureHint("categoryId", category)}
       <Field
-        label={tool ? copy.includedParts : copy.description}
+        label={copy.description}
         placeholder={
           tool ? copy.toolDescriptionExample : copy.skillDescriptionExample
         }
@@ -357,6 +504,59 @@ export default function AddListingScreen() {
         multiline
         maxLength={2000}
       />
+      {tool ? (
+        <>
+          <Field
+            label={suggestCopy.includedParts}
+            value={parts}
+            onChangeText={setParts}
+            labelStyle={labelType}
+            style={[bodyType, styles.multiline]}
+            editable={!busy}
+            multiline
+          />
+          {unsureHint("parts", parts)}
+        </>
+      ) : null}
+      {tool &&
+      suggested &&
+      extraKeys.some((key) => lastSuggested[key] && !dismissed.has(key)) ? (
+        <View style={styles.extras}>
+          <Text style={[labelType, styles.ink]}>
+            {suggestCopy.suggestedDetails}
+          </Text>
+          {extraKeys.map((key) =>
+            lastSuggested[key] && !dismissed.has(key) ? (
+              <View key={key} style={styles.extraRow}>
+                <Field
+                  label={
+                    key === "details"
+                      ? suggestCopy.moreDetails
+                      : suggestCopy[key]
+                  }
+                  value={extras[key]}
+                  onChangeText={(next) =>
+                    setExtras((current) => ({ ...current, [key]: next }))
+                  }
+                  labelStyle={labelType}
+                  style={bodyType}
+                  editable={!busy}
+                  multiline={key === "details"}
+                  maxLength={key === "details" ? 1000 : 200}
+                />
+                {unsureHint(key, extras[key])}
+                <Button
+                  label={suggestCopy.dismiss}
+                  labelStyle={labelType}
+                  variant="text"
+                  disabled={busy}
+                  onPress={() => dismissExtra(key)}
+                />
+              </View>
+            ) : null,
+          )}
+        </View>
+      ) : null}
       <Field
         label={copy.availabilityOptional}
         placeholder={tool ? copy.pickupExample : copy.skillAvailabilityExample}
@@ -378,6 +578,7 @@ export default function AddListingScreen() {
           maxLength={2000}
         />
       ) : null}
+      {tool ? unsureHint("safety", safety) : null}
       <View style={styles.photos}>
         <Text style={[labelType, styles.ink]}>{copy.photoOptional}</Text>
         {photo ? (
@@ -402,6 +603,20 @@ export default function AddListingScreen() {
             disabled={busy}
             variant="text"
           />
+          {tool && photo ? (
+            <Button
+              label={
+                suggested
+                  ? suggestCopy.suggestAgain
+                  : suggestCopy.suggestDetails
+              }
+              labelStyle={labelType}
+              onPress={suggest}
+              busy={suggesting}
+              disabled={busy}
+              variant="text"
+            />
+          ) : null}
           {photo ? (
             <Button
               label={copy.removePhoto}
@@ -409,19 +624,33 @@ export default function AddListingScreen() {
               onPress={() => {
                 setPhoto(null);
                 setMediaId(null);
+                setSuggestNote(null);
               }}
               disabled={busy}
               variant="text"
             />
           ) : null}
         </View>
+        {tool && photo ? (
+          <Text style={[supportingType, styles.ink]}>
+            {suggesting ? suggestCopy.suggesting : suggestCopy.suggestHint}
+          </Text>
+        ) : null}
+        {suggestNote ? <ErrorText>{suggestCopy[suggestNote]}</ErrorText> : null}
       </View>
     </CommunityScreen>
   );
 }
 
+function categoryItems(load: CategoryLoad): CategoryNode[] {
+  return load.state === "ready" ? load.items : [];
+}
+
 const styles = StyleSheet.create({
   ink: { color: colors.ink },
+  unsure: { color: colors.ink },
+  extras: { gap: spacing["related-gap"] },
+  extraRow: { gap: spacing["related-gap"] },
   submit: { gap: spacing["related-gap"] },
   category: {
     flexDirection: "row",
