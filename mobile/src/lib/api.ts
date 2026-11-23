@@ -69,6 +69,8 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 
 export type Exchange = {
   id: string;
+  request_id: string;
+  response_id: string;
   requester_user_id: string;
   helper_user_id: string;
   listing_id: string | null;
@@ -114,6 +116,24 @@ export type NotificationPreferences = Pick<
   UserProfile,
   "push_enabled" | "quiet_hours_start" | "quiet_hours_end"
 >;
+
+export type Conversation = {
+  id: string;
+  request_id: string | null;
+  response_id: string | null;
+  status: string;
+  participants: { user_id: string }[];
+};
+
+export type ChatMessage = {
+  id: string;
+  conversation_id: string;
+  sender_user_id: string | null;
+  kind: string;
+  body: string | null;
+  deleted: boolean;
+  created_at: string;
+};
 
 function pageQuery(cursor?: string | null) {
   return new URLSearchParams({ limit: "20", ...(cursor ? { cursor } : {}) });
@@ -172,6 +192,36 @@ export const api = {
   },
   getExchange: (id: string) =>
     request<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
+  listConversations: (cursor?: string | null) =>
+    request<Page<Conversation>>(`/users/me/conversations?${pageQuery(cursor)}`),
+  getConversation: (id: string) =>
+    request<Conversation>(`/conversations/${encodeURIComponent(id)}`),
+  listMessages: (id: string, before?: string | null) => {
+    const query = new URLSearchParams({
+      limit: "20",
+      ...(before ? { before } : {}),
+    });
+    return request<Page<ChatMessage>>(
+      `/conversations/${encodeURIComponent(id)}/messages?${query}`,
+    );
+  },
+  sendMessage: (id: string, body: string, clientMessageId: string) =>
+    request<ChatMessage>(`/conversations/${encodeURIComponent(id)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({
+        kind: "text",
+        body,
+        client_message_id: clientMessageId,
+      }),
+    }),
+  markConversationRead: (id: string) =>
+    request<unknown>(
+      `/conversations/${encodeURIComponent(id)}/participants/me`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ mark_read: true }),
+      },
+    ),
   getListing: (id: string) =>
     request<ListingDetail>(`/listings/${encodeURIComponent(id)}`),
   getPublicProfile: (id: string) =>

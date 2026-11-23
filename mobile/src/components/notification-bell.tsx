@@ -29,7 +29,8 @@ export function NotificationBell() {
         onPress={() => router.push("/notifications")}
       >
         <Text style={[localizedType("field-label", locale), styles.green]}>
-          🔔 {count === undefined ? "" : count.toLocaleString(locale)}
+          🔔 {copy.notifications}
+          {count === undefined ? "" : ` · ${count.toLocaleString(locale)}`}
         </Text>
       </Pressable>
       {counts.error ? (

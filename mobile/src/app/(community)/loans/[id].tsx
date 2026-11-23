@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
-import { useCallback, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { type ReactNode, useCallback, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
@@ -19,6 +19,7 @@ import {
   activityTime,
 } from "@/lib/activity-screen-copy";
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
+import { loanMessageCopy } from "@/lib/loan-message-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -92,6 +93,19 @@ export default function LoanDetailsScreen() {
   const overdue = exchange?.due_at && new Date(exchange.due_at).getTime() < now;
   const active = exchange?.status === "active";
   const itemName = title || copy.unnamedLoan;
+  const messageAction = (
+    <Button
+      label={loanMessageCopy[locale].messagePartner(
+        partnerName || loanMessageCopy[locale].neighbour,
+      )}
+      variant="text"
+      labelStyle={localizedType("field-label", locale)}
+      disabled={busy || loan.loading || loan.error}
+      onPress={() =>
+        router.push({ pathname: "/loans/[id]/messages", params: { id } })
+      }
+    />
+  );
   const heading = exchange?.returned_at
     ? screen.returned
     : exchange?.due_at
@@ -217,8 +231,11 @@ export default function LoanDetailsScreen() {
               busy={busy}
               disabled={loan.loading || loan.error}
               onSend={(request) => act({ request })}
+              messageAction={messageAction}
             />
-          ) : null}
+          ) : (
+            messageAction
+          )}
           {notice ? <ActivityText>{notice}</ActivityText> : null}
           {error ? <ErrorText>{error}</ErrorText> : null}
           {history.length ? (
@@ -347,6 +364,7 @@ function ExtensionDraft({
   busy,
   disabled,
   onSend,
+  messageAction,
 }: {
   exchange: Exchange;
   itemName: string;
@@ -355,6 +373,7 @@ function ExtensionDraft({
   busy: boolean;
   disabled: boolean;
   onSend: (request: ExtensionRequest) => void;
+  messageAction: ReactNode;
 }) {
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
@@ -462,14 +481,18 @@ function ExtensionDraft({
           />
         </View>
       ) : (
-        <Button
-          label={screen.askOneDay}
-          variant="text"
-          labelStyle={localizedType("field-label", locale)}
-          disabled={busy || disabled}
-          onPress={() => setExpanded(true)}
-        />
+        <View>
+          <Button
+            label={screen.askOneDay}
+            variant="text"
+            labelStyle={localizedType("field-label", locale)}
+            disabled={busy || disabled}
+            onPress={() => setExpanded(true)}
+          />
+          {messageAction}
+        </View>
       )}
+      {expanded ? messageAction : null}
     </View>
   );
 }

@@ -5,9 +5,9 @@ Implementation branch: `feat/loans-notifications`. API, interaction, and design 
 ## Entry points and scope
 
 - Requests → **Active loans** → a loan’s details. The list pages through active exchanges and displays only loan-mode items. Details use the API exchange ID and signed-in profile, with listing titles when visible. Missing listing titles and dates have fallbacks. Borrowers submit extensions; lenders accept or decline them. Both participants can read saved history.
-- Home → bell → **Notifications** → **Notification preferences**. All/Unread filters, timestamps, cursor pagination, mark one/all read, and the badge use the API. Extension notifications open the live loan route. Other events remain readable in the inbox until their live destinations are available.
+- Home → **Notifications** → **Notification preferences**. Settings also links directly to both screens, including from loan details. All/Unread filters, timestamps, cursor pagination, mark one/all read, and the badge use the API. Extension notifications open the live loan route. Other events remain readable in the inbox until their live destinations are available.
 - Quiet hours save both times in the profile’s displayed time zone. Overnight ranges are supported. Turning quiet hours off clears both fields. Pausing push does not hide the inbox. Device delivery and topic-specific push controls are outside this change.
-- New screens reuse the community components, typography, and tokens, with English, Japanese, and Bengali copy. They do not use the demo actor, fixtures, chat, or handover routes. Existing demo screens elsewhere remain in place.
+- New screens reuse the community components, typography, and tokens, with English, Japanese, and Bengali copy. They do not use the demo actor, fixtures, chat, or handover routes. Existing demo screens elsewhere remain in place. The loan's Message action opens a separate live text conversation, resolved from both the exchange's request ID and accepted response ID across conversation pages. Sender identity and participant access are enforced by the existing backend. Text history, sending, read status, and pagination use its chat API; manual Refresh retrieves replies. Media sending, translation, and streaming are outside this focused action.
 - Navigation waits for account and membership loading before evaluating protected routes, preserving a loan URL on relaunch.
 
 ## Automated checks
@@ -74,12 +74,14 @@ Intentional adaptations to the written scope:
 
 - Names, titles, photos, dates, roles, statuses, and extension history use API data instead of the prototype’s sample values. Missing or hidden listing/profile data has fallbacks.
 - The five activity-topic descriptions are informational. Per-topic push controls are explicitly separate work in the assignment, so no fake on/off states are displayed or saved.
-- The prototype’s message action is omitted from this live route while the existing chat screen still uses demo IDs.
+- The prototype's Message action uses the actual partner name and opens the loan's existing backend conversation. The previous demo chat route remains outside live loan navigation. If no matching conversation is available, the screen shows an explicit unavailable state instead of opening another conversation.
 - The later-date editor, saved extension history, lender decisions, loading/retry states, and quiet-hours editor supplement the static frames to fulfill the acceptance requirements.
 
 The corrected screens were checked against the Figma screenshots at 390 px width in English, Japanese, and Bengali. Browser flow checks passed again, including the quiet-hours sheet, validation and save recovery, extension decisions/history, and the live Record return action removing the loan from Active loans. Asset checks confirmed 20 × 20 arrows, 56 × 56 listing photos, 12 × 12 progress dots, and 38 × 22 toggle artwork inside 48 px touch targets. The custom switch's web checked state and Space-key behavior were verified. Visual photo checks used the exact Figma-matching image as API-supplied test data; the application has no drill-image fallback.
 
 Typecheck, lint, production web export, and repository hooks passed after the alignment changes. The updated Android Metro bundle also compiled and was served successfully for Expo Go. This does not replace physical-device or iOS simulator UI acceptance.
+
+The message/navigation follow-up passed an isolated browser flow at 390 px width: the two Screen 25 links have no extra gap; a conversation with the same request but a different response is skipped; the matching conversation is found on a later page; older messages load; both participants send and reload persisted replies; opening the conversation updates unread counts. A simulated lost response after a successful POST retains the draft, and retry reuses the client UUID and produces only one saved message. Missing conversations, closed conversations, outsider denial, and all three languages were checked. Settings links to both notification screens and the visibly labeled Home action reaches Screen 43 through the inbox. A fresh implementation screenshot was captured for comparison with the Figma frame.
 
 ## Remaining manual acceptance
 

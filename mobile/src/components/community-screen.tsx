@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Button, Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
+import { activityCopy } from "@/lib/activity-copy";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useOnboarding } from "@/lib/onboarding";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -216,7 +217,27 @@ export function CommunityScreen({
               {options === "settings" ? copy.settings : copy.language}
             </Text>
             {options === "settings" ? (
-              <Text style={[label, styles.secondary]}>{copy.language}</Text>
+              <>
+                <Button
+                  label={activityCopy[locale].notifications}
+                  labelStyle={label}
+                  variant="text"
+                  onPress={() => {
+                    setOptions(null);
+                    router.push("/notifications");
+                  }}
+                />
+                <Button
+                  label={activityCopy[locale].preferences}
+                  labelStyle={label}
+                  variant="text"
+                  onPress={() => {
+                    setOptions(null);
+                    router.push("/notification-preferences");
+                  }}
+                />
+                <Text style={[label, styles.secondary]}>{copy.language}</Text>
+              </>
             ) : null}
             <Choice
               options={languages}
