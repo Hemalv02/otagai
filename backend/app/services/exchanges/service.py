@@ -115,23 +115,27 @@ async def hand_over(
             return exchange
         if exchange.status != ExchangeStatus.SCHEDULED.value:
             raise ExchangeStateError("This exchange can't be handed over now.")
+        requests = RequestRepository(session)
+        request = await requests.get_for_update(exchange.request_id)
+        listings = ListingRepository(session)
+        listing = None
+        if exchange.listing_id is not None:
+            listing = await listings.get_for_update(exchange.listing_id)
+            if exchange.mode == ExchangeMode.LOAN.value and (
+                listing is None or listing.status != ListingStatus.ACTIVE.value
+            ):
+                raise ExchangeStateError(
+                    "This listing is no longer available for pickup."
+                )
         repository = ExchangeRepository(session)
         updated = await repository.update(
             exchange,
             {"status": ExchangeStatus.ACTIVE.value, "handed_over_at": now},
         )
-        requests = RequestRepository(session)
-        request = await requests.get_for_update(exchange.request_id)
         if request is not None:
             await requests.update(request, {"status": RequestStatus.IN_PROGRESS.value})
-        if exchange.listing_id is not None:
-            listing = await ListingRepository(session).get_for_update(
-                exchange.listing_id
-            )
-            if listing is not None and listing.status == ListingStatus.ACTIVE.value:
-                await ListingRepository(session).update(
-                    listing, {"status": ListingStatus.LENT_OUT.value}
-                )
+        if listing is not None and listing.status == ListingStatus.ACTIVE.value:
+            await listings.update(listing, {"status": ListingStatus.LENT_OUT.value})
         return updated
 
 
@@ -292,8 +296,12 @@ async def request_extension(
             raise NotLoanError
         if exchange.status != ExchangeStatus.ACTIVE.value:
             raise ExchangeStateError("Only an active loan can be extended.")
+        if actor.subject_id != exchange.requester_user_id:
+            raise ExchangeStateError("Only the borrower can request an extension.")
         if new_due_at <= now:
             raise BadRequestError("Choose a future due date.")
+        if exchange.due_at is not None and new_due_at <= exchange.due_at:
+            raise BadRequestError("Choose a date later than the current due date.")
         try:
             extension = await ExtensionRepository(session).create(
                 {
@@ -336,7 +344,6 @@ async def decide_extension(
     *,
     accept: bool,
 ) -> LoanExtension:
-    now = datetime.now(UTC)
     async with database.session() as session:
         extensions = ExtensionRepository(session)
         extension = await extensions.get_for_update(extension_id)
@@ -354,6 +361,19 @@ async def decide_extension(
             ):
                 return extension
             raise ExchangeStateError("This extension was already decided.")
+        now = datetime.now(UTC)
+        if accept:
+            if (
+                exchange.mode != ExchangeMode.LOAN.value
+                or exchange.status != ExchangeStatus.ACTIVE.value
+            ):
+                raise ExchangeStateError("Only an active loan can be extended.")
+            if extension.new_due_at <= now:
+                raise ExchangeStateError("The proposed due date has passed.")
+            if exchange.due_at is not None and extension.new_due_at <= exchange.due_at:
+                raise ExchangeStateError(
+                    "The proposed due date is no longer later than the current due date."
+                )
         status = (
             DecisionStatus.ACCEPTED.value if accept else DecisionStatus.DECLINED.value
         )

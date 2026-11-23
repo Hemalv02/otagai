@@ -3,7 +3,14 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 from app.database.models import Exchange, LoanExtension
 from app.database.models.enums import ExchangeStatus, HandoverPhase
@@ -57,6 +64,16 @@ def _parse_statuses(raw: str | None) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
+class ExchangeQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, raw: str | None) -> str | None:
+        _parse_statuses(raw)
+        return raw
+
+
 class UpdateExchangeBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,7 +85,7 @@ class UpdateExchangeBody(BaseModel):
 class ExtensionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    new_due_at: datetime
+    new_due_at: AwareDatetime
     message: ExtensionMessage | None = None
 
 
@@ -176,13 +193,12 @@ def check_model(view: CheckView) -> CheckModel:
 
 @me_router.get("")
 async def my_exchanges(
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ExchangeQuery, Query()],
     actor: ActorDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[ExchangeModel]:
     result = await list_my_exchanges(
-        database, actor, _parse_statuses(status_filter), query.page()
+        database, actor, _parse_statuses(query.status), query.page()
     )
     return Page.build(result, ExchangeModel)
 

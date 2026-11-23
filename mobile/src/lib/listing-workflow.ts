@@ -396,7 +396,6 @@ export function formatAvailableAgain(iso: string | null, locale: string) {
 }
 
 export const NEARBY_LIMIT = 3;
-export const NEARBY_FETCH = 6;
 
 export function nearbyRows(
   rows: ListingSummary[],

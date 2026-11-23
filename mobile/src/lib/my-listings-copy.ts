@@ -2,8 +2,7 @@ export const myListingsCopy = {
   en: {
     title: "My listings",
     all: "All",
-    tool: "Tools",
-    skill: "Skills",
+    statusFilter: "Status",
     active: "Active",
     paused: "Paused",
     lent_out: "Lent out",
@@ -38,8 +37,7 @@ export const myListingsCopy = {
   ja: {
     title: "自分の掲載",
     all: "すべて",
-    tool: "道具",
-    skill: "スキル",
+    statusFilter: "掲載状況",
     active: "公開中",
     paused: "一時停止",
     lent_out: "貸出中",
@@ -75,8 +73,7 @@ export const myListingsCopy = {
   bn: {
     title: "আমার তালিকা",
     all: "সব",
-    tool: "সরঞ্জাম",
-    skill: "দক্ষতা",
+    statusFilter: "অবস্থা",
     active: "সক্রিয়",
     paused: "বিরত",
     lent_out: "ধার দেওয়া",

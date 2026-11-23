@@ -11,6 +11,7 @@ import { assistantCopy } from "@/lib/assistant-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestCopy } from "@/lib/request-demo-copy";
+import { activityCopy } from "@/lib/activity-copy";
 import { type IncomingRequest, requestsApi } from "@/lib/requests-api";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -93,6 +94,12 @@ export default function RequestsScreen() {
 
   return (
     <CommunityScreen title={copy.requests} showDemoPreview={false}>
+      <Button
+        label={activityCopy[locale].loans}
+        labelStyle={localizedType("button", locale)}
+        variant="secondary"
+        onPress={() => router.push("/loans")}
+      />
       <View style={styles.tabs}>
         {feeds.map((key) => (
           <Pressable

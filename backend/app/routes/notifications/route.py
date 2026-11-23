@@ -31,13 +31,19 @@ def notification_model(notification: Notification) -> NotificationModel:
     return NotificationModel.model_validate(notification)
 
 
+class NotificationQuery(PageQuery):
+    unread_only: bool = False
+
+
 @router.get("")
 async def my_notifications(
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[NotificationQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
 ) -> Page[NotificationModel]:
-    result = await list_notifications(database, user, query.page())
+    result = await list_notifications(
+        database, user, query.page(), unread_only=query.unread_only
+    )
     return Page.build(result, NotificationModel)
 
 

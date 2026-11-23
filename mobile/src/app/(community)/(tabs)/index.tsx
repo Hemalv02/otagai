@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
+import { NotificationBell } from "@/components/notification-bell";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -17,7 +18,6 @@ import {
   firstPageLoaded,
   initialBrowseState,
   listingStatusLabel,
-  NEARBY_FETCH,
   NEARBY_LIMIT,
   nearbyRows,
   startFirstPage,
@@ -58,8 +58,7 @@ const homeCopy = {
     preview: (name: string) => `${name}の画面を見る`,
     backToYou: "自分の画面に戻る",
     nearbyEmptyTitle: "近所にはまだ何もありません",
-    nearbyEmptyDetail:
-      "必要なものをお願いするか、道具を貸して始めましょう。",
+    nearbyEmptyDetail: "必要なものをお願いするか、道具を貸して始めましょう。",
     nearbyError: "近所の掲載を読み込めませんでした。",
   },
   bn: {
@@ -134,7 +133,7 @@ function CircleHome({ circleName }: { circleName: string }) {
     const request = nearbyRequests.start();
     api
       .listListings(
-        { limit: NEARBY_FETCH },
+        { limit: NEARBY_LIMIT, activeOnly: true, excludeOwn: true },
         { authUserId: account, signal: request.signal },
       )
       .then((page) => {
@@ -175,6 +174,8 @@ function CircleHome({ circleName }: { circleName: string }) {
     <CommunityScreen
       title={copy.greet(people[actor].name)}
       eyebrow={circleName}
+      titleAction={<NotificationBell />}
+      inlineTitleAction
     >
       <View style={styles.actions}>
         <Button
@@ -187,13 +188,15 @@ function CircleHome({ circleName }: { circleName: string }) {
               : router.push("/ask")
           }
         />
-        <Button
-          label={copy.lend}
-          labelStyle={[button, styles.green]}
-          style={[styles.action, styles.secondaryButton]}
-          variant="secondary"
-          onPress={() => router.push("/tools/add")}
-        />
+        {actor === "member" ? (
+          <Button
+            label={copy.lend}
+            labelStyle={[button, styles.green]}
+            style={[styles.action, styles.secondaryButton]}
+            variant="secondary"
+            onPress={() => router.push("/tools/add")}
+          />
+        ) : null}
       </View>
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>

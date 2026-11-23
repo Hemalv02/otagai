@@ -1,4 +1,9 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import {
+  Redirect,
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+} from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
@@ -66,6 +71,9 @@ export default function LiveExchangeScreen() {
   const label = localizedType("field-label", locale);
   const body = localizedType("body", locale);
   const supporting = localizedType("supporting", locale);
+  if (summary?.exchange.mode === "loan") {
+    return <Redirect href={{ pathname: "/loans/[id]", params: { id } }} />;
+  }
   return (
     <CommunityScreen
       back

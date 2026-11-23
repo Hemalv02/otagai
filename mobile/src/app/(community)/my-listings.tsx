@@ -1,5 +1,7 @@
+import { Host, Picker } from "@expo/ui";
 import { Image } from "expo-image";
 import { useLocalSearchParams } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import {
   Fragment,
   useCallback,
@@ -10,12 +12,12 @@ import {
 } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
-import { Button, Choice, ErrorText, Field } from "@/components/ui";
+import { ListingKindFilter } from "@/components/listing-kind-filter";
+import { Button, ErrorText, Field } from "@/components/ui";
 import {
   api,
   ApiError,
   type ListingDetail,
-  type ListingKind,
   type ListingStatus,
   type ListingSummary,
 } from "@/lib/api";
@@ -25,13 +27,13 @@ import {
   mergeListingPages,
   rebaseListingDraft,
   reconcileListingRows,
+  type KindFilter,
 } from "@/lib/listing-workflow";
 import { myListingsCopy } from "@/lib/my-listings-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
-type KindFilter = "all" | ListingKind;
 type StatusFilter = "all" | ListingStatus;
 type DetailError = "titleRequired" | "conflict" | "offline" | "error";
 
@@ -72,6 +74,7 @@ export default function MyListingsScreen() {
   }, [contextKey, requests, detailRequests]);
   const label = localizedType("field-label", locale);
   const body = localizedType("body", locale);
+  const supporting = localizedType("supporting", locale);
 
   const load = useCallback(
     async (nextCursor?: string, afterWrite = false) => {
@@ -384,30 +387,28 @@ export default function MyListingsScreen() {
   ) : null;
 
   return (
-    <CommunityScreen title={copy.title} back keyboard>
-      <Choice<KindFilter>
-        options={[
-          { value: "all", label: copy.all },
-          { value: "tool", label: copy.tool },
-          { value: "skill", label: copy.skill },
-        ]}
+    <CommunityScreen title={copy.title} back keyboard showDemoPreview={false}>
+      <ListingKindFilter
         value={kind}
         onChange={(next) => changeFilters(next, status)}
         disabled={busy}
-        labelStyle={() => label}
       />
-      <Choice<StatusFilter>
-        options={[
-          { value: "all", label: copy.all },
-          { value: "active", label: copy.active },
-          { value: "paused", label: copy.paused },
-          { value: "lent_out", label: copy.lent_out },
-        ]}
-        value={status}
-        onChange={(next) => changeFilters(kind, next)}
-        disabled={busy}
-        labelStyle={() => label}
-      />
+      <View style={styles.statusFilter}>
+        <Text style={[label, styles.statusLabel]}>{copy.statusFilter}</Text>
+        <Host matchContents seedColor={colors.action}>
+          <Picker<StatusFilter>
+            selectedValue={status}
+            onValueChange={(next) => changeFilters(kind, next)}
+            enabled={!busy}
+            accessibilityLabel={copy.statusFilter}
+          >
+            <Picker.Item value="all" label={copy.all} />
+            <Picker.Item value="active" label={copy.active} />
+            <Picker.Item value="paused" label={copy.paused} />
+            <Picker.Item value="lent_out" label={copy.lent_out} />
+          </Picker>
+        </Host>
+      </View>
       {state === "loading" ? <Text style={body}>{copy.loading}</Text> : null}
       {!detailId ? listError : null}
       {detailId && !rows.some((row) => row.id === detailId)
@@ -422,39 +423,39 @@ export default function MyListingsScreen() {
             {row.photo_url ? (
               <Image source={{ uri: row.photo_url }} style={styles.photo} />
             ) : (
-              <View style={[styles.photo, styles.placeholder]} />
+              <View
+                style={[styles.photo, styles.placeholder]}
+                accessible={false}
+              >
+                <SymbolView
+                  name={
+                    row.kind === "skill"
+                      ? {
+                          ios: "hand.raised",
+                          android: "volunteer_activism",
+                          web: "volunteer_activism",
+                        }
+                      : { ios: "wrench", android: "build", web: "build" }
+                  }
+                  size={22}
+                  tintColor={colors.action}
+                />
+              </View>
             )}
             <View style={styles.rowBody}>
               <Text style={label}>{row.title}</Text>
-              <Text style={body}>
+              <Text style={[supporting, styles.statusLabel]}>
                 {copy[row.status]}
                 {row.id === listingId ? ` · ${copy.published}` : ""}
               </Text>
             </View>
             <Button
-              label={
-                row.status === "active"
-                  ? copy.manage
-                  : row.status === "paused"
-                    ? copy.resume
-                    : copy.view
-              }
+              label={row.status === "lent_out" ? copy.view : copy.manage}
+              labelStyle={label}
               variant="text"
               disabled={busy}
-              onPress={() =>
-                row.status === "paused"
-                  ? void change("resume", row.id)
-                  : void open(row.id)
-              }
+              onPress={() => void open(row.id)}
             />
-            {row.status === "paused" ? (
-              <Button
-                label={copy.manage}
-                variant="text"
-                disabled={busy}
-                onPress={() => void open(row.id)}
-              />
-            ) : null}
           </View>
           {row.id === detailId ? detailPanel : null}
         </Fragment>
@@ -472,6 +473,17 @@ export default function MyListingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  statusFilter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    minHeight: controls["touch-target"],
+    gap: spacing["related-gap"],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.rule,
+  },
+  statusLabel: { color: colors.secondary },
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -480,9 +492,13 @@ const styles = StyleSheet.create({
     borderColor: colors.rule,
     paddingVertical: spacing["control-gap"],
   },
-  rowBody: { flex: 1 },
+  rowBody: { flex: 1, minWidth: 0 },
   photo: { width: 56, height: 56, borderRadius: controls.radius },
-  placeholder: { backgroundColor: colors.wash },
+  placeholder: {
+    backgroundColor: colors.wash,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   detail: { gap: spacing["control-gap"] },
   largePhoto: { width: "100%", height: 200 },
 });

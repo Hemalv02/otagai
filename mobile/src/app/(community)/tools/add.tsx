@@ -1,4 +1,5 @@
 import { Host, Picker } from "@expo/ui";
+import { File } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { router, useNavigation } from "expo-router";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -198,12 +199,7 @@ export default function AddListingScreen() {
               form.append("purpose", "listing");
               if (Platform.OS === "web" && photo.file)
                 form.append("file", photo.file);
-              else
-                form.append("file", {
-                  uri: photo.uri,
-                  name: photo.fileName || "photo.jpg",
-                  type: photo.mimeType || "image/jpeg",
-                } as unknown as Blob);
+              else form.append("file", new File(photo.uri));
               return api.uploadListingPhoto(form, options);
             },
             getMedia: (id) => api.getMedia(id, options),
@@ -249,20 +245,28 @@ export default function AddListingScreen() {
   return (
     <CommunityScreen
       title={copy.addListing}
+      showDemoPreview={false}
       back
       keyboard
       footer={
-        <Button
-          label={copy.publish}
-          labelStyle={buttonType}
-          busy={saving}
-          disabled={
-            picking ||
-            categoryLoad.state !== "ready" ||
-            categoryLoad.items.length === 0
-          }
-          onPress={submit}
-        />
+        <View style={styles.submit}>
+          {error ? (
+            <ErrorText>
+              {error === "attachmentFailed" ? messages.photoError : copy[error]}
+            </ErrorText>
+          ) : null}
+          <Button
+            label={copy.publish}
+            labelStyle={buttonType}
+            busy={saving}
+            disabled={
+              picking ||
+              categoryLoad.state !== "ready" ||
+              categoryLoad.items.length === 0
+            }
+            onPress={submit}
+          />
+        </View>
       }
     >
       <Choice<ListingKind>
@@ -412,17 +416,13 @@ export default function AddListingScreen() {
           ) : null}
         </View>
       </View>
-      {error ? (
-        <ErrorText>
-          {error === "attachmentFailed" ? messages.photoError : copy[error]}
-        </ErrorText>
-      ) : null}
     </CommunityScreen>
   );
 }
 
 const styles = StyleSheet.create({
   ink: { color: colors.ink },
+  submit: { gap: spacing["related-gap"] },
   category: {
     flexDirection: "row",
     flexWrap: "wrap",

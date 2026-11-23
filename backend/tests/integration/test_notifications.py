@@ -62,6 +62,73 @@ async def test_foreign_notification_404(client):
     assert response.status_code == 404
 
 
+async def test_unread_filter_before_pagination_and_owner_isolation(client):
+    requester, helper = await _request_with_offer(client)
+    for _ in range(4):
+        request = await client.post(
+            "/requests",
+            headers=auth(requester),
+            json={"kind": "help", "raw_text": "Help again", "lang": "en"},
+        )
+        assert request.status_code == 201
+        offered = await client.post(
+            f"/requests/{request.json()['id']}/responses",
+            headers=auth(helper),
+            json={"kind": "offer"},
+        )
+        assert offered.status_code == 201
+    initial = (
+        await client.get("/users/me/notifications", headers=auth(requester))
+    ).json()["items"]
+    assert len(initial) == 5
+    read_ids = {item["id"] for item in initial[::2]}
+    for notification_id in read_ids:
+        result = await client.patch(
+            f"/users/me/notifications/{notification_id}",
+            headers=auth(requester),
+            json={},
+        )
+        assert result.status_code == 200
+    expected = [item["id"] for item in initial if item["id"] not in read_ids]
+    found = []
+    cursor = None
+    while True:
+        params = {"unread_only": "true", "limit": 1}
+        if cursor:
+            params["cursor"] = cursor
+        page = await client.get(
+            "/users/me/notifications", headers=auth(requester), params=params
+        )
+        assert page.status_code == 200, page.text
+        assert all(item["read_at"] is None for item in page.json()["items"])
+        found.extend(item["id"] for item in page.json()["items"])
+        cursor = page.json()["next_cursor"]
+        if cursor is None:
+            break
+    assert found == expected
+    default_feed = (
+        await client.get("/users/me/notifications", headers=auth(requester))
+    ).json()["items"]
+    assert [item["id"] for item in default_feed] == [item["id"] for item in initial]
+    assert {item["id"] for item in default_feed if item["read_at"]} == read_ids
+    foreign = (
+        await client.get(
+            "/users/me/notifications?unread_only=true", headers=auth(helper)
+        )
+    ).json()["items"]
+    assert not {item["id"] for item in foreign} & {item["id"] for item in initial}
+    counts = await client.get("/users/me/unread-counts", headers=auth(requester))
+    assert counts.json()["notifications"] == len(expected)
+    await client.post("/users/me/notifications/read-all", headers=auth(requester))
+    empty = await client.get(
+        "/users/me/notifications?unread_only=true", headers=auth(requester)
+    )
+    assert empty.json() == {"items": [], "next_cursor": None}
+    assert (
+        await client.get("/users/me/unread-counts", headers=auth(requester))
+    ).json()["notifications"] == 0
+
+
 async def test_notifications_require_auth_401(client):
     assert (await client.get("/users/me/notifications")).status_code == 401
     assert (await client.get("/users/me/unread-counts")).status_code == 401

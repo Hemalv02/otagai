@@ -14,10 +14,12 @@ class NotificationNotFoundError(NotFoundError):
 
 
 async def list_notifications(
-    database: Database, user: User, page: PageRequest
+    database: Database, user: User, page: PageRequest, *, unread_only: bool = False
 ) -> PageResult[Notification]:
     async with database.session() as session:
-        return await NotificationRepository(session).list_for_user(user.id, page)
+        return await NotificationRepository(session).list_for_user(
+            user.id, page, unread_only=unread_only
+        )
 
 
 async def mark_notification_read(

@@ -135,6 +135,47 @@ async def test_my_listings_filters_kind_status_and_pages_within_owner(client):
     assert invalid.status_code == 422, invalid.text
 
 
+async def test_browse_excludes_effective_actors_listings_before_pagination(client):
+    member = await make_user(client, display_name="Member")
+    caretaker = await make_user(client, display_name="Caretaker")
+    circle_id = await make_circle(client, member)
+    await join_circle(client, member, circle_id, caretaker)
+    caretaker_listing = await _listing(client, caretaker, title="Measuring tape")
+    await _listing(client, member, title="Hand saw")
+    latest_member_listing = await _listing(client, member, title="Cordless drill")
+
+    member_id = (await client.get("/users/me", headers=auth(member))).json()["id"]
+    caretaker_id = (await client.get("/users/me", headers=auth(caretaker))).json()["id"]
+    granted = await client.post(
+        "/proxy-grants",
+        headers=auth(member),
+        json={
+            "member_user_id": member_id,
+            "caretaker_user_id": caretaker_id,
+            "caretaker_role": "family",
+            "consent_method": "in_person",
+            "scopes": {"can_view_activity": True},
+        },
+    )
+    assert granted.status_code == 201, granted.text
+
+    filters = {"status": "active", "limit": 1}
+    for headers in (auth(member), {**auth(caretaker), "X-Acting-For": member_id}):
+        default = await client.get("/listings", headers=headers, params=filters)
+        assert default.status_code == 200, default.text
+        assert [item["id"] for item in default.json()["items"]] == [
+            latest_member_listing
+        ]
+        assert default.json()["next_cursor"]
+
+        nearby = await client.get(
+            "/listings", headers=headers, params={**filters, "exclude_own": "true"}
+        )
+        assert nearby.status_code == 200, nearby.text
+        assert [item["id"] for item in nearby.json()["items"]] == [caretaker_listing]
+        assert nearby.json()["next_cursor"] is None
+
+
 async def test_lent_out_listing_is_visible_but_read_only(client):
     exchange = await matched_exchange(client, loan=True)
     helper = auth(exchange["helper"])

@@ -45,9 +45,11 @@ class NotificationRepository:
         return notification
 
     async def list_for_user(
-        self, user_id: uuid.UUID, page: PageRequest
+        self, user_id: uuid.UUID, page: PageRequest, *, unread_only: bool = False
     ) -> PageResult[Notification]:
         statement = select(Notification).where(Notification.user_id == user_id)
+        if unread_only:
+            statement = statement.where(Notification.read_at.is_(None))
         return await paginate(
             self._session, statement, page, Notification.created_at, Notification.id
         )

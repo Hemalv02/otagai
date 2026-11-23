@@ -63,6 +63,7 @@ class ListingQuery(PageQuery):
     category_id: uuid.UUID | None = None
     circle_id: uuid.UUID | None = None
     status: str | None = Field(default=None, max_length=120)
+    exclude_own: bool = False
 
     @field_validator("status")
     @classmethod
@@ -264,7 +265,13 @@ async def browse(
     settings: SettingsDep,
 ) -> Page[ListingSummary]:
     result = await browse_listings(
-        database, storage, settings, actor, query.filters(), query.page()
+        database,
+        storage,
+        settings,
+        actor,
+        query.filters(),
+        query.page(),
+        exclude_own=query.exclude_own,
     )
     return Page[ListingSummary](
         items=[listing_summary(card) for card in result.items],

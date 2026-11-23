@@ -14,7 +14,7 @@ Automated checks on Linux on 2026-11-23, from `mobile/`.
 
 The tests cover media readiness, accepted-ID reuse, interrupted polling, rejected media, request invalidation, paging deduplication, row updates before list refresh, preservation of edited fields during status changes, dirty-field PATCH payloads, and authenticated transport. Ten regression cases failed when exercising the earlier behavior and passed after the fixes. The Linux workbench cannot run the device acceptance steps below. The Figma connector denied access to frame 16:1751, leaving visual comparison pending.
 
-## Manual acceptance pending
+## Original manual acceptance checklist
 
 This workbench lacks an iOS simulator, approved test accounts and project-local test environment configuration. On a Mac, configure local `mobile/.env.local` with the approved test API and matching Supabase settings, start the test backend with `uv run uvicorn app.main:app --reload`, run `pnpm ios` from `mobile/`, and sign in to an approved test account. Use disposable test data and keep environment files and credentials local.
 
@@ -51,3 +51,14 @@ No backend or PostgreSQL was started, and no native or web app session was drive
 - Signed photo rendering and thumbnail fallback with real signed URLs.
 - The English, Japanese and Bengali visual check, including the new `availableAgain` string.
 - Browse paging on a device: a searched listing on page two, a delayed response while switching account or filter, disconnecting while the second page loads and then reconnecting and retrying, and a duplicate ID returned on that page. The pure logic for these is covered by unit tests in `tests/browse-state.test.mjs`, but none of them was run on a device.
+
+## iPhone merge review
+
+Two approved test accounts signed in using local Supabase Auth. Listings and images were stored using FastAPI, disposable PostgreSQL, and S3-compatible storage.
+
+- Published a tool with a photo selected in the system library and a skill without one. The published tool’s photo loaded on the detail screen from the second account.
+- Edited availability, paused and resumed the tool, and deleted the skill. The paused tool stayed in My Listings and disappeared from the app’s Browse results. The second account could read the shared listing but could not edit it.
+- Checked the compact kind filters, My Listings’ native status menu, and Browse title search. From an empty search, the Ask action opened the live assistant tab.
+- Home showed available listings from other members and retained the notification bell. Pickup tests confirmed a loan cannot mark a paused, deleted, or already lent-out listing as picked up.
+
+Android runtime testing is deferred.

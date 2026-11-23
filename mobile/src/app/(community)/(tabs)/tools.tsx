@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { ListingKindFilter } from "@/components/listing-kind-filter";
 import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
 import { Button, Field } from "@/components/ui";
 import { api, type CategoryNode, type ListingKind } from "@/lib/api";
@@ -45,12 +47,9 @@ import {
   listingReadCopy,
   requestApiError,
 } from "@/lib/listing-read";
-import { myListingsCopy } from "@/lib/my-listings-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
-
-const KIND_FILTERS = ["all", "tool", "skill"] as const;
 
 type CategoryLoad =
   | { state: "loading" }
@@ -95,7 +94,10 @@ export default function BrowseToolsScreen() {
   const view = visibleBrowseState(browse, filterKey);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(normalizeSearch(rawQuery)), 300);
+    const timer = setTimeout(
+      () => setDebouncedQuery(normalizeSearch(rawQuery)),
+      300,
+    );
     return () => clearTimeout(timer);
   }, [rawQuery]);
 
@@ -156,7 +158,8 @@ export default function BrowseToolsScreen() {
     if (!account) return;
     const request = categoryRequests.start();
     const options = { authUserId: account, signal: request.signal };
-    const kinds: ListingKind[] = kindFilter === "all" ? ["tool", "skill"] : [kindFilter];
+    const kinds: ListingKind[] =
+      kindFilter === "all" ? ["tool", "skill"] : [kindFilter];
     Promise.all(kinds.map((kind) => api.listCategories(kind, options)))
       .then((results) => {
         if (!request.isCurrent()) return;
@@ -230,7 +233,9 @@ export default function BrowseToolsScreen() {
   const flatCategoryItems =
     categoryLoad.state === "ready" ? categoryLoad.items : [];
   const rows = view.rows;
-  const filtersActive = Boolean(debouncedQuery || categoryId || kindFilter !== "all");
+  const filtersActive = Boolean(
+    debouncedQuery || categoryId || kindFilter !== "all",
+  );
 
   function clearFilters() {
     setRawQuery("");
@@ -248,6 +253,7 @@ export default function BrowseToolsScreen() {
   return (
     <CommunityScreen
       title={copy[heading === "explore" ? "exploreTitle" : heading]}
+      showDemoPreview={false}
       titleAction={
         <Host matchContents seedColor={colors.action}>
           <ExpoButton
@@ -278,31 +284,7 @@ export default function BrowseToolsScreen() {
         </Text>
       </View>
       <View style={styles.filters}>
-        <View accessibilityRole="radiogroup" style={styles.links}>
-          {KIND_FILTERS.map((option) => {
-            const selected = kindFilter === option;
-            return (
-              <Pressable
-                key={option}
-                accessibilityRole="radio"
-                accessibilityLabel={copy[option]}
-                accessibilityState={{ checked: selected, selected }}
-                style={styles.link}
-                onPress={() => handleKindChange(option)}
-              >
-                <Text
-                  style={[
-                    labelType,
-                    styles.action,
-                    selected && styles.underline,
-                  ]}
-                >
-                  {copy[option]}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+        <ListingKindFilter value={kindFilter} onChange={handleKindChange} />
         {categoryLoad.state === "loading" ? (
           <Text style={[supportingType, styles.secondary]}>
             {copy.loadingCategories}
@@ -321,8 +303,13 @@ export default function BrowseToolsScreen() {
               />
             ) : null}
           </View>
-        ) : (
-          <View style={styles.links}>
+        ) : flatCategoryItems.length ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.categories}
+          >
             {flatCategoryItems.map((item) => {
               const selected = categoryId === item.id;
               return (
@@ -331,7 +318,7 @@ export default function BrowseToolsScreen() {
                   accessibilityRole="radio"
                   accessibilityLabel={categoryName(item, locale)}
                   accessibilityState={{ checked: selected }}
-                  style={styles.link}
+                  style={[styles.category, selected && styles.selectedCategory]}
                   onPress={() =>
                     setCategoryId(selectCategory(filters, item.id).categoryId)
                   }
@@ -339,8 +326,7 @@ export default function BrowseToolsScreen() {
                   <Text
                     style={[
                       labelType,
-                      styles.action,
-                      selected && styles.underline,
+                      selected ? styles.action : styles.secondary,
                     ]}
                   >
                     {categoryName(item, locale)}
@@ -348,10 +334,11 @@ export default function BrowseToolsScreen() {
                 </Pressable>
               );
             })}
-          </View>
-        )}
+          </ScrollView>
+        ) : null}
         <Button
-          label={myListingsCopy[locale].title}
+          label={copy.mine}
+          labelStyle={labelType}
           variant="text"
           onPress={() => router.push("/my-listings")}
         />
@@ -396,7 +383,7 @@ export default function BrowseToolsScreen() {
               <Button
                 label={copy.askForIt}
                 labelStyle={localizedType("button", locale)}
-                onPress={() => router.push("/ask")}
+                onPress={() => router.navigate("/assistant")}
               />
             ) : null}
             {filtersActive ? (
@@ -410,8 +397,7 @@ export default function BrowseToolsScreen() {
           </View>
         ) : null}
         {rows.map((listing) => {
-          const own =
-            profileId !== null && profileId === listing.owner_user_id;
+          const own = profileId !== null && profileId === listing.owner_user_id;
           const catNode = flatCategoryItems.find(
             (item) => item.id === listing.category_id,
           );
@@ -485,9 +471,21 @@ export default function BrowseToolsScreen() {
 
 const styles = StyleSheet.create({
   search: { gap: spacing["related-gap"] },
-  filters: { gap: spacing["screen-gutter"] },
-  links: { gap: spacing["control-gap"] },
-  link: { minHeight: controls["touch-target"], justifyContent: "center" },
+  filters: { gap: spacing["related-gap"] },
+  categories: { gap: spacing["related-gap"] },
+  category: {
+    minHeight: controls["touch-target"],
+    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: colors.rule,
+  },
+  selectedCategory: {
+    borderColor: colors.action,
+    backgroundColor: colors.wash,
+  },
   categoryError: {
     flexDirection: "row",
     alignItems: "center",
@@ -499,7 +497,6 @@ const styles = StyleSheet.create({
   },
   empty: { paddingTop: spacing["card-inset"], gap: spacing["related-gap"] },
   action: { color: colors.action },
-  underline: { textDecorationLine: "underline" },
   secondary: { color: colors.secondary },
   ink: { color: colors.ink },
 });
