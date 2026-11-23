@@ -2,10 +2,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createContext,
   type PropsWithChildren,
-  useCallback,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from "react";
 
@@ -145,7 +143,6 @@ type AccountListings = { userId: string; items: PublishedListing[] };
 type DemoListingsContextValue = {
   listings: DemoListing[];
   ready: boolean;
-  publish: (draft: ListingDraft) => Promise<string>;
 };
 
 const DemoListingsContext = createContext<DemoListingsContextValue | null>(
@@ -160,7 +157,6 @@ export function DemoListingsProvider({ children }: PropsWithChildren) {
   const { session } = useSession();
   const userId = session?.user.id;
   const [account, setAccount] = useState<AccountListings | null>(null);
-  const writing = useRef(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -186,39 +182,11 @@ export function DemoListingsProvider({ children }: PropsWithChildren) {
 
   const currentAccount = account?.userId === userId ? account : null;
 
-  const publish = useCallback(
-    async (draft: ListingDraft) => {
-      if (!currentAccount || writing.current) {
-        throw new Error("Could not publish the tool listing.");
-      }
-
-      writing.current = true;
-      try {
-        const id = `local-${Date.now()}-${currentAccount.items.length}`;
-        const items = [{ ...draft, id }, ...currentAccount.items];
-        await AsyncStorage.setItem(
-          storageKey(currentAccount.userId),
-          JSON.stringify(items),
-        );
-        setAccount((previous) =>
-          previous?.userId === currentAccount.userId
-            ? { ...currentAccount, items }
-            : previous,
-        );
-        return id;
-      } finally {
-        writing.current = false;
-      }
-    },
-    [currentAccount],
-  );
-
   return (
     <DemoListingsContext.Provider
       value={{
         listings: [...(currentAccount?.items ?? []), ...sampleListings],
         ready: !!currentAccount,
-        publish,
       }}
     >
       {children}

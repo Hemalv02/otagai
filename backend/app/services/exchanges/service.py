@@ -115,23 +115,27 @@ async def hand_over(
             return exchange
         if exchange.status != ExchangeStatus.SCHEDULED.value:
             raise ExchangeStateError("This exchange can't be handed over now.")
+        requests = RequestRepository(session)
+        request = await requests.get_for_update(exchange.request_id)
+        listings = ListingRepository(session)
+        listing = None
+        if exchange.listing_id is not None:
+            listing = await listings.get_for_update(exchange.listing_id)
+            if exchange.mode == ExchangeMode.LOAN.value and (
+                listing is None or listing.status != ListingStatus.ACTIVE.value
+            ):
+                raise ExchangeStateError(
+                    "This listing is no longer available for pickup."
+                )
         repository = ExchangeRepository(session)
         updated = await repository.update(
             exchange,
             {"status": ExchangeStatus.ACTIVE.value, "handed_over_at": now},
         )
-        requests = RequestRepository(session)
-        request = await requests.get_for_update(exchange.request_id)
         if request is not None:
             await requests.update(request, {"status": RequestStatus.IN_PROGRESS.value})
-        if exchange.listing_id is not None:
-            listing = await ListingRepository(session).get_for_update(
-                exchange.listing_id
-            )
-            if listing is not None and listing.status == ListingStatus.ACTIVE.value:
-                await ListingRepository(session).update(
-                    listing, {"status": ListingStatus.LENT_OUT.value}
-                )
+        if listing is not None and listing.status == ListingStatus.ACTIVE.value:
+            await listings.update(listing, {"status": ListingStatus.LENT_OUT.value})
         return updated
 
 

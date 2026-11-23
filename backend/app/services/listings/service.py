@@ -132,16 +132,22 @@ async def browse_listings(
     actor: Actor,
     filters: ListingFilters,
     page: PageRequest,
+    *,
+    exclude_own: bool = False,
 ) -> PageResult[ListingCard]:
     async with database.session() as session:
         circles = CircleRepository(session)
         circle_ids = await circles.approved_circle_ids(actor.subject_id)
         if filters.circle_id and filters.circle_id not in circle_ids:
             raise ListingNotFoundError
-        hidden = await BlockRepository(session).blocked_either_way(actor.subject_id)
+        excluded_owners = await BlockRepository(session).blocked_either_way(
+            actor.subject_id
+        )
+        if exclude_own:
+            excluded_owners.append(actor.subject_id)
         result = await ListingRepository(session).search(
             viewer_circle_ids=circle_ids,
-            exclude_owner_ids=hidden,
+            exclude_owner_ids=excluded_owners,
             filters=filters,
             page=page,
         )

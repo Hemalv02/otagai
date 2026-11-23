@@ -1,14 +1,33 @@
-import { Image, type ImageSource } from "expo-image";
-import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
 import { NotificationBell } from "@/components/notification-bell";
+import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
+import { api } from "@/lib/api";
 import { useCommunityDemo } from "@/lib/community-demo";
+import { lendingCopy } from "@/lib/lending-copy";
+import { listingReadCopy, requestApiError } from "@/lib/listing-read";
+import {
+  canRetry,
+  createLatestRequest,
+  firstPageFailed,
+  firstPageLoaded,
+  initialBrowseState,
+  listingStatusLabel,
+  NEARBY_LIMIT,
+  nearbyRows,
+  startFirstPage,
+  visibleBrowseState,
+  type BrowseState,
+} from "@/lib/listing-workflow";
 import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { colors, controls, spacing } from "@/theme/tokens.json";
+import { useSession } from "@/lib/session";
+import { colors, spacing } from "@/theme/tokens.json";
 
 const homeCopy = {
   en: {
@@ -18,14 +37,14 @@ const homeCopy = {
     browse: "Browse tools and skills",
     nearby: "Available nearby",
     today: "Today",
-    drill: "Cordless hammer drill",
-    cutter: "Grass cutter",
-    available: "Available",
-    weekend: "This weekend",
     empty: "There are no open requests in your circle.",
     demo: "Demo activity",
     preview: (name: string) => `Preview as ${name}`,
     backToYou: "Return to my view",
+    nearbyEmptyTitle: "Nothing nearby yet",
+    nearbyEmptyDetail:
+      "Ask for something you need or lend a tool to get started.",
+    nearbyError: "Could not load nearby listings.",
   },
   ja: {
     greet: (name: string) => `こんにちは、${name}`,
@@ -34,80 +53,31 @@ const homeCopy = {
     browse: "道具とスキルを探す",
     nearby: "近所で借りられるもの",
     today: "今日",
-    drill: "充電式振動ドリル",
-    cutter: "草刈り機",
-    available: "貸出可能",
-    weekend: "今週末",
     empty: "サークルに募集中の依頼はありません。",
     demo: "デモのアクティビティ",
     preview: (name: string) => `${name}の画面を見る`,
     backToYou: "自分の画面に戻る",
+    nearbyEmptyTitle: "近所にはまだ何もありません",
+    nearbyEmptyDetail: "必要なものをお願いするか、道具を貸して始めましょう。",
+    nearbyError: "近所の掲載を読み込めませんでした。",
   },
   bn: {
     greet: (name: string) => `স্বাগতম, ${name}`,
     ask: "সাহায্য চাই",
     lend: "ধার দিন",
-    browse: "সরঞ্জাম ও দক্ষতা খুঁজুন",
-    nearby: "কাছাকাছি পাওয়া যাবে",
+    browse: "জিনিসপত্র ও সাহায্য দেখুন",
+    nearby: "কাছাকাছি পাওয়া যাচ্ছে",
     today: "আজ",
-    drill: "কর্ডলেস হ্যামার ড্রিল",
-    cutter: "ঘাস কাটার যন্ত্র",
-    available: "পাওয়া যাবে",
-    weekend: "এই সপ্তাহান্তে",
     empty: "আপনার দলে কোনো খোলা অনুরোধ নেই।",
     demo: "ডেমো কার্যকলাপ",
     preview: (name: string) => `${name} হিসেবে দেখুন`,
     backToYou: "নিজের ভিউতে ফিরুন",
+    nearbyEmptyTitle: "কাছাকাছি এখনো কিছু নেই",
+    nearbyEmptyDetail:
+      "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
+    nearbyError: "কাছাকাছির তালিকা লোড করা যায়নি।",
   },
 };
-
-function HomeRow({
-  title,
-  description,
-  detail,
-  photo,
-  portrait,
-  onPress,
-}: {
-  title: string;
-  description: string;
-  detail: string;
-  photo?: ImageSource;
-  portrait?: boolean;
-  onPress: () => void;
-}) {
-  const { locale } = useOnboardingText();
-  const supporting = localizedType("supporting", locale);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={[title, description, detail]
-        .filter(Boolean)
-        .join(", ")}
-      onPress={onPress}
-      style={styles.row}
-    >
-      {photo ? (
-        <Image
-          source={photo}
-          style={[styles.thumbnail, portrait && styles.portrait]}
-          contentFit="cover"
-          accessible={false}
-        />
-      ) : null}
-      <View style={styles.rowCopy}>
-        <Text style={[localizedType("field-label", locale), styles.ink]}>
-          {title}
-        </Text>
-        <Text style={[supporting, styles.secondary]}>{description}</Text>
-      </View>
-      {detail ? (
-        <Text style={[supporting, styles.rowDetail]}>{detail}</Text>
-      ) : null}
-    </Pressable>
-  );
-}
 
 export default function Home() {
   const { state } = useMemberships();
@@ -133,11 +103,69 @@ export default function Home() {
 function CircleHome({ circleName }: { circleName: string }) {
   const { locale } = useOnboardingText();
   const { actor, people, requests, switchActor } = useCommunityDemo();
+  const { session, profile } = useSession();
+  const account = session?.user.id ?? null;
+  const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = homeCopy[locale];
   const sectionTitle = localizedType("section-heading", locale);
   const label = localizedType("field-label", locale);
   const button = localizedType("button", locale);
   const supporting = localizedType("supporting", locale);
+  const listingCopy = lendingCopy[locale];
+  const readCopy = listingReadCopy[locale];
+  const [nearby, setNearby] = useState<BrowseState>(initialBrowseState);
+  const [nearbyRequests] = useState(createLatestRequest);
+  const [tick, setTick] = useState(0);
+  const focusedOnce = useRef(false);
+  const key = account ?? "";
+  const view = visibleBrowseState(nearby, key);
+  const rows = nearbyRows(view.rows, profileId, NEARBY_LIMIT);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) setTick((current) => current + 1);
+      focusedOnce.current = true;
+    }, []),
+  );
+
+  useEffect(() => {
+    if (!account) return;
+    const request = nearbyRequests.start();
+    api
+      .listListings(
+        { limit: NEARBY_LIMIT, activeOnly: true, excludeOwn: true },
+        { authUserId: account, signal: request.signal },
+      )
+      .then((page) => {
+        if (!request.isCurrent()) return;
+        setNearby((current) => firstPageLoaded(current, account, page));
+      })
+      .catch((error) => {
+        if (!request.isCurrent()) return;
+        setNearby((current) =>
+          firstPageFailed(current, account, requestApiError(error)),
+        );
+      });
+    return () => nearbyRequests.cancel();
+  }, [account, tick, nearbyRequests]);
+
+  function retryNearby() {
+    setNearby((current) =>
+      current.status === "ready"
+        ? startFirstPage(current, key)
+        : initialBrowseState(key),
+    );
+    setTick((current) => current + 1);
+  }
+
+  const retryButton = (
+    <Button
+      label={listingCopy.retry}
+      labelStyle={label}
+      variant="text"
+      onPress={retryNearby}
+    />
+  );
   const openRequests = requests.filter(
     (request) => request.createdBy !== actor && request.status === "open",
   );
@@ -160,42 +188,75 @@ function CircleHome({ circleName }: { circleName: string }) {
               : router.push("/ask")
           }
         />
-        <Button
-          label={copy.lend}
-          labelStyle={[button, styles.green]}
-          style={[styles.action, styles.secondaryButton]}
-          variant="secondary"
-          onPress={() => router.push("/tools/add")}
-        />
+        {actor === "member" ? (
+          <Button
+            label={copy.lend}
+            labelStyle={[button, styles.green]}
+            style={[styles.action, styles.secondaryButton]}
+            variant="secondary"
+            onPress={() => router.push("/tools/add")}
+          />
+        ) : null}
       </View>
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
         </Text>
-        <HomeRow
-          title={copy.drill}
-          description={people.neighbour.name}
-          detail={copy.available}
-          photo={require("../../../../assets/images/community/home-drill.png")}
-          onPress={() =>
-            router.push({
-              pathname: "/tools/[id]",
-              params: { id: "hammer-drill" },
-            })
-          }
-        />
-        <HomeRow
-          title={copy.cutter}
-          description={people.neighbour.name}
-          detail={copy.weekend}
-          photo={require("../../../../assets/images/community/home-grass-cutter.png")}
-          onPress={() =>
-            router.push({
-              pathname: "/tools/[id]",
-              params: { id: "grass-cutter" },
-            })
-          }
-        />
+        {view.status === "loading" ? (
+          <View
+            accessible
+            accessibilityState={{ busy: true }}
+            accessibilityRole="progressbar"
+            accessibilityLabel={listingCopy.loadingListings}
+          >
+            <ListingRowSkeleton />
+            <ListingRowSkeleton />
+          </View>
+        ) : view.status === "error" ? (
+          <View style={styles.section}>
+            <Text style={[supporting, styles.secondary]}>
+              {view.firstError === "transient" || view.firstError === null
+                ? copy.nearbyError
+                : readCopy[view.firstError]}
+            </Text>
+            {canRetry(view.firstError) ? retryButton : null}
+          </View>
+        ) : rows.length === 0 && !view.refreshError ? (
+          <RequestNotice
+            title={copy.nearbyEmptyTitle}
+            detail={copy.nearbyEmptyDetail}
+            locale={locale}
+          />
+        ) : (
+          rows.map((listing) => (
+            <ListingRow
+              key={listing.id}
+              accessibilityRole="link"
+              title={listing.title}
+              description={
+                listing.kind === "skill"
+                  ? listingCopy.oneSkill
+                  : listingCopy.toolOrItem
+              }
+              detail={listingStatusLabel(listing, false, listingCopy)}
+              photo={listing.photo_url ? { uri: listing.photo_url } : undefined}
+              onPress={() =>
+                router.push({
+                  pathname: "/tools/[id]",
+                  params: { id: listing.id },
+                })
+              }
+            />
+          ))
+        )}
+        {view.refreshError ? (
+          <View style={styles.section}>
+            <Text style={[supporting, styles.secondary]}>
+              {listingCopy.refreshError}
+            </Text>
+            {canRetry(view.refreshError) ? retryButton : null}
+          </View>
+        ) : null}
         <Button
           label={copy.browse}
           labelStyle={label}
@@ -209,7 +270,7 @@ function CircleHome({ circleName }: { circleName: string }) {
         </Text>
         {openRequests.length ? (
           openRequests.map((request) => (
-            <HomeRow
+            <ListingRow
               key={request.id}
               title={request.title}
               description={people[request.createdBy].name}
@@ -257,23 +318,6 @@ const styles = StyleSheet.create({
   secondary: { color: colors.secondary },
   green: { color: colors.action },
   section: { gap: spacing["related-gap"] },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing["control-gap"],
-    minHeight: 64,
-    paddingVertical: 4,
-    borderRadius: controls.radius,
-  },
-  thumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: controls.radius,
-    backgroundColor: colors.paper,
-  },
-  portrait: { borderRadius: 28 },
-  rowCopy: { flex: 1 },
-  rowDetail: { color: colors.action, textAlign: "right", maxWidth: "30%" },
   demo: {
     borderTopWidth: 1,
     borderColor: colors.rule,

@@ -1,23 +1,31 @@
-from tests.integration.conftest import auth, join_circle, make_circle, make_user
+from tests.integration.conftest import (
+    auth,
+    join_circle,
+    make_circle,
+    make_user,
+    matched_exchange,
+)
 
 
-async def _listing(client, token):
-    category_id = (
-        await client.get("/categories?kind=tool", headers=auth(token))
-    ).json()["items"][0]["id"]
-    return (
-        await client.post(
-            "/listings",
-            headers=auth(token),
-            json={
-                "kind": "tool",
-                "category_id": category_id,
-                "title": "Ladder",
-                "lang": "ja",
-                "lend_mode": "lend",
-            },
-        )
-    ).json()["id"]
+async def _listing(client, token, *, kind="tool", title="Ladder"):
+    categories = await client.get(
+        "/categories", headers=auth(token), params={"kind": kind}
+    )
+    assert categories.status_code == 200, categories.text
+    category_id = categories.json()["items"][0]["id"]
+    created = await client.post(
+        "/listings",
+        headers=auth(token),
+        json={
+            "kind": kind,
+            "category_id": category_id,
+            "title": title,
+            "lang": "ja",
+            "lend_mode": "lend" if kind == "tool" else "help_only",
+        },
+    )
+    assert created.status_code == 201, created.text
+    return created.json()["id"]
 
 
 async def test_replace_parts_and_media(client):
@@ -54,6 +62,163 @@ async def test_my_listings_and_delete(client):
 
     gone = await client.get(f"/listings/{listing_id}", headers=auth(owner))
     assert gone.status_code == 404
+
+
+async def test_my_listings_filters_kind_status_and_pages_within_owner(client):
+    owner = await make_user(client, display_name="Owner")
+    peer = await make_user(client, display_name="Peer")
+    circle_id = await make_circle(client, owner)
+    await join_circle(client, owner, circle_id, peer)
+
+    older_tool = await _listing(client, owner, title="Hand saw")
+    active_tool = await _listing(client, owner, title="Wrench")
+    skill = await _listing(client, owner, kind="skill", title="Cooking")
+    newer_tool = await _listing(client, owner, title="Drill")
+    peer_tool = await _listing(client, peer, title="Measuring tape")
+    for token, listing_id in (
+        (owner, older_tool),
+        (owner, skill),
+        (owner, newer_tool),
+        (peer, peer_tool),
+    ):
+        paused = await client.post(f"/listings/{listing_id}/pause", headers=auth(token))
+        assert paused.status_code == 200, paused.text
+
+    filters = {"kind": "tool", "status": "paused", "limit": 1}
+    first = await client.get("/users/me/listings", headers=auth(owner), params=filters)
+    assert first.status_code == 200, first.text
+    first_page = first.json()
+    assert [item["id"] for item in first_page["items"]] == [newer_tool]
+    assert first_page["next_cursor"]
+
+    second = await client.get(
+        "/users/me/listings",
+        headers=auth(owner),
+        params={**filters, "cursor": first_page["next_cursor"]},
+    )
+    assert second.status_code == 200, second.text
+    assert [item["id"] for item in second.json()["items"]] == [older_tool]
+    assert second.json()["next_cursor"] is None
+
+    unfiltered = await client.get("/users/me/listings", headers=auth(owner))
+    assert unfiltered.status_code == 200, unfiltered.text
+    assert [item["id"] for item in unfiltered.json()["items"]] == [
+        newer_tool,
+        skill,
+        active_tool,
+        older_tool,
+    ]
+
+    skills = await client.get(
+        "/users/me/listings",
+        headers=auth(owner),
+        params={"kind": "skill", "status": "paused,active"},
+    )
+    assert skills.status_code == 200, skills.text
+    assert [item["id"] for item in skills.json()["items"]] == [skill]
+
+    tools = await client.get(
+        "/users/me/listings",
+        headers=auth(owner),
+        params={"kind": "tool", "status": "paused,active"},
+    )
+    assert tools.status_code == 200, tools.text
+    assert [item["id"] for item in tools.json()["items"]] == [
+        newer_tool,
+        active_tool,
+        older_tool,
+    ]
+
+    invalid = await client.get(
+        "/users/me/listings", headers=auth(owner), params={"kind": "bogus"}
+    )
+    assert invalid.status_code == 422, invalid.text
+
+
+async def test_browse_excludes_effective_actors_listings_before_pagination(client):
+    member = await make_user(client, display_name="Member")
+    caretaker = await make_user(client, display_name="Caretaker")
+    circle_id = await make_circle(client, member)
+    await join_circle(client, member, circle_id, caretaker)
+    caretaker_listing = await _listing(client, caretaker, title="Measuring tape")
+    await _listing(client, member, title="Hand saw")
+    latest_member_listing = await _listing(client, member, title="Cordless drill")
+
+    member_id = (await client.get("/users/me", headers=auth(member))).json()["id"]
+    caretaker_id = (await client.get("/users/me", headers=auth(caretaker))).json()["id"]
+    granted = await client.post(
+        "/proxy-grants",
+        headers=auth(member),
+        json={
+            "member_user_id": member_id,
+            "caretaker_user_id": caretaker_id,
+            "caretaker_role": "family",
+            "consent_method": "in_person",
+            "scopes": {"can_view_activity": True},
+        },
+    )
+    assert granted.status_code == 201, granted.text
+
+    filters = {"status": "active", "limit": 1}
+    for headers in (auth(member), {**auth(caretaker), "X-Acting-For": member_id}):
+        default = await client.get("/listings", headers=headers, params=filters)
+        assert default.status_code == 200, default.text
+        assert [item["id"] for item in default.json()["items"]] == [
+            latest_member_listing
+        ]
+        assert default.json()["next_cursor"]
+
+        nearby = await client.get(
+            "/listings", headers=headers, params={**filters, "exclude_own": "true"}
+        )
+        assert nearby.status_code == 200, nearby.text
+        assert [item["id"] for item in nearby.json()["items"]] == [caretaker_listing]
+        assert nearby.json()["next_cursor"] is None
+
+
+async def test_lent_out_listing_is_visible_but_read_only(client):
+    exchange = await matched_exchange(client, loan=True)
+    helper = auth(exchange["helper"])
+    requester = auth(exchange["requester"])
+    handed = await client.post(
+        f"/exchanges/{exchange['exchange_id']}/hand-over", headers=helper
+    )
+    assert handed.status_code == 200, handed.text
+    assert handed.json()["status"] == "active"
+    listing_id = handed.json()["listing_id"]
+    assert listing_id
+    path = f"/listings/{listing_id}"
+    filters = {"kind": "tool", "status": "lent_out"}
+
+    mine = await client.get("/users/me/listings", headers=helper, params=filters)
+    assert mine.status_code == 200, mine.text
+    (summary,) = mine.json()["items"]
+    assert summary["id"] == listing_id
+    assert summary["status"] == "lent_out"
+
+    detail = await client.get(path, headers=helper)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["status"] == "lent_out"
+
+    requester_list = await client.get(
+        "/users/me/listings", headers=requester, params=filters
+    )
+    assert requester_list.status_code == 200, requester_list.text
+    assert requester_list.json()["items"] == []
+
+    for headers, expected_status in ((helper, 409), (requester, 404)):
+        edited = await client.patch(path, headers=headers, json={"title": "New title"})
+        assert edited.status_code == expected_status, edited.text
+        paused = await client.post(f"{path}/pause", headers=headers)
+        assert paused.status_code == expected_status, paused.text
+        resumed = await client.post(f"{path}/resume", headers=headers)
+        assert resumed.status_code == expected_status, resumed.text
+        deleted = await client.delete(path, headers=headers)
+        assert deleted.status_code == expected_status, deleted.text
+
+    still_mine = await client.get("/users/me/listings", headers=helper, params=filters)
+    assert still_mine.status_code == 200, still_mine.text
+    assert still_mine.json()["items"] == [summary]
 
 
 async def test_user_listings_visible_to_circle_mate(client):

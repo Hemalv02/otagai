@@ -157,7 +157,15 @@ export default function LoanDetailsScreen() {
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
         const latest = await loan.reload();
-        if (latest) setNotice(copy.conflict);
+        if (latest) {
+          setNotice(
+            "advance" in action &&
+              action.advance === "hand-over" &&
+              latest.exchange.status === "scheduled"
+              ? screen.pickupUnavailable
+              : copy.conflict,
+          );
+        }
       } else setError(copy.actionError);
     } finally {
       setBusy(false);

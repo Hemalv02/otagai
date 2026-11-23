@@ -17,6 +17,8 @@ const en = {
   askOneDay: "Ask for one more day",
   closeDate: "Cancel extension request",
   recordPickup: "Record pickup",
+  pickupUnavailable:
+    "This listing is unavailable for pickup. Contact the lender to check.",
   recordReturn: "Record return",
   confirmReturn: "Confirm return",
   waitingForReturn: "Waiting for the other person to confirm the return.",
@@ -71,6 +73,7 @@ export const activityScreenCopy: Record<Language, typeof en> = {
     askOneDay: "もう1日借りたいとお願いする",
     closeDate: "延長依頼を閉じる",
     recordPickup: "受け取りを記録",
+    pickupUnavailable: "この品物は受け取れません。貸し手に確認してください。",
     recordReturn: "返却を記録",
     confirmReturn: "返却を確認",
     waitingForReturn: "相手の返却確認を待っています。",
@@ -118,6 +121,8 @@ export const activityScreenCopy: Record<Language, typeof en> = {
     askOneDay: "আরও এক দিন রাখার অনুরোধ করুন",
     closeDate: "সময় বাড়ানোর অনুরোধ বন্ধ করুন",
     recordPickup: "নেওয়া নথিভুক্ত করুন",
+    pickupUnavailable:
+      "জিনিসটি এখন নেওয়া যাবে না। ধারদাতার সঙ্গে যোগাযোগ করুন।",
     recordReturn: "ফেরত দেওয়া নথিভুক্ত করুন",
     confirmReturn: "ফেরত নিশ্চিত করুন",
     waitingForReturn: "অন্য সদস্যের ফেরত নিশ্চিত করার অপেক্ষায়।",

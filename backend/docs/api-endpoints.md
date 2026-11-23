@@ -348,7 +348,7 @@ Files never go straight to S3 from the app. The backend strips EXIF and GPS data
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `GET /listings` | Browse what my circles can see. Filters: `q`, `kind`, `category_id`, `circle_id`, `status` | 200 | 8 | MVP |
+| `GET /listings` | Browse what my circles can see. Filters: `q`, `kind`, `category_id`, `circle_id`, `status`. `exclude_own=true` excludes listings owned by the effective actor before pagination. The default is `false`. | 200 | 8 | MVP |
 | `GET /listings/{listing_id}` | Photos, owner, parts, availability, `available_again_at` | 200 | 9 | MVP |
 | `POST /listings` | Create a tool or skill with parts and `media_ids`. Risky categories are forced to `help_only` | 201 | 19, 20 | MVP |
 | `PATCH /listings/{listing_id}` | Edit the title, description, safety notes, lend mode, availability or visibility | 200 | 20, 21 | MVP |
@@ -357,7 +357,7 @@ Files never go straight to S3 from the app. The backend strips EXIF and GPS data
 | `DELETE /listings/{listing_id}` | Soft delete. 409 while the item is lent out | 204 | 21 | MVP |
 | `PUT /listings/{listing_id}/parts` | Replace the parts list | 200 | 19 | MVP |
 | `PUT /listings/{listing_id}/media` | Replace the photos and their order | 200 | 19 | MVP |
-| `GET /users/me/listings?status=` | My listings, including paused and lent-out ones | 200 | 21 | MVP |
+| `GET /users/me/listings` | My listings, including paused and lent-out ones. Optional filters: `kind=tool\|skill`, `status` (comma-separated) | 200 | 21 | MVP |
 
 ## 7. Asking for help (the AI ask flow)
 

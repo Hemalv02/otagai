@@ -63,6 +63,7 @@ class ListingQuery(PageQuery):
     category_id: uuid.UUID | None = None
     circle_id: uuid.UUID | None = None
     status: str | None = Field(default=None, max_length=120)
+    exclude_own: bool = False
 
     @field_validator("status")
     @classmethod
@@ -81,6 +82,7 @@ class ListingQuery(PageQuery):
 
 
 class MyListingQuery(PageQuery):
+    kind: ListingKind | None = None
     status: str | None = Field(default=None, max_length=120)
 
     @field_validator("status")
@@ -90,7 +92,10 @@ class MyListingQuery(PageQuery):
         return raw
 
     def filters(self) -> ListingFilters:
-        return ListingFilters(statuses=_parse_statuses(self.status))
+        return ListingFilters(
+            kind=self.kind.value if self.kind else None,
+            statuses=_parse_statuses(self.status),
+        )
 
 
 class PartInput(BaseModel):
@@ -260,7 +265,13 @@ async def browse(
     settings: SettingsDep,
 ) -> Page[ListingSummary]:
     result = await browse_listings(
-        database, storage, settings, actor, query.filters(), query.page()
+        database,
+        storage,
+        settings,
+        actor,
+        query.filters(),
+        query.page(),
+        exclude_own=query.exclude_own,
     )
     return Page[ListingSummary](
         items=[listing_summary(card) for card in result.items],
