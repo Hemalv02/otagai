@@ -283,3 +283,67 @@ export function listingStatusLabel(
     .filter(Boolean)
     .join(" · ");
 }
+
+const LISTING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isListingId(id: string | undefined): id is string {
+  return typeof id === "string" && LISTING_ID.test(id);
+}
+
+export type DetailContext = { account: string; id: string };
+export type DetailState = DetailContext &
+  (
+    | { status: "loading" }
+    | { status: "loaded"; listing: ListingDetail }
+    | { status: "error"; errorKind: BrowseErrorKind }
+  );
+export type DetailView =
+  | "loading"
+  | "unavailable"
+  | "retryable"
+  | "auth"
+  | "error"
+  | "loaded";
+
+export function detailView(state: DetailState, current: DetailContext): DetailView {
+  if (!isListingId(current.id)) return "unavailable";
+  if (!isCurrentDetail(state, current)) return "loading";
+  if (state.status === "loaded") return "loaded";
+  if (state.status === "loading") return "loading";
+  if (state.errorKind === "transient") return "retryable";
+  if (state.errorKind === "auth") return "auth";
+  if (state.errorKind === "unavailable" || state.errorKind === "invalid") {
+    return "unavailable";
+  }
+  return "error";
+}
+
+export function isCurrentDetail(response: DetailContext, current: DetailContext) {
+  return response.account === current.account && response.id === current.id;
+}
+
+export function isListingOwner(
+  listing: Pick<ListingDetail, "owner">,
+  profileId: string | null | undefined,
+) {
+  return listing.owner !== null && listing.owner.id === profileId;
+}
+
+export function availabilityLabel(
+  listing: Pick<ListingDetail, "lend_mode" | "status">,
+  labels: {
+    lend: string;
+    help_only: string;
+    lend_or_help: string;
+    lentOut: string;
+  },
+) {
+  return listing.status === "lent_out" ? labels.lentOut : labels[listing.lend_mode];
+}
+
+export function photoUrls(listing: Pick<ListingDetail, "photos">) {
+  return listing.photos.flatMap((photo) => {
+    const url = photo.display_url ?? photo.thumb_url;
+    return url ? [{ id: photo.media_id, url }] : [];
+  });
+}

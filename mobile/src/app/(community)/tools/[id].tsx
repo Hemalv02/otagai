@@ -1,46 +1,115 @@
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
-import { LendingPhoto } from "@/components/lending-photo";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
-import { useCommunityDemo } from "@/lib/community-demo";
-import {
-  isSampleListing,
-  listingText,
-  useDemoListings,
-} from "@/lib/demo-listings";
+import { api } from "@/lib/api";
 import { lendingCopy } from "@/lib/lending-copy";
+import {
+  availabilityLabel,
+  createLatestRequest,
+  type DetailContext,
+  type DetailState,
+  detailView,
+  isCurrentDetail,
+  isListingId,
+  isListingOwner,
+  photoUrls,
+} from "@/lib/listing-workflow";
+import { listingReadCopy, requestApiError } from "@/lib/listing-read";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { colors, spacing } from "@/theme/tokens.json";
-
-const tanakaPortrait = require("../../../../assets/images/lending-tanaka-thumbnail.png");
+import { useSession } from "@/lib/session";
+import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function ToolListingScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
-  const { actor, people } = useCommunityDemo();
-  const { listings, ready } = useDemoListings();
+  const { session, profile } = useSession();
+  const account = session?.user.id ?? "";
+  const profileId = profile.status === "ready" ? profile.profile.id : null;
+  const id = routeId ?? "";
+  const current: DetailContext = { account, id };
   const copy = lendingCopy[locale];
-  const listing = listings.find((item) => item.id === id);
+  const readCopy = listingReadCopy[locale];
   const bodyType = localizedType("body", locale);
   const labelType = localizedType("field-label", locale);
 
+  const [state, setState] = useState<DetailState>({
+    account,
+    id,
+    status: "loading",
+  });
+  const [tick, setTick] = useState(0);
+  const [requests] = useState(createLatestRequest);
+
+  useEffect(() => {
+    if (!account || !isListingId(id)) {
+      requests.cancel();
+      return;
+    }
+    const context: DetailContext = { account, id };
+    const request = requests.start();
+    api
+      .getListing(id, request.signal, account)
+      .then((listing) => {
+        if (!request.isCurrent()) return;
+        setState({ ...context, status: "loaded", listing });
+      })
+      .catch((error: unknown) => {
+        if (!request.isCurrent()) return;
+        setState({
+          ...context,
+          status: "error",
+          errorKind: requestApiError(error),
+        });
+      });
+    return () => requests.cancel();
+  }, [account, id, tick, requests]);
+
+  const view = account ? detailView(state, current) : "auth";
+  const listing =
+    view === "loaded" && state.status === "loaded" && isCurrentDetail(state, current)
+      ? state.listing
+      : null;
+
   if (!listing) {
+    const message =
+      view === "unavailable"
+        ? copy.listingMissing
+        : view === "retryable"
+          ? readCopy.transient
+          : view === "auth"
+            ? readCopy.auth
+            : view === "error"
+              ? readCopy.error
+              : null;
     return (
       <CommunityScreen back>
-        {ready ? (
+        {message ? (
           <>
             <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
-              {copy.listingMissing}
+              {message}
             </Text>
-            <Button
-              label={copy.browseTitle}
-              onPress={() => router.dismissTo("/tools")}
-              labelStyle={localizedType("button", locale)}
-            />
+            {view === "retryable" ? (
+              <Button
+                label={copy.retry}
+                onPress={() => {
+                  setState({ ...current, status: "loading" });
+                  setTick((value) => value + 1);
+                }}
+                labelStyle={localizedType("button", locale)}
+              />
+            ) : null}
+            {view === "unavailable" ? (
+              <Button
+                label={copy.browseTitle}
+                onPress={() => router.dismissTo("/tools")}
+                labelStyle={localizedType("button", locale)}
+              />
+            ) : null}
           </>
         ) : (
           <ActivityIndicator color={colors.action} />
@@ -49,70 +118,42 @@ export default function ToolListingScreen() {
     );
   }
 
-  const sample = isSampleListing(listing) ? listing : null;
-  const title = listingText(listing.title, locale);
-  const description = listingText(listing.description, locale);
-  const owner = sample
-    ? listingText(sample.owner, locale)
-    : people[listing.postedBy ?? "member"].name;
-  const own = listing.postedBy === actor;
+  const own = isListingOwner(listing, profileId);
   const skill = listing.kind === "skill";
-  const weekend = sample?.availability === "weekend";
-  const availability = skill ? copy.askForTime : copy.available;
-  const publicNotice = {
-    title: weekend ? copy.availableWeekend : availability,
-    detail:
-      listing.availabilityNote ??
-      (weekend
-        ? copy.weekendPickup
-        : skill
-          ? sample
-            ? copy.skillTime
-            : copy.arrangeHelp
-          : copy.arrangePickup),
-  };
-  const notice = own
-    ? {
-        title: copy.yourListing,
-        detail: sample
-          ? publicNotice.title
-          : skill
-            ? copy.ownSkill
-            : copy.ownTool,
-      }
-    : publicNotice;
-  const ownerDetail = own
-    ? copy.yourListing
-    : weekend
-      ? copy.neighbourHan
-      : copy.neighbour;
-  const photoCaption = listing.photo === "drill" ? copy.drillCaption : title;
+  const photos = photoUrls(listing);
+  const lendState = availabilityLabel(listing, {
+    ...readCopy,
+    lentOut: copy.lentOut,
+  });
+  const availableAgain = listing.available_again_at
+    ? new Date(listing.available_again_at).toLocaleDateString(locale)
+    : null;
+  const availabilityDetail = [
+    listing.availability_note,
+    availableAgain ? `${copy.availableAgain}: ${availableAgain}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <CommunityScreen title={title} back>
-      {listing.photo ? (
-        <LendingPhoto
-          photo={listing.photo}
-          caption={photoCaption}
-          locale={locale}
+    <CommunityScreen title={listing.title} back>
+      {photos.map((photo) => (
+        <Image
+          key={photo.id}
+          source={{ uri: photo.url }}
+          style={styles.photo}
+          contentFit="contain"
+          accessibilityLabel={listing.title}
         />
-      ) : null}
-      <View style={styles.owner}>
-        {listing.postedBy === "neighbour" ? (
-          <Image
-            source={tanakaPortrait}
-            style={styles.portrait}
-            accessible={false}
-          />
-        ) : null}
+      ))}
+      {listing.owner ? (
         <View style={styles.ownerCopy}>
-          <Text style={[labelType, styles.ink]}>{owner}</Text>
-          <Text style={[localizedType("supporting", locale), styles.secondary]}>
-            {ownerDetail}
+          <Text style={[labelType, styles.ink]}>
+            {listing.owner.display_name}
           </Text>
         </View>
-      </View>
-      {description ? (
+      ) : null}
+      {listing.description ? (
         <>
           <Text
             accessibilityRole="header"
@@ -120,53 +161,54 @@ export default function ToolListingScreen() {
           >
             {skill ? copy.skillHeading : copy.includedHeading}
           </Text>
-          <Text style={[bodyType, styles.ink]}>{description}</Text>
+          <Text style={[bodyType, styles.ink]}>{listing.description}</Text>
         </>
       ) : null}
-      {!skill && listing.safetyNote ? (
+      {listing.parts.length > 0 ? (
+        <RequestNotice
+          title={copy.includedParts}
+          detail={listing.parts
+            .map((part) => `${part.label} × ${part.quantity}`)
+            .join("\n")}
+          locale={locale}
+        />
+      ) : null}
+      {listing.safety_notes ? (
         <RequestNotice
           title={copy.safety}
-          detail={listing.safetyNote}
+          detail={listing.safety_notes}
           locale={locale}
         />
       ) : null}
       <RequestNotice
-        title={notice.title}
-        detail={notice.detail}
+        title={lendState}
+        detail={availabilityDetail || copy.availability}
         locale={locale}
       />
-      {own && listing.availabilityNote ? (
-        <RequestNotice
-          title={copy.availability}
-          detail={listing.availabilityNote}
-          locale={locale}
-        />
-      ) : null}
-      {!own ? (
+      {own ? (
         <Button
-          label={skill ? copy.askForHelp : copy.askToBorrow}
+          label={copy.mine}
           labelStyle={localizedType("button", locale)}
-          onPress={() =>
-            router.push({
-              pathname: "/ask",
-              params: { listingId: listing.id },
-            })
-          }
+          onPress={() => router.push("/my-listings")}
         />
-      ) : null}
+      ) : (
+        <Text style={[localizedType("supporting", locale), styles.secondary]}>
+          {readCopy.readOnly}
+        </Text>
+      )}
     </CommunityScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  owner: {
-    flexDirection: "row",
-    alignItems: "center",
-    minHeight: 54,
+  photo: { height: 220, width: "100%", borderRadius: controls.radius },
+  ownerCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingTop: 4,
+    paddingBottom: 5,
     gap: spacing["control-gap"],
   },
-  ownerCopy: { flex: 1, minWidth: 0, paddingTop: 4, paddingBottom: 5 },
-  portrait: { width: 56, height: 56, borderRadius: 28 },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },
 });
