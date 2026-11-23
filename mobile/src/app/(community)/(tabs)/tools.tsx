@@ -16,11 +16,12 @@ import {
   type ListingCategory,
   useDemoListings,
 } from "@/lib/demo-listings";
+import { myListingsCopy } from "@/lib/my-listings-copy";
 import { lendingCopy } from "@/lib/lending-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
-const filters = ["all", "tool", "skill", "mine"] as const;
+const filters = ["all", "tool", "skill"] as const;
 
 function searchString(value: string) {
   return value.normalize("NFKC").toLowerCase();
@@ -29,7 +30,7 @@ function searchString(value: string) {
 export default function BrowseToolsScreen() {
   const { locale } = useOnboardingText();
   const { actor, people } = useCommunityDemo();
-  const { listings, ready } = useDemoListings();
+  const { listings } = useDemoListings();
   const copy = lendingCopy[locale];
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
@@ -40,10 +41,8 @@ export default function BrowseToolsScreen() {
   const filtersActive = Boolean(
     query.trim() || category || filter === "tool" || filter === "skill",
   );
-  const ownListings = listings.some((item) => item.postedBy === actor);
 
   const rows = listings.filter((listing) => {
-    if (filter === "mine" && listing.postedBy !== actor) return false;
     if ((filter === "tool" || filter === "skill") && listing.kind !== filter)
       return false;
     if (category && listing.category !== category) return false;
@@ -64,7 +63,7 @@ export default function BrowseToolsScreen() {
   function clearFilters() {
     setQuery("");
     setCategory("");
-    if (filter !== "mine") setFilter("all");
+    setFilter("all");
   }
 
   return (
@@ -113,12 +112,17 @@ export default function BrowseToolsScreen() {
                     selected && styles.action,
                   ]}
                 >
-                  {option === "mine" ? copy.mineShort : copy[option]}
+                  {copy[option]}
                 </Text>
               </Pressable>
             );
           })}
         </View>
+        <Button
+          label={myListingsCopy[locale].title}
+          variant="text"
+          onPress={() => router.push("/my-listings")}
+        />
         <View style={styles.category}>
           <Text style={[supportingType, styles.secondary]}>
             {copy.category}
@@ -131,13 +135,13 @@ export default function BrowseToolsScreen() {
         </View>
       </View>
       <View style={styles.results}>
-        {rows.length === 0 && (filter !== "mine" || ready) ? (
+        {rows.length === 0 ? (
           <View style={styles.empty}>
             <Text
               accessibilityLiveRegion="polite"
               style={[supportingType, styles.secondary]}
             >
-              {filter === "mine" && !ownListings ? copy.mineEmpty : copy.empty}
+              {copy.empty}
             </Text>
             {filtersActive ? (
               <Button

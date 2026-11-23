@@ -65,14 +65,21 @@ export type CircleJoin = { invite_code: string } | { circle_id: string };
 
 type Page<T> = { items: T[]; next_cursor: string | null };
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+type ListingRequestOptions = { authUserId?: string; signal?: AbortSignal };
+
+async function request<T>(
+  path: string,
+  { authUserId, ...init }: RequestInit & ListingRequestOptions = {},
+): Promise<T> {
+  if (init.signal?.aborted) throw new ApiError(0, "Request canceled.");
   const { data, error } = await supabase.auth.getSession();
-  if (error) {
+  if (init.signal?.aborted) throw new ApiError(0, "Request canceled.");
+  if (error || (authUserId && data.session?.user.id !== authUserId)) {
     throw new ApiError(401, "Sign in again to continue.");
   }
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body) {
+  if (init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
   if (data.session) {
@@ -104,7 +111,117 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+export type ListingKind = "tool" | "skill";
+export type ListingStatus = "active" | "paused" | "lent_out";
+export type CategoryNode = {
+  id: string;
+  slug: string;
+  names: Record<string, unknown>;
+  is_risky: boolean;
+  children: CategoryNode[];
+};
+export type Media = {
+  id: string;
+  status: "processing" | "ready" | "rejected" | "deleted";
+  urls: Record<string, string>;
+};
+export type ListingSummary = {
+  id: string;
+  owner_user_id: string;
+  title: string;
+  kind: ListingKind;
+  status: ListingStatus;
+  photo_url: string | null;
+  available_again_at: string | null;
+};
+export type ListingDetail = {
+  id: string;
+  owner: { id: string; display_name: string } | null;
+  title: string;
+  kind: ListingKind;
+  status: ListingStatus;
+  availability_note: string | null;
+  photos: {
+    media_id: string;
+    thumb_url: string | null;
+    display_url: string | null;
+  }[];
+};
+export type CreateListingBody = {
+  kind: ListingKind;
+  category_id: string;
+  title: string;
+  lang: Language;
+  lend_mode: "lend" | "help_only";
+  media_ids: string[];
+  description?: string;
+  safety_notes?: string;
+  availability_note?: string;
+};
+
 export const api = {
+  listCategories: (kind: ListingKind, options?: ListingRequestOptions) =>
+    request<{ items: CategoryNode[] }>(`/categories?kind=${kind}`, options),
+  uploadListingPhoto: (body: FormData, options?: ListingRequestOptions) =>
+    request<Media>("/media", { ...options, method: "POST", body }),
+  getMedia: (id: string, options?: ListingRequestOptions) =>
+    request<Media>(`/media/${encodeURIComponent(id)}`, options),
+  createListing: (body: CreateListingBody, options?: ListingRequestOptions) =>
+    request<ListingDetail>("/listings", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  listMyListings: (
+    params: {
+      kind?: ListingKind;
+      status?: ListingStatus;
+      cursor?: string;
+      limit?: number;
+    },
+    signal?: AbortSignal,
+    authUserId?: string,
+  ) => {
+    const query = new URLSearchParams();
+    if (params.kind) query.set("kind", params.kind);
+    if (params.status) query.set("status", params.status);
+    if (params.cursor) query.set("cursor", params.cursor);
+    if (params.limit) query.set("limit", String(params.limit));
+    return request<Page<ListingSummary>>(`/users/me/listings?${query}`, {
+      signal,
+      authUserId,
+    });
+  },
+  getListing: (id: string, signal?: AbortSignal, authUserId?: string) =>
+    request<ListingDetail>(`/listings/${encodeURIComponent(id)}`, {
+      signal,
+      authUserId,
+    }),
+  updateListing: (
+    id: string,
+    body: { title?: string; availability_note?: string | null },
+    options?: ListingRequestOptions,
+  ) =>
+    request<ListingDetail>(`/listings/${encodeURIComponent(id)}`, {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  pauseListing: (id: string, options?: ListingRequestOptions) =>
+    request<ListingDetail>(`/listings/${encodeURIComponent(id)}/pause`, {
+      ...options,
+      method: "POST",
+    }),
+  resumeListing: (id: string, options?: ListingRequestOptions) =>
+    request<ListingDetail>(`/listings/${encodeURIComponent(id)}/resume`, {
+      ...options,
+      method: "POST",
+    }),
+  deleteListing: (id: string, options?: ListingRequestOptions) =>
+    request<void>(`/listings/${encodeURIComponent(id)}`, {
+      ...options,
+      method: "DELETE",
+    }),
   getMyProfile: () => request<UserProfile>("/users/me"),
   createProfile: (profile: NewProfile) =>
     request<UserProfile>("/users", {

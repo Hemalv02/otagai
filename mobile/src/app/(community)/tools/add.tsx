@@ -1,77 +1,151 @@
+import { Host, Picker } from "@expo/ui";
 import * as ImagePicker from "expo-image-picker";
-import { router } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { router, useNavigation } from "expo-router";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { LendingPhoto } from "@/components/lending-photo";
-import { ListingCategoryPicker } from "@/components/listing-category-picker";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
-import { useCommunityDemo } from "@/lib/community-demo";
+import { api, type CategoryNode, type ListingKind } from "@/lib/api";
+import { myListingsCopy } from "@/lib/my-listings-copy";
 import {
-  type ListingCategory,
-  type ListingKind,
-  type ListingPhoto,
-  useDemoListings,
-} from "@/lib/demo-listings";
+  createLatestRequest,
+  prepareListingMedia,
+} from "@/lib/listing-workflow";
 import { lendingCopy } from "@/lib/lending-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type FormError =
-  "required" | "photoFailed" | "cameraPermission" | "publishFailed";
+  | "required"
+  | "photoFailed"
+  | "cameraPermission"
+  | "publishFailed"
+  | "attachmentFailed";
+type CategoryLoad =
+  | { state: "loading" }
+  | { state: "error" }
+  | { state: "ready"; items: CategoryNode[]; isCurrent: () => boolean };
 const pickerOptions: ImagePicker.ImagePickerOptions = {
   mediaTypes: ["images"],
   quality: 0.7,
 };
 
 export default function AddListingScreen() {
+  const navigation = useNavigation();
+  const { session } = useSession();
+  const account = session?.user.id;
   const { locale } = useOnboardingText();
-  const { actor } = useCommunityDemo();
-  const { publish, ready } = useDemoListings();
+  const messages = myListingsCopy[locale];
   const copy = lendingCopy[locale];
-  const [kind, setKind] = useState<ListingKind>("tool");
+  const [categoryQuery, setCategoryQuery] = useState<{
+    kind: ListingKind;
+    version: number;
+  }>({ kind: "tool", version: 0 });
+  const { kind } = categoryQuery;
+  const currentKind = useRef(kind);
   const [name, setName] = useState("");
-  const [category, setCategory] = useState<ListingCategory | "">("");
+  const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [safety, setSafety] = useState("");
   const [availability, setAvailability] = useState("");
-  const [photo, setPhoto] = useState<ListingPhoto | null>(null);
+  const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [mediaId, setMediaId] = useState<string | null>(null);
+  const [categoryLoad, setCategoryLoad] = useState<CategoryLoad>({
+    state: "loading",
+  });
   const [error, setError] = useState<FormError | null>(null);
   const [picking, setPicking] = useState(false);
   const [saving, setSaving] = useState(false);
   const working = useRef(false);
+  const [categoryRequests] = useState(createLatestRequest);
+  const [formRequests] = useState(createLatestRequest);
   const labelType = localizedType("field-label", locale);
   const bodyType = localizedType("body", locale);
   const buttonType = localizedType("button", locale);
   const tool = kind === "tool";
   const busy = picking || saving;
 
+  useLayoutEffect(() => {
+    function cancelFormWork() {
+      formRequests.cancel();
+      working.current = false;
+    }
+    const unsubscribe = navigation.addListener("blur", () => {
+      cancelFormWork();
+      setPicking(false);
+      setSaving(false);
+    });
+    return () => {
+      unsubscribe();
+      cancelFormWork();
+    };
+  }, [account, formRequests, navigation]);
+
   useEffect(() => {
-    if (Platform.OS !== "android") return;
-    let current = true;
-    void ImagePicker.getPendingResultAsync()
+    if (!account) return;
+    const request = categoryRequests.start();
+    api
+      .listCategories(categoryQuery.kind, {
+        authUserId: account,
+        signal: request.signal,
+      })
       .then((result) => {
-        if (!current || !result) return;
-        if ("code" in result) setError("photoFailed");
-        else if (!result.canceled) setPhoto({ uri: result.assets[0].uri });
+        if (request.isCurrent()) {
+          setCategoryLoad({
+            state: "ready",
+            items: flattenCategories(result.items),
+            isCurrent: request.isCurrent,
+          });
+        }
       })
       .catch(() => {
-        if (current) setError("photoFailed");
+        if (request.isCurrent()) setCategoryLoad({ state: "error" });
       });
-    return () => {
-      current = false;
-    };
-  }, []);
+    return () => categoryRequests.cancel();
+  }, [account, categoryQuery, categoryRequests]);
+
+  function reloadCategories(next: ListingKind) {
+    if (working.current) return;
+    currentKind.current = next;
+    categoryRequests.cancel();
+    setCategory("");
+    setCategoryLoad({ state: "loading" });
+    setCategoryQuery(({ version }) => ({ kind: next, version: version + 1 }));
+    setError(null);
+  }
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const request = formRequests.start();
+    void ImagePicker.getPendingResultAsync()
+      .then((result) => {
+        if (!request.isCurrent() || !navigation.isFocused() || !result) return;
+        if ("code" in result) setError("photoFailed");
+        else if (!result.canceled) {
+          setPhoto(result.assets[0]);
+          setMediaId(null);
+        }
+      })
+      .catch(() => {
+        if (request.isCurrent() && navigation.isFocused())
+          setError("photoFailed");
+      });
+  }, [account, formRequests, navigation]);
 
   async function selectPhoto(source: "camera" | "library") {
-    if (working.current) return;
+    if (working.current || !navigation.isFocused()) return;
+    const request = formRequests.start();
+    const stillCurrent = () => request.isCurrent() && navigation.isFocused();
     working.current = true;
     setPicking(true);
     setError(null);
     try {
       if (source === "camera" && Platform.OS !== "web") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!stillCurrent()) return;
         if (!permission.granted) {
           setError("cameraPermission");
           return;
@@ -80,53 +154,94 @@ export default function AddListingScreen() {
       const result = await (source === "camera"
         ? ImagePicker.launchCameraAsync(pickerOptions)
         : ImagePicker.launchImageLibraryAsync(pickerOptions));
-      if (!result.canceled) setPhoto({ uri: result.assets[0].uri });
+      if (stillCurrent() && !result.canceled) {
+        setPhoto(result.assets[0]);
+        setMediaId(null);
+      }
     } catch {
-      setError("photoFailed");
+      if (stillCurrent()) setError("photoFailed");
     } finally {
-      working.current = false;
-      setPicking(false);
-    }
-  }
-
-  function loadSample() {
-    setError(null);
-    setPhoto("grass-cutter");
-    if (tool) {
-      setName((value) => value || copy.sampleName);
-      setCategory((value) => value || "garden");
-      setDescription((value) => value || copy.sampleParts);
-      setSafety((value) => value || copy.sampleSafety);
+      if (request.isCurrent()) {
+        working.current = false;
+        setPicking(false);
+      }
     }
   }
 
   async function submit() {
-    if (!ready || working.current) return;
-    if (!name.trim() || !category) {
+    if (working.current || !account || !navigation.isFocused()) return;
+    if (categoryLoad.state !== "ready" || !categoryLoad.isCurrent()) return;
+    if (
+      !name.trim() ||
+      !categoryLoad.items.some((item) => item.id === category)
+    ) {
       setError("required");
       return;
     }
 
+    const request = formRequests.start();
+    const stillCurrent = () => request.isCurrent() && navigation.isFocused();
+    const options = { authUserId: account, signal: request.signal };
     working.current = true;
     setSaving(true);
     setError(null);
+    let preparingPhoto = Boolean(photo);
+    let navigating = false;
     try {
-      const id = await publish({
-        title: name.trim(),
-        description: description.trim(),
-        availabilityNote: availability.trim() || undefined,
-        safetyNote: tool ? safety.trim() || undefined : undefined,
-        photo: photo ?? undefined,
-        category,
-        postedBy: actor,
-        kind,
+      const id = photo
+        ? await prepareListingMedia({
+            mediaId,
+            signal: request.signal,
+            upload: async () => {
+              const form = new FormData();
+              form.append("purpose", "listing");
+              if (Platform.OS === "web" && photo.file)
+                form.append("file", photo.file);
+              else
+                form.append("file", {
+                  uri: photo.uri,
+                  name: photo.fileName || "photo.jpg",
+                  type: photo.mimeType || "image/jpeg",
+                } as unknown as Blob);
+              return api.uploadListingPhoto(form, options);
+            },
+            getMedia: (id) => api.getMedia(id, options),
+            onAccepted: setMediaId,
+          })
+        : null;
+      if (!stillCurrent()) return;
+      preparingPhoto = false;
+      const listing = await api.createListing(
+        {
+          kind,
+          category_id: category,
+          title: name.trim(),
+          lang: locale,
+          lend_mode: tool ? "lend" : "help_only",
+          media_ids: id ? [id] : [],
+          ...(description.trim() ? { description: description.trim() } : {}),
+          ...(tool && safety.trim() ? { safety_notes: safety.trim() } : {}),
+          ...(availability.trim()
+            ? { availability_note: availability.trim() }
+            : {}),
+        },
+        options,
+      );
+      if (!stillCurrent()) return;
+      router.replace({
+        pathname: "/my-listings",
+        params: { listingId: listing.id },
       });
-      router.replace({ pathname: "/tools/[id]", params: { id } });
+      navigating = true;
     } catch {
-      setError("publishFailed");
+      if (stillCurrent()) {
+        setError(preparingPhoto ? "attachmentFailed" : "publishFailed");
+      }
     } finally {
-      working.current = false;
-      setSaving(false);
+      if (!navigating && request.isCurrent()) {
+        working.current = false;
+        setSaving(false);
+      }
     }
   }
 
@@ -140,7 +255,11 @@ export default function AddListingScreen() {
           label={copy.publish}
           labelStyle={buttonType}
           busy={saving}
-          disabled={!ready || picking}
+          disabled={
+            picking ||
+            categoryLoad.state !== "ready" ||
+            categoryLoad.items.length === 0
+          }
           onPress={submit}
         />
       }
@@ -151,7 +270,9 @@ export default function AddListingScreen() {
           { value: "skill", label: copy.oneSkill },
         ]}
         value={kind}
-        onChange={setKind}
+        onChange={(next) => {
+          if (next !== currentKind.current) reloadCategories(next);
+        }}
         labelStyle={() => labelType}
         disabled={busy}
       />
@@ -166,18 +287,57 @@ export default function AddListingScreen() {
         labelStyle={labelType}
         style={bodyType}
         editable={!busy}
-        maxLength={100}
+        maxLength={120}
       />
       <View style={styles.category}>
         <Text style={[labelType, styles.ink]}>{copy.category}</Text>
-        <ListingCategoryPicker
-          value={category}
-          onChange={(next) => {
-            setCategory(next);
-            if (error === "required") setError(null);
-          }}
-          disabled={busy}
-        />
+        {categoryLoad.state === "loading" ? (
+          <Text>{messages.loading}</Text>
+        ) : categoryLoad.state === "error" ? (
+          <View>
+            <Text>{messages.categoriesFailed}</Text>
+            <Button
+              label={messages.retry}
+              variant="text"
+              disabled={busy}
+              onPress={() => reloadCategories(currentKind.current)}
+            />
+          </View>
+        ) : categoryLoad.items.length === 0 ? (
+          <Text>{messages.categoriesEmpty}</Text>
+        ) : (
+          <Host
+            key={categoryQuery.version}
+            matchContents
+            seedColor={colors.action}
+          >
+            <Picker<string>
+              selectedValue={category}
+              onValueChange={(id) => {
+                if (
+                  !working.current &&
+                  categoryLoad.isCurrent() &&
+                  (id === "" ||
+                    categoryLoad.items.some((item) => item.id === id))
+                ) {
+                  setCategory(id);
+                  if (error === "required") setError(null);
+                }
+              }}
+              enabled={!busy}
+              accessibilityLabel={copy.category}
+            >
+              <Picker.Item label={copy.categoryPrompt} value="" />
+              {categoryLoad.items.map((item) => (
+                <Picker.Item
+                  key={item.id}
+                  value={item.id}
+                  label={categoryName(item, locale)}
+                />
+              ))}
+            </Picker>
+          </Host>
+        )}
       </View>
       <Field
         label={tool ? copy.includedParts : copy.description}
@@ -190,7 +350,7 @@ export default function AddListingScreen() {
         style={[bodyType, styles.multiline]}
         editable={!busy}
         multiline
-        maxLength={400}
+        maxLength={2000}
       />
       <Field
         label={copy.availabilityOptional}
@@ -200,7 +360,7 @@ export default function AddListingScreen() {
         labelStyle={labelType}
         style={bodyType}
         editable={!busy}
-        maxLength={100}
+        maxLength={2000}
       />
       {tool ? (
         <Field
@@ -210,14 +370,14 @@ export default function AddListingScreen() {
           labelStyle={labelType}
           style={bodyType}
           editable={!busy}
-          maxLength={250}
+          maxLength={2000}
         />
       ) : null}
       <View style={styles.photos}>
         <Text style={[labelType, styles.ink]}>{copy.photoOptional}</Text>
         {photo ? (
           <LendingPhoto
-            photo={photo}
+            photo={{ uri: photo.uri }}
             caption={copy.photoCaption}
             locale={locale}
           />
@@ -241,22 +401,21 @@ export default function AddListingScreen() {
             <Button
               label={copy.removePhoto}
               labelStyle={labelType}
-              onPress={() => setPhoto(null)}
-              disabled={busy}
-              variant="text"
-            />
-          ) : tool ? (
-            <Button
-              label={copy.demoPhoto}
-              labelStyle={labelType}
-              onPress={loadSample}
+              onPress={() => {
+                setPhoto(null);
+                setMediaId(null);
+              }}
               disabled={busy}
               variant="text"
             />
           ) : null}
         </View>
       </View>
-      {error ? <ErrorText>{copy[error]}</ErrorText> : null}
+      {error ? (
+        <ErrorText>
+          {error === "attachmentFailed" ? messages.photoError : copy[error]}
+        </ErrorText>
+      ) : null}
     </CommunityScreen>
   );
 }
@@ -281,3 +440,15 @@ const styles = StyleSheet.create({
     gap: spacing["card-inset"],
   },
 });
+
+function flattenCategories(nodes: CategoryNode[]): CategoryNode[] {
+  return nodes.flatMap((node) => [node, ...flattenCategories(node.children)]);
+}
+function categoryName(node: CategoryNode, locale: string): string {
+  const name =
+    node.names[locale] ??
+    node.names.en ??
+    node.names.ja ??
+    Object.values(node.names).find((value) => typeof value === "string");
+  return typeof name === "string" ? name : node.slug;
+}

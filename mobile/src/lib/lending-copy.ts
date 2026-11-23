@@ -59,7 +59,6 @@ const en = {
   safety: "Safety note",
   takePhoto: "Take a photo",
   choosePhoto: "Choose a photo",
-  demoPhoto: "Use demo photo",
   photoCaption: "Listing photo",
   toolName: "Tool name",
   categoryPrompt: "Choose a category",
@@ -70,9 +69,6 @@ const en = {
   photoFailed: "Could not open the photo. Try again.",
   cameraPermission:
     "Allow camera access to take a photo, or choose one from your library.",
-  sampleName: "Cordless grass cutter",
-  sampleParts: "Battery, charger and blade cover",
-  sampleSafety: "Wear eye protection and closed shoes.",
 };
 
 const ja: typeof en = {
@@ -134,7 +130,6 @@ const ja: typeof en = {
   safety: "安全上の注意",
   takePhoto: "写真を撮る",
   choosePhoto: "写真を選ぶ",
-  demoPhoto: "サンプル写真を使う",
   photoCaption: "掲載写真",
   toolName: "道具の名前",
   categoryPrompt: "カテゴリーを選ぶ",
@@ -145,9 +140,6 @@ const ja: typeof en = {
   photoFailed: "写真を開けませんでした。もう一度お試しください。",
   cameraPermission:
     "カメラへのアクセスを許可するか、写真ライブラリから選んでください。",
-  sampleName: "コードレス草刈り機",
-  sampleParts: "バッテリー、充電器、刃のカバー",
-  sampleSafety: "保護メガネと、つま先の覆われた靴を着用してください。",
 };
 
 const bn: typeof en = {
@@ -208,7 +200,6 @@ const bn: typeof en = {
   safety: "নিরাপত্তার কথা",
   takePhoto: "ছবি তুলুন",
   choosePhoto: "ছবি বেছে নিন",
-  demoPhoto: "নমুনা ছবি ব্যবহার করুন",
   photoCaption: "তালিকার ছবি",
   toolName: "যন্ত্রের নাম",
   categoryPrompt: "বিভাগ বেছে নিন",
@@ -219,9 +210,6 @@ const bn: typeof en = {
   photoFailed: "ছবিটি খোলা যায়নি। আবার চেষ্টা করুন।",
   cameraPermission:
     "ছবি তুলতে ক্যামেরার অনুমতি দিন অথবা গ্যালারি থেকে ছবি বেছে নিন।",
-  sampleName: "কর্ডলেস ঘাস কাটার যন্ত্র",
-  sampleParts: "ব্যাটারি, চার্জার ও ব্লেডের ঢাকনা",
-  sampleSafety: "সুরক্ষা চশমা এবং পায়ের আঙুল ঢাকা জুতো পরুন।",
 };
 
 export const lendingCopy: Record<Language, typeof en> = { en, ja, bn };

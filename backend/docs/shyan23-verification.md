@@ -20,6 +20,10 @@ docker run --detach --name otagai-shyan23-postgres \
   --env POSTGRES_DB=otagai postgres:17-alpine
 ```
 
+The verification container was stopped after the backend checks. To repeat the
+checks using that same disposable database, run
+`docker start otagai-shyan23-postgres` instead of creating the container again.
+
 From `backend/`, with the disposable container ready:
 
 ```bash
