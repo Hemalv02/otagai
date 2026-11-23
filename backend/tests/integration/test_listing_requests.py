@@ -142,7 +142,7 @@ async def test_lent_out_listing_is_409(client):
     assert response.status_code == 409, response.text
 
 
-async def test_wrong_owner_and_missing_recipient_are_400(client):
+async def test_wrong_owner_rejected_and_missing_recipient_infers_owner(client):
     owner, seeker, listing, circle = await _world(client)
     other = await make_user(client, display_name="Other")
     await join_circle(client, owner, circle, other)
@@ -160,7 +160,18 @@ async def test_wrong_owner_and_missing_recipient_are_400(client):
             "ripple_max_stage": "han",
         },
     )
-    assert missing.status_code == 400, missing.text
+    assert missing.status_code == 201, missing.text
+    assert missing.json()["direct_to_user_id"] == await _profile_id(client, owner)
+    receipt = await client.get(
+        f"/requests/{missing.json()['id']}/receipt", headers=auth(seeker)
+    )
+    assert receipt.status_code == 200, receipt.text
+    other_inbox = await client.get(
+        "/users/me/received-requests?direct=true", headers=auth(other)
+    )
+    assert missing.json()["id"] not in [
+        item["request"]["id"] for item in other_inbox.json()["items"]
+    ]
 
 
 async def test_owner_cannot_request_own_listing(client):

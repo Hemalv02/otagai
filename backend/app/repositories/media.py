@@ -6,14 +6,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
     AssistantTurn,
+    Exchange,
+    HandoverCheck,
+    HandoverMedia,
+    HelpRequest,
     ListingMedia,
     MediaFile,
     MediaVariant,
     MessageAttachment,
     RequestMedia,
+    RequestRecipient,
     User,
 )
 from app.database.models.enums import MediaStatus
+from app.repositories.blocks import blocked_user_ids
 
 
 class MediaRepository:
@@ -31,6 +37,31 @@ class MediaRepository:
     async def get_variants(self, media_id: uuid.UUID) -> list[MediaVariant]:
         statement = select(MediaVariant).where(MediaVariant.media_id == media_id)
         return list(await self._session.scalars(statement))
+
+    async def delivered_request_attachment(
+        self,
+        media_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        viewer_id: uuid.UUID,
+        acting_user_id: uuid.UUID,
+    ) -> bool:
+        delivery = (
+            select(RequestMedia.media_id)
+            .join(HelpRequest, HelpRequest.id == RequestMedia.request_id)
+            .join(RequestRecipient, RequestRecipient.request_id == HelpRequest.id)
+            .where(
+                RequestMedia.media_id == media_id,
+                HelpRequest.requester_user_id == owner_id,
+                RequestRecipient.user_id == viewer_id,
+                RequestRecipient.hidden_at.is_(None),
+                HelpRequest.requester_user_id.not_in(blocked_user_ids(viewer_id)),
+            )
+        )
+        if acting_user_id != viewer_id:
+            delivery = delivery.where(
+                HelpRequest.requester_user_id.not_in(blocked_user_ids(acting_user_id))
+            )
+        return bool(await self._session.scalar(select(delivery.exists())))
 
     async def create(
         self, file_values: dict[str, Any], variants: list[dict[str, Any]]
@@ -71,6 +102,7 @@ class MediaRepository:
     async def is_referenced(self, media_id: uuid.UUID) -> bool:
         checks = (
             select(AssistantTurn.id).where(AssistantTurn.image_media_id == media_id),
+            select(HandoverMedia.media_id).where(HandoverMedia.media_id == media_id),
             select(ListingMedia.media_id).where(ListingMedia.media_id == media_id),
             select(RequestMedia.media_id).where(RequestMedia.media_id == media_id),
             select(MessageAttachment.media_id).where(
@@ -80,6 +112,23 @@ class MediaRepository:
         )
         statement = select(or_(*(exists(check) for check in checks)))
         return bool(await self._session.scalar(statement))
+
+    async def is_handover_participant(
+        self, media_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        matching = (
+            select(HandoverMedia.media_id)
+            .join(HandoverCheck, HandoverCheck.id == HandoverMedia.check_id)
+            .join(Exchange, Exchange.id == HandoverCheck.exchange_id)
+            .where(
+                HandoverMedia.media_id == media_id,
+                or_(
+                    Exchange.requester_user_id == user_id,
+                    Exchange.helper_user_id == user_id,
+                ),
+            )
+        )
+        return bool(await self._session.scalar(select(exists(matching))))
 
     async def update(self, media: MediaFile, values: dict[str, Any]) -> MediaFile:
         for name, value in values.items():

@@ -1,5 +1,5 @@
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -23,6 +23,13 @@ import {
   quietHoursSummary,
 } from "@/lib/activity-screen-copy";
 import { useLiveResource } from "@/lib/live-resource";
+import {
+  devicePushCopy,
+  getDeviceRegistration,
+  registerDevice,
+  removeDeviceRegistration,
+  supportsDevicePush,
+} from "@/lib/device-push";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -45,6 +52,7 @@ function pickerTime(date: Date) {
 
 export default function NotificationPreferencesScreen() {
   const { locale } = useOnboardingText();
+  const { session } = useSession();
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];
   const preferences = useLiveResource(api.getMyProfile);
@@ -61,6 +69,9 @@ export default function NotificationPreferencesScreen() {
         error={preferences.error}
         retry={preferences.reload}
       />
+      {session ? (
+        <DeviceAlerts key={session.user.id} userId={session.user.id} />
+      ) : null}
       {preferences.data ? (
         <PreferencesForm
           initial={preferences.data}
@@ -68,6 +79,75 @@ export default function NotificationPreferencesScreen() {
         />
       ) : null}
     </CommunityScreen>
+  );
+}
+
+function DeviceAlerts({ userId }: { userId: string }) {
+  const { locale } = useOnboardingText();
+  const copy = devicePushCopy[locale];
+  const [registered, setRegistered] = useState(false);
+  const [busy, setBusy] = useState(supportsDevicePush);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!supportsDevicePush) return;
+    let current = true;
+    async function load() {
+      try {
+        const previous = await getDeviceRegistration(userId);
+        if (!previous) return;
+        const result = await registerDevice(userId, false, copy.channel);
+        if (result === "denied") await removeDeviceRegistration(userId);
+        if (current) setRegistered(result === "registered");
+      } catch {
+        if (current) setError(copy.failed);
+      } finally {
+        if (current) setBusy(false);
+      }
+    }
+    void load();
+    return () => {
+      current = false;
+    };
+  }, [copy.channel, copy.failed, userId]);
+
+  async function toggle() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (registered) {
+        await removeDeviceRegistration(userId);
+        setRegistered(false);
+      } else {
+        const result = await registerDevice(userId, true, copy.channel);
+        if (result === "registered") setRegistered(true);
+        else setError(result === "denied" ? copy.denied : copy.unavailable);
+      }
+    } catch {
+      setError(copy.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.topic}>
+      <ActivityText strong>{copy.title}</ActivityText>
+      {!supportsDevicePush ? (
+        <ActivityText>{copy.unavailable}</ActivityText>
+      ) : (
+        <>
+          {registered ? <ActivityText>{copy.enabled}</ActivityText> : null}
+          <Button
+            variant="text"
+            label={registered ? copy.disable : copy.enable}
+            labelStyle={localizedType("field-label", locale)}
+            busy={busy}
+            onPress={() => void toggle()}
+          />
+        </>
+      )}
+      {error ? <ErrorText>{error}</ErrorText> : null}
+    </View>
   );
 }
 

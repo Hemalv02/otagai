@@ -1,3 +1,4 @@
+import type { RippleScope } from "@/lib/request-ripple";
 import { File as ExpoFile } from "expo-file-system";
 
 import {
@@ -96,6 +97,8 @@ export type ConfirmRequest = {
   text: string;
   listing_id?: string;
   home_circle_id?: string;
+  ripple_start_stage?: "family" | "han";
+  ripple_max_stage?: RippleScope;
 };
 
 export type PostedRequest = {

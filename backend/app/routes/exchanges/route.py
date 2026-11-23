@@ -13,12 +13,19 @@ from pydantic import (
 )
 
 from app.database.models import Exchange, LoanExtension
-from app.database.models.enums import ExchangeStatus, HandoverPhase
-from app.routes.dependencies import ActorDep, DatabaseDep
+from app.database.models.enums import ExchangeStatus, HandoverPhase, Language
+from app.routes.dependencies import (
+    ActorDep,
+    DatabaseDep,
+    RedisDep,
+    SettingsDep,
+    StorageDep,
+)
 from app.routes.pagination import Page, PageQuery
 from app.services.exchanges.handover import (
     CheckView,
     add_item,
+    attach_check_media,
     confirm_check,
     create_check,
     delete_item,
@@ -26,6 +33,7 @@ from app.services.exchanges.handover import (
     list_checks,
     update_item,
 )
+from app.services.exchanges.handover_ai import PickupSuggestions, suggest_pickup_items
 from app.services.exchanges.service import (
     cancel_exchange,
     confirm_exchange,
@@ -50,7 +58,9 @@ ExtensionMessage = Annotated[str, StringConstraints(max_length=1000)]
 ItemLabel = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
 ]
-DisputeNote = Annotated[str, StringConstraints(max_length=1000)]
+DisputeNote = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1000)
+]
 
 
 def _parse_statuses(raw: str | None) -> tuple[str, ...]:
@@ -106,8 +116,28 @@ class AddItemBody(BaseModel):
 class PatchItemBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    label: ItemLabel | None = None
+    quantity: int | None = Field(default=None, ge=1, le=999)
     present: bool | None = None
     dispute_note: DisputeNote | None = None
+
+
+class AttachCheckMediaBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=8)
+
+
+class PickupSuggestionsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lang: Language
+
+
+class ConfirmCheckBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    revision: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 
 
 class ExchangeModel(BaseModel):
@@ -163,8 +193,12 @@ class CheckModel(BaseModel):
     phase: str
     lender_confirmed_at: datetime | None
     borrower_confirmed_at: datetime | None
+    lender_confirmed_by_user_id: uuid.UUID | None
+    borrower_confirmed_by_user_id: uuid.UUID | None
     created_at: datetime
     items: list[ItemModel]
+    media_ids: list[uuid.UUID]
+    revision: str
 
 
 class CheckList(BaseModel):
@@ -184,10 +218,18 @@ def check_model(view: CheckView) -> CheckModel:
         id=view.check.id,
         exchange_id=view.check.exchange_id,
         phase=view.check.phase,
-        lender_confirmed_at=view.check.lender_confirmed_at,
-        borrower_confirmed_at=view.check.borrower_confirmed_at,
+        lender_confirmed_at=view.lender_confirmed_at,
+        borrower_confirmed_at=view.borrower_confirmed_at,
+        lender_confirmed_by_user_id=view.check.lender_confirmed_by_user_id
+        if view.lender_confirmed_at is not None
+        else None,
+        borrower_confirmed_by_user_id=view.check.borrower_confirmed_by_user_id
+        if view.borrower_confirmed_at is not None
+        else None,
         created_at=view.check.created_at,
         items=[ItemModel.model_validate(item) for item in view.items],
+        media_ids=view.media_ids,
+        revision=view.revision,
     )
 
 
@@ -341,6 +383,33 @@ async def read_check(
     return check_model(await get_check(database, actor, check_id))
 
 
+@checks_router.post("/{check_id}/media")
+async def attach_photos(
+    check_id: uuid.UUID,
+    body: AttachCheckMediaBody,
+    actor: ActorDep,
+    database: DatabaseDep,
+) -> CheckModel:
+    return check_model(
+        await attach_check_media(database, actor, check_id, body.media_ids)
+    )
+
+
+@checks_router.post("/{check_id}/suggestions")
+async def pickup_suggestions(
+    check_id: uuid.UUID,
+    body: PickupSuggestionsBody,
+    actor: ActorDep,
+    database: DatabaseDep,
+    storage: StorageDep,
+    settings: SettingsDep,
+    redis: RedisDep,
+) -> PickupSuggestions:
+    return await suggest_pickup_items(
+        database, storage, settings, redis, actor, check_id, body.lang.value
+    )
+
+
 @checks_router.post("/{check_id}/items", status_code=status.HTTP_201_CREATED)
 async def create_item(
     check_id: uuid.UUID,
@@ -361,17 +430,12 @@ async def patch_item(
     actor: ActorDep,
     database: DatabaseDep,
 ) -> CheckModel:
-    return check_model(
-        await update_item(
-            database,
-            actor,
-            check_id,
-            item_id,
-            present=body.present,
-            dispute_note=body.dispute_note,
-            dispute=body.dispute_note is not None,
-        )
-    )
+    changes = {
+        key: value
+        for key, value in body.model_dump(exclude_unset=True).items()
+        if value is not None or key in ("present", "dispute_note")
+    }
+    return check_model(await update_item(database, actor, check_id, item_id, changes))
 
 
 @checks_router.delete(
@@ -388,6 +452,11 @@ async def remove_item(
 
 @checks_router.post("/{check_id}/confirm")
 async def confirm_handover_check(
-    check_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
+    check_id: uuid.UUID,
+    actor: ActorDep,
+    database: DatabaseDep,
+    body: ConfirmCheckBody | None = None,
 ) -> CheckModel:
-    return check_model(await confirm_check(database, actor, check_id))
+    return check_model(
+        await confirm_check(database, actor, check_id, body.revision if body else None)
+    )

@@ -32,7 +32,7 @@ from app.database.models.requests import (
     RequestRecipient,
     RequestResponse,
 )
-from app.database.models.safety import Block, Notification, Report
+from app.database.models.safety import Block, Notification, PushDelivery, Report
 from app.database.models.thanks import Payment, PaymentEvent, PointsEntry, ThankYou
 from app.database.models.users import PushToken, User
 
@@ -75,6 +75,7 @@ __all__ = [
     "PaymentEvent",
     "PointsEntry",
     "ProxyGrant",
+    "PushDelivery",
     "PushToken",
     "Report",
     "RequestMedia",

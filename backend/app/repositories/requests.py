@@ -3,17 +3,26 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
+    Circle,
+    CircleMembership,
     HelpRequest,
     RequestMedia,
     RequestRecipient,
     RequestResponse,
 )
-from app.database.models.enums import RequestStatus, ResponseStatus
+from app.database.models.enums import (
+    CircleStatus,
+    MembershipStatus,
+    RequestStatus,
+    ResponseStatus,
+    RippleStage,
+)
+from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
@@ -59,6 +68,24 @@ class RequestRepository:
             statement = statement.with_for_update()
         return await self._session.scalar(statement)
 
+    async def due_for_ripple(
+        self, now: datetime, request_id: uuid.UUID | None = None
+    ) -> HelpRequest | None:
+        statement = select(HelpRequest).where(
+            HelpRequest.status == RequestStatus.OPEN.value,
+            or_(HelpRequest.expires_at <= now, HelpRequest.next_widen_at <= now),
+        )
+        if request_id is not None:
+            statement = statement.where(HelpRequest.id == request_id)
+        return await self._session.scalar(
+            statement.order_by(
+                func.least(HelpRequest.expires_at, HelpRequest.next_widen_at),
+                HelpRequest.id,
+            )
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+
     async def create(
         self, values: dict[str, Any], media_ids: list[uuid.UUID]
     ) -> HelpRequest:
@@ -91,7 +118,11 @@ class RequestRepository:
                     (RequestStatus.OPEN.value, RequestStatus.MATCHED.value)
                 ),
             )
-            .values(status=RequestStatus.CANCELLED.value, cancelled_at=now)
+            .values(
+                status=RequestStatus.CANCELLED.value,
+                cancelled_at=now,
+                next_widen_at=None,
+            )
         )
 
     async def list_for_requester(
@@ -120,7 +151,13 @@ class RequestRepository:
             HelpRequest.direct_to_user_id.is_(None),
         )
         if not include_all:
-            statement = statement.where(HelpRequest.status == RequestStatus.OPEN.value)
+            statement = statement.join(
+                RequestRecipient, RequestRecipient.request_id == HelpRequest.id
+            ).where(
+                HelpRequest.status == RequestStatus.OPEN.value,
+                RequestRecipient.user_id == viewer_user_id,
+                RequestRecipient.hidden_at.is_(None),
+            )
         if statuses:
             statement = statement.where(HelpRequest.status.in_(statuses))
         return await paginate(
@@ -167,10 +204,75 @@ class RequestRepository:
         )
         return {request.id: request for request in result}
 
+    def _visible_in_circle(
+        self,
+        circle_id: uuid.UUID,
+        viewer_id: uuid.UUID,
+        acting_user_id: uuid.UUID | None = None,
+    ):
+        approved_viewer = (
+            select(CircleMembership.user_id)
+            .join(Circle, Circle.id == CircleMembership.circle_id)
+            .where(
+                CircleMembership.circle_id == circle_id,
+                CircleMembership.user_id == viewer_id,
+                CircleMembership.status == MembershipStatus.APPROVED.value,
+                Circle.status == CircleStatus.ACTIVE.value,
+            )
+            .exists()
+        )
+        delivered_to_viewer = (
+            select(RequestRecipient.user_id)
+            .where(
+                RequestRecipient.request_id == HelpRequest.id,
+                RequestRecipient.user_id == viewer_id,
+                RequestRecipient.hidden_at.is_(None),
+            )
+            .exists()
+        )
+        legacy_circle_delivery = (
+            select(RequestRecipient.user_id)
+            .where(
+                RequestRecipient.request_id == HelpRequest.id,
+                RequestRecipient.stage == RippleStage.HAN.value,
+            )
+            .exists()
+        )
+        visibility = and_(
+            approved_viewer,
+            HelpRequest.home_circle_id == circle_id,
+            HelpRequest.direct_to_user_id.is_(None),
+            HelpRequest.ripple_max_stage.in_(
+                (
+                    RippleStage.HAN.value,
+                    RippleStage.ASSOCIATION.value,
+                    RippleStage.NEARBY.value,
+                )
+            ),
+            or_(
+                HelpRequest.ripple_history.has_key(RippleStage.HAN.value),
+                legacy_circle_delivery,
+            ),
+            or_(HelpRequest.requester_user_id == viewer_id, delivered_to_viewer),
+            HelpRequest.requester_user_id.not_in(blocked_user_ids(viewer_id)),
+        )
+        if acting_user_id is not None and acting_user_id != viewer_id:
+            visibility = and_(
+                visibility,
+                HelpRequest.requester_user_id.not_in(blocked_user_ids(acting_user_id)),
+            )
+        return visibility
+
     async def list_for_circle(
-        self, circle_id: uuid.UUID, statuses: tuple[str, ...], page: PageRequest
+        self,
+        circle_id: uuid.UUID,
+        viewer_id: uuid.UUID,
+        statuses: tuple[str, ...],
+        page: PageRequest,
     ) -> PageResult[HelpRequest]:
-        statement = select(HelpRequest).where(HelpRequest.home_circle_id == circle_id)
+        statement = select(HelpRequest).where(
+            self._visible_in_circle(circle_id, viewer_id)
+        )
         if statuses:
             statement = statement.where(HelpRequest.status.in_(statuses))
         return await paginate(
@@ -178,7 +280,7 @@ class RequestRepository:
         )
 
     async def list_unmet(
-        self, circle_id: uuid.UUID, page: PageRequest
+        self, circle_id: uuid.UUID, viewer_id: uuid.UUID, page: PageRequest
     ) -> PageResult[HelpRequest]:
         has_response = (
             select(RequestResponse.id)
@@ -191,36 +293,27 @@ class RequestRepository:
             .exists()
         )
         statement = select(HelpRequest).where(
-            HelpRequest.home_circle_id == circle_id,
+            self._visible_in_circle(circle_id, viewer_id),
             HelpRequest.status == RequestStatus.OPEN.value,
+            HelpRequest.expires_at > func.now(),
             ~has_response,
         )
         return await paginate(
             self._session, statement, page, HelpRequest.created_at, HelpRequest.id
         )
 
-    async def map_pins(
+    async def count_open_for_circle(
         self,
-        circle_ids: list[uuid.UUID],
-        exclude_owner_ids: list[uuid.UUID],
-        limit: int,
-    ) -> list[HelpRequest]:
-        if not circle_ids:
-            return []
-        statement = (
-            select(HelpRequest)
-            .where(
-                HelpRequest.home_circle_id.in_(circle_ids),
-                HelpRequest.status == RequestStatus.OPEN.value,
-            )
-            .order_by(HelpRequest.created_at.desc())
-            .limit(limit)
+        circle_id: uuid.UUID,
+        viewer_id: uuid.UUID,
+        acting_user_id: uuid.UUID,
+    ) -> int:
+        statement = select(func.count(HelpRequest.id)).where(
+            self._visible_in_circle(circle_id, viewer_id, acting_user_id),
+            HelpRequest.status == RequestStatus.OPEN.value,
+            HelpRequest.expires_at > func.now(),
         )
-        if exclude_owner_ids:
-            statement = statement.where(
-                HelpRequest.requester_user_id.not_in(exclude_owner_ids)
-            )
-        return list(await self._session.scalars(statement))
+        return await self._session.scalar(statement) or 0
 
 
 class RecipientRepository:
@@ -228,13 +321,37 @@ class RecipientRepository:
         self._session = session
 
     async def add_many(
-        self, request_id: uuid.UUID, stage: str, user_ids: list[uuid.UUID]
+        self,
+        request_id: uuid.UUID,
+        stage: str,
+        user_ids: list[uuid.UUID],
+        *,
+        notified_at: datetime,
     ) -> None:
         for user_id in user_ids:
             self._session.add(
-                RequestRecipient(request_id=request_id, user_id=user_id, stage=stage)
+                RequestRecipient(
+                    request_id=request_id,
+                    user_id=user_id,
+                    stage=stage,
+                    notified_at=notified_at,
+                )
             )
         await self._session.flush()
+
+    async def delivery_totals(
+        self, request_id: uuid.UUID
+    ) -> dict[str, tuple[int, datetime]]:
+        rows = await self._session.execute(
+            select(
+                RequestRecipient.stage,
+                func.count(),
+                func.min(RequestRecipient.notified_at),
+            )
+            .where(RequestRecipient.request_id == request_id)
+            .group_by(RequestRecipient.stage)
+        )
+        return {stage: (count, notified_at) for stage, count, notified_at in rows}
 
     async def get(
         self, request_id: uuid.UUID, user_id: uuid.UUID

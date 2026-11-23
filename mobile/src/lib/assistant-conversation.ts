@@ -1,3 +1,4 @@
+import type { RippleScope } from "./request-ripple";
 import type {
   AssistantCard,
   AssistantTurn,
@@ -59,6 +60,7 @@ export function confirmationBody(
   description: string,
   timing: string,
   homeCircleId?: string,
+  scope?: RippleScope,
 ): ConfirmRequest | null {
   const text = description.trim();
   const when = timing.trim();
@@ -67,9 +69,7 @@ export function confirmationBody(
   if (when) {
     const lowerText = text.toLowerCase();
     const suggested = review.when.trim();
-    const match = suggested
-      ? lowerText.indexOf(suggested.toLowerCase())
-      : -1;
+    const match = suggested ? lowerText.indexOf(suggested.toLowerCase()) : -1;
     if (match >= 0 && suggested.toLowerCase() !== when.toLowerCase()) {
       reviewedText = `${text.slice(0, match)}${when}${text.slice(match + suggested.length)}`;
     } else if (!lowerText.includes(when.toLowerCase())) {
@@ -82,7 +82,12 @@ export function confirmationBody(
     text: reviewedText,
     ...(review.listingId ? { listing_id: review.listingId } : {}),
     ...(!review.listingId && homeCircleId
-      ? { home_circle_id: homeCircleId }
+      ? {
+          home_circle_id: homeCircleId,
+          ...(scope
+            ? { ripple_max_stage: scope, ripple_start_stage: "family" as const }
+            : {}),
+        }
       : {}),
   };
 }
