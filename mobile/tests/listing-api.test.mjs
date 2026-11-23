@@ -122,6 +122,69 @@ test("an owner page sends both filters and preserves an opaque cursor", async (t
   assert.equal(request.signal, controller.signal);
 });
 
+test("a Browse page preserves filters and cursor in an authenticated GET", async (t) => {
+  const controller = new AbortController();
+  const page = { items: [], next_cursor: "next+/=cursor" };
+  let request;
+  let signal;
+  t.mock.method(globalThis, "fetch", async (input, init) => {
+    request = new Request(input, init);
+    signal = init.signal;
+    return Response.json(page);
+  });
+
+  assert.deepEqual(
+    await api.listListings(
+      {
+        q: "料理 & রান্না",
+        kind: "skill",
+        category_id: "c3d91c57-038f-47a8-9743-d25587be29df",
+        cursor: "example+/=cursor",
+        limit: 5,
+      },
+      { authUserId: "account-1", signal: controller.signal },
+    ),
+    page,
+  );
+  const url = new URL(request.url);
+  assert.equal(url.pathname, "/listings");
+  assert.deepEqual(Object.fromEntries(url.searchParams), {
+    q: "料理 & রান্না",
+    kind: "skill",
+    category_id: "c3d91c57-038f-47a8-9743-d25587be29df",
+    cursor: "example+/=cursor",
+    limit: "5",
+    status: "active,lent_out",
+  });
+  assert.equal(request.method, "GET");
+  assert.equal(request.headers.get("authorization"), "Bearer test-token");
+  assert.equal(signal, controller.signal);
+});
+
+test("a Browse page omits unset filters from the query", async (t) => {
+  let url;
+  t.mock.method(globalThis, "fetch", async (input) => {
+    url = new URL(input);
+    return Response.json({ items: [], next_cursor: null });
+  });
+
+  await api.listListings({});
+
+  assert.deepEqual([...url.searchParams], [["status", "active,lent_out"]]);
+});
+
+test("a Browse page for the previous account sends no request under the new account", async (t) => {
+  const fetch = t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ items: [], next_cursor: null }),
+  );
+
+  await assert.rejects(
+    api.listListings({}, { authUserId: "previous-account" }),
+    (error) => error instanceof ApiError && error.status === 401,
+  );
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
 test("a listing delete accepts an empty 204 response", async (t) => {
   let request;
   t.mock.method(globalThis, "fetch", async (input, init) => {

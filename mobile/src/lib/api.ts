@@ -125,9 +125,12 @@ export type Media = {
   status: "processing" | "ready" | "rejected" | "deleted";
   urls: Record<string, string>;
 };
+export type LendMode = "lend" | "help_only" | "lend_or_help";
 export type ListingSummary = {
   id: string;
   owner_user_id: string;
+  category_id: string;
+  lend_mode: LendMode;
   title: string;
   kind: ListingKind;
   status: ListingStatus;
@@ -137,6 +140,12 @@ export type ListingSummary = {
 export type ListingDetail = {
   id: string;
   owner: { id: string; display_name: string } | null;
+  category_id: string;
+  description: string | null;
+  safety_notes: string | null;
+  lend_mode: LendMode;
+  available_again_at: string | null;
+  parts: { id: string; label: string; quantity: number }[];
   title: string;
   kind: ListingKind;
   status: ListingStatus;
@@ -160,6 +169,18 @@ export type CreateListingBody = {
 };
 
 export const api = {
+  listListings: (
+    params: { q?: string; kind?: ListingKind; category_id?: string; cursor?: string; limit?: number },
+    options?: ListingRequestOptions,
+  ) => {
+    const query = new URLSearchParams({ status: "active,lent_out" });
+    if (params.q) query.set("q", params.q);
+    if (params.kind) query.set("kind", params.kind);
+    if (params.category_id) query.set("category_id", params.category_id);
+    if (params.cursor) query.set("cursor", params.cursor);
+    if (params.limit) query.set("limit", String(params.limit));
+    return request<Page<ListingSummary>>(`/listings?${query}`, options);
+  },
   listCategories: (kind: ListingKind, options?: ListingRequestOptions) =>
     request<{ items: CategoryNode[] }>(`/categories?kind=${kind}`, options),
   uploadListingPhoto: (body: FormData, options?: ListingRequestOptions) =>
