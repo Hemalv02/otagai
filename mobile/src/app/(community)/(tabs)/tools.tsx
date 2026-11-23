@@ -342,16 +342,20 @@ export default function BrowseToolsScreen() {
       <View style={styles.results}>
         {view.status === "loading" ? (
           <View
+            accessible
+            accessibilityState={{ busy: true }}
             accessibilityRole="progressbar"
             accessibilityLabel={copy.loadingListings}
           >
             {[0, 1, 2, 3].map((index) => (
-              <View key={index} style={styles.row} accessible={false}>
+              <View key={index} style={styles.row}>
                 <View style={[styles.thumbnail, styles.skeleton]} />
                 <View style={styles.rowCopy}>
                   <View style={[styles.skeletonTitle, styles.skeleton]} />
                   <View style={[styles.skeletonMeta, styles.skeleton]} />
+                  <View style={[styles.skeletonStatus, styles.skeleton]} />
                 </View>
+                <View style={[styles.skeletonChevron, styles.skeleton]} />
               </View>
             ))}
           </View>
@@ -377,11 +381,13 @@ export default function BrowseToolsScreen() {
             >
               {copy.empty}
             </Text>
-            <Button
-              label={copy.askForIt}
-              labelStyle={labelType}
-              onPress={() => router.push("/ask")}
-            />
+            {!view.refreshError ? (
+              <Button
+                label={copy.askForIt}
+                labelStyle={labelType}
+                onPress={() => router.push("/ask")}
+              />
+            ) : null}
             {filtersActive ? (
               <Button
                 label={copy.clearFilters}
@@ -588,7 +594,14 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginBottom: spacing["related-gap"],
   },
-  skeletonMeta: { height: 12, width: "35%", borderRadius: 4 },
+  skeletonMeta: {
+    height: 12,
+    width: "35%",
+    borderRadius: 4,
+    marginBottom: spacing["related-gap"],
+  },
+  skeletonStatus: { height: 12, width: "45%", borderRadius: 4 },
+  skeletonChevron: { width: 15, height: 15, borderRadius: 4 },
   empty: { paddingTop: spacing["card-inset"], gap: spacing["related-gap"] },
   action: { color: colors.action },
   secondary: { color: colors.secondary },
