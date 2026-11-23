@@ -338,6 +338,105 @@ async def test_broadcast_confirmation_requires_a_circle_for_multiple_memberships
     assert request.json()["home_circle_id"] == destination
 
 
+async def test_empty_search_can_continue_to_a_request_and_shared_exchange(
+    client, monkeypatch
+):
+    requester = await make_user(client, language="en")
+    helper = await make_user(client, language="en")
+    observer = await make_user(client, language="en")
+    circle = await make_circle(client, requester)
+    await join_circle(client, requester, circle, helper)
+    await join_circle(client, requester, circle, observer)
+    calls = stub_agent(
+        monkeypatch,
+        intent(skill_terms=("mending chairs",)),
+        intent(
+            draft={
+                "kind": "help",
+                "title": "Mend a chair",
+                "description": "Could someone help me mend a wobbly chair?",
+                "when_text": None,
+            }
+        ),
+    )
+    first = await client.post(
+        "/assistant/turns",
+        headers=auth(requester),
+        json={"text": "Find someone to mend a wobbly chair"},
+    )
+    assert first.status_code == 201, first.text
+    empty = first.json()
+    assert empty["no_matches"] is True
+    assert not empty["cards"] and empty["draft"] is None
+    history = await client.get(
+        f"/assistant/threads/{empty['thread_id']}/turns", headers=auth(requester)
+    )
+    assert history.json()["items"][0]["no_matches"] is True
+
+    follow_up = await client.post(
+        "/assistant/turns",
+        headers=auth(requester),
+        json={
+            "text": "Draft a request for what I just described.",
+            "previous_turn_id": empty["id"],
+        },
+    )
+    assert follow_up.status_code == 201, follow_up.text
+    turn = follow_up.json()
+    assert turn["no_matches"] is False
+    assert "wobbly chair" in json.dumps(calls[1])
+    payload = {
+        "kind": "help",
+        "text": turn["draft"]["description"],
+        "home_circle_id": circle,
+    }
+    posted = await client.post(
+        f"/assistant/turns/{turn['id']}/confirm", headers=auth(requester), json=payload
+    )
+    assert posted.status_code == 201, posted.text
+    request_id = posted.json()["id"]
+    mine = await client.get("/users/me/requests", headers=auth(requester))
+    incoming = await client.get("/users/me/received-requests", headers=auth(helper))
+    assert mine.json()["items"][0]["id"] == request_id
+    assert incoming.json()["items"][0]["request"]["id"] == request_id
+
+    path = f"/requests/{request_id}"
+    question = await client.post(
+        f"{path}/responses",
+        headers=auth(observer),
+        json={"kind": "question", "message": "Is it a wooden chair?"},
+    )
+    assert question.status_code == 201, question.text
+    question_match = await client.post(
+        f"{path}/responses/{question.json()['id']}/accept", headers=auth(requester)
+    )
+    assert question_match.status_code == 409, question_match.text
+    offer = await client.post(
+        f"{path}/responses", headers=auth(helper), json={"kind": "offer"}
+    )
+    assert offer.status_code == 201, offer.text
+    match = await client.post(
+        f"{path}/responses/{offer.json()['id']}/accept", headers=auth(requester)
+    )
+    assert match.status_code == 200, match.text
+
+    own_view = await client.get(path, headers=auth(requester))
+    helper_view = await client.get(path, headers=auth(helper))
+    observer_view = await client.get(path, headers=auth(observer))
+    assert (
+        own_view.status_code
+        == helper_view.status_code
+        == observer_view.status_code
+        == 200
+    )
+    exchange_id = own_view.json()["exchange_id"]
+    assert exchange_id and helper_view.json()["exchange_id"] == exchange_id
+    assert observer_view.json()["exchange_id"] is None
+    exchange = await client.get(f"/exchanges/{exchange_id}", headers=auth(helper))
+    assert exchange.status_code == 200, exchange.text
+    assert exchange.json()["request_id"] == request_id
+
+
 @pytest.mark.parametrize(
     ("message", "question", "expected_reply"),
     [

@@ -242,6 +242,8 @@ export function ConversationTurn({
   openCard,
   chooseCard,
   review,
+  draftMissing,
+  draftDisabled,
   openRequest,
 }: {
   turn: AssistantTurn;
@@ -249,6 +251,8 @@ export function ConversationTurn({
   openCard: (card: AssistantCard) => void;
   chooseCard: (card: AssistantCard) => void;
   review: () => void;
+  draftMissing?: () => void;
+  draftDisabled?: boolean;
   openRequest: (id: string) => void;
 }) {
   const copy = assistantCopy[locale];
@@ -273,6 +277,15 @@ export function ConversationTurn({
         ) : null}
         <Text style={[body, styles.ink]}>{turn.reply}</Text>
       </View>
+      {turn.no_matches && draftMissing ? (
+        <Button
+          variant="secondary"
+          label={copy.draftMissing}
+          labelStyle={label}
+          disabled={draftDisabled}
+          onPress={draftMissing}
+        />
+      ) : null}
       {(["tool", "helper"] as const).map((type) => {
         const cards = turn.cards.filter((card) => card.type === type);
         if (!cards.length) return null;

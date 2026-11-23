@@ -129,8 +129,8 @@ export default function AssistantScreen() {
     }
   }
 
-  async function send() {
-    const prompt = text.trim();
+  async function send(prefill?: string) {
+    const prompt = prefill ?? text.trim();
     if (sending.current || locked || (!prompt && !photo)) return;
     sending.current = true;
     setRetrySend(false);
@@ -459,10 +459,16 @@ export default function AssistantScreen() {
           openCard={openCard}
           chooseCard={(card) => openReview(turn, card)}
           review={() => openReview(turn)}
+          draftMissing={
+            turn.id === last?.id
+              ? () => void send(copy.draftMissingPrompt)
+              : undefined
+          }
+          draftDisabled={locked || !!text.trim() || !!photo}
           openRequest={(id) =>
             router.push({
-              pathname: "/assistant-detail/[type]/[id]",
-              params: { type: "request", id },
+              pathname: "/requests/[id]",
+              params: { id },
             })
           }
         />

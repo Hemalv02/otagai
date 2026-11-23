@@ -70,6 +70,7 @@ class TurnModel(BaseModel):
     text: str | None
     reply: str
     clarification: Clarification | None
+    no_matches: bool
     cards: list[ResultCard]
     draft: DraftCard | None
     image_media_id: uuid.UUID | None
@@ -123,6 +124,7 @@ def turn_model(turn: Turn) -> TurnModel:
         text=saved.text,
         reply=saved.reply,
         clarification=saved.context.get("clarification"),
+        no_matches=saved.context.get("no_matches", False),
         cards=cards,
         draft=draft,
         image_media_id=saved.image_media_id,

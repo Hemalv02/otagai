@@ -381,6 +381,7 @@ async def run_turn(
                 else None,
                 tool=find_circle_matches,
                 context=catalog,
+                trace_workflow="Otagai Ask",
             ),
         )
         if redis is not None and cache_key:
@@ -396,14 +397,15 @@ async def run_turn(
     )
     found, empty, review, redirect = COPY[locale]
     parts = []
-    if not off_topic and any(
+    searched = not off_topic and any(
         (
             interpretation.tool_terms,
             interpretation.skill_terms,
             interpretation.english_tool_terms,
             interpretation.english_skill_terms,
         )
-    ):
+    )
+    if searched:
         parts.append(found if matches else empty)
     if draft:
         parts.append(review)
@@ -437,6 +439,10 @@ async def run_turn(
                     "off_topic": off_topic,
                     "clarification": clarification,
                     "image_subject": image_subject,
+                    "no_matches": searched
+                    and not matches
+                    and not draft
+                    and not clarification,
                     "listing_ids": [str(card.listing.id) for card, _ in matches],
                 },
                 "draft": draft.model_dump(mode="json") if draft else None,
