@@ -123,7 +123,8 @@ export default function ToolListingScreen() {
   const skill = listing.kind === "skill";
   const photos = photoUrls(listing);
   const lendState = availabilityLabel(listing, {
-    ...readCopy,
+    available: copy.available,
+    askForTime: copy.askForTime,
     lentOut: copy.lentOut,
     paused: copy.paused,
   });

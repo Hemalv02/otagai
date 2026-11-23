@@ -171,25 +171,24 @@ test("an ownerless listing never has an owner link, even without a profile", () 
 });
 
 const labels = {
-  lend: "Available to lend",
-  help_only: "Help offered",
-  lend_or_help: "Lending or help offered",
+  available: "Available",
+  askForTime: "Ask for a time",
   lentOut: "Lent out",
   paused: "Paused",
 };
 
 test("a lend listing reads as available to lend", () => {
-  assert.equal(availabilityLabel(listing(), labels), "Available to lend");
+  assert.equal(availabilityLabel(listing(), labels), "Available");
 });
 
 test("a help-only listing reads as help offered, not borrowing", () => {
-  assert.equal(availabilityLabel(listing({ lend_mode: "help_only" }), labels), "Help offered");
+  assert.equal(availabilityLabel(listing({ lend_mode: "help_only" }), labels), "Ask for a time");
 });
 
 test("a lend-or-help listing reads as both", () => {
   assert.equal(
     availabilityLabel(listing({ lend_mode: "lend_or_help" }), labels),
-    "Lending or help offered",
+    "Available",
   );
 });
 

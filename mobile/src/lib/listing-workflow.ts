@@ -277,16 +277,42 @@ export function canRetry(errorKind: BrowseErrorKind | null) {
 }
 
 export function listingStatusLabel(
-  listing: Pick<ListingSummary, "status">,
+  listing: Pick<ListingSummary, "lend_mode" | "status">,
   own: boolean,
-  labels: { yourListing: string; lentOut: string; lendLabel: string },
+  labels: {
+    yourListing: string;
+    available: string;
+    askForTime: string;
+    lentOut: string;
+    paused: string;
+  },
 ) {
-  return [
-    own ? labels.yourListing : null,
-    listing.status === "lent_out" ? labels.lentOut : labels.lendLabel,
-  ]
+  return [own ? labels.yourListing : null, availabilityLabel(listing, labels)]
     .filter(Boolean)
     .join(" · ");
+}
+
+export function browseHeading(
+  view: Pick<BrowseState, "status" | "rows" | "refreshError">,
+  kind: KindFilter,
+): "explore" | "noTools" | "noSkills" | "noResults" {
+  if (view.status !== "ready" || view.rows.length > 0 || view.refreshError) {
+    return "explore";
+  }
+  if (kind === "tool") return "noTools";
+  if (kind === "skill") return "noSkills";
+  return "noResults";
+}
+
+export function selectAll(filters: BrowseFilters): BrowseFilters {
+  return { ...filters, kind: "all", categoryId: "" };
+}
+
+export function selectCategory(
+  filters: BrowseFilters,
+  id: string,
+): BrowseFilters {
+  return { ...filters, categoryId: filters.categoryId === id ? "" : id };
 }
 
 const LISTING_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -335,17 +361,17 @@ export function isListingOwner(
 }
 
 export function availabilityLabel(
-  listing: Pick<ListingDetail, "lend_mode" | "status">,
+  listing: Pick<ListingSummary, "lend_mode" | "status">,
   labels: {
-    lend: string;
-    help_only: string;
-    lend_or_help: string;
+    available: string;
+    askForTime: string;
     lentOut: string;
     paused: string;
   },
 ) {
+  if (listing.status === "lent_out") return labels.lentOut;
   if (listing.status === "paused") return labels.paused;
-  return listing.status === "lent_out" ? labels.lentOut : labels[listing.lend_mode];
+  return listing.lend_mode === "help_only" ? labels.askForTime : labels.available;
 }
 
 export function photoUrls(listing: Pick<ListingDetail, "photos">) {

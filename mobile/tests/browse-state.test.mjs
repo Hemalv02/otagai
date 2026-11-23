@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   browseFilterKey,
+  browseHeading,
   changeKind,
   firstPageFailed,
   firstPageLoaded,
@@ -12,6 +13,8 @@ import {
   nextPageFailed,
   nextPageLoaded,
   normalizeSearch,
+  selectAll,
+  selectCategory,
   startFirstPage,
   startNextPage,
   visibleBrowseState,
@@ -160,14 +163,62 @@ test("an auth failure on refresh clears rows into the first-page error state", (
   assert.equal(failed.refreshError, null);
 });
 
-test("a lent-out card shows the lent-out label instead of the lend label", () => {
-  const labels = { yourListing: "Mine", lentOut: "Lent out", lendLabel: "Available to lend" };
-  const lent = listingStatusLabel({ status: "lent_out" }, false, labels);
-  assert.equal(lent, "Lent out");
-  assert.ok(!lent.includes("Available to lend"));
-  assert.equal(listingStatusLabel({ status: "active" }, false, labels), "Available to lend");
-  assert.equal(listingStatusLabel({ status: "active" }, true, labels), "Mine · Available to lend");
-  assert.equal(listingStatusLabel({ status: "lent_out" }, true, labels), "Mine · Lent out");
+const statusLabels = {
+  yourListing: "Your listing",
+  available: "Available",
+  askForTime: "Ask for a time",
+  lentOut: "Lent out",
+  paused: "Paused",
+};
+
+test("a listing status reads as available, ask for a time, lent out or paused", () => {
+  const label = (listing, own = false) => listingStatusLabel(listing, own, statusLabels);
+  assert.equal(label({ lend_mode: "lend", status: "active" }), "Available");
+  assert.equal(label({ lend_mode: "help_only", status: "active" }), "Ask for a time");
+  assert.equal(label({ lend_mode: "lend_or_help", status: "active" }), "Available");
+  assert.equal(label({ lend_mode: "help_only", status: "lent_out" }), "Lent out");
+  assert.equal(label({ lend_mode: "lend", status: "paused" }), "Paused");
+});
+
+test("your own listing prefixes the status with Your listing", () => {
+  const label = (listing) => listingStatusLabel(listing, true, statusLabels);
+  assert.equal(label({ lend_mode: "lend", status: "active" }), "Your listing · Available");
+  assert.equal(label({ lend_mode: "lend", status: "lent_out" }), "Your listing · Lent out");
+});
+
+test("the Browse heading is Explore until a ready empty result names what is missing", () => {
+  const heading = (status, rows, refreshError, kind) =>
+    browseHeading({ status, rows, refreshError }, kind);
+  assert.equal(heading("loading", [], null, "all"), "explore");
+  assert.equal(heading("error", [], null, "all"), "explore");
+  assert.equal(heading("ready", [row("a")], null, "all"), "explore");
+  assert.equal(heading("ready", [], null, "tool"), "noTools");
+  assert.equal(heading("ready", [], null, "skill"), "noSkills");
+  assert.equal(heading("ready", [], null, "all"), "noResults");
+  assert.equal(heading("ready", [], "transient", "tool"), "explore");
+});
+
+test("choosing All clears the kind and the category and keeps the search", () => {
+  assert.deepEqual(
+    selectAll({ account: "a", kind: "tool", categoryId: "c1", q: "drill" }),
+    { account: "a", kind: "all", categoryId: "", q: "drill" },
+  );
+});
+
+test("choosing a category selects it, and choosing it again clears it", () => {
+  const base = { account: "a", kind: "skill", q: "saw" };
+  assert.deepEqual(selectCategory({ ...base, categoryId: "" }, "c1"), {
+    ...base,
+    categoryId: "c1",
+  });
+  assert.deepEqual(selectCategory({ ...base, categoryId: "c1" }, "c1"), {
+    ...base,
+    categoryId: "",
+  });
+  assert.deepEqual(selectCategory({ ...base, categoryId: "c1" }, "c2"), {
+    ...base,
+    categoryId: "c2",
+  });
 });
 
 test("a failed refresh clears a stale next-page error", () => {

@@ -1,7 +1,5 @@
-import { Button as ExpoButton, Host, Picker } from "@expo/ui";
-import { Image } from "expo-image";
+import { Button as ExpoButton, Host } from "@expo/ui";
 import { router, useFocusEffect } from "expo-router";
-import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,10 +10,12 @@ import {
 } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
 import { Button, Field } from "@/components/ui";
 import { api, type CategoryNode, type ListingKind } from "@/lib/api";
 import {
   browseFilterKey,
+  browseHeading,
   canRetry,
   changeKind,
   firstPageFailed,
@@ -26,6 +26,8 @@ import {
   nextPageFailed,
   nextPageLoaded,
   normalizeSearch,
+  selectAll,
+  selectCategory,
   startFirstPage,
   startNextPage,
   visibleBrowseState,
@@ -169,12 +171,19 @@ export default function BrowseToolsScreen() {
     return () => categoryRequests.cancel();
   }, [account, kindFilter, categoryTick, categoryRequests]);
 
-  function handleKindChange(next: KindFilter) {
-    if (next === kindFilter) return;
-    const changed = changeKind(filters, next);
-    setCategoryLoad({ state: "loading" });
+  function applyKindFilters(changed: BrowseFilters) {
+    if (changed.kind !== kindFilter) setCategoryLoad({ state: "loading" });
     setCategoryId(changed.categoryId);
     setKindFilter(changed.kind);
+  }
+
+  function handleKindChange(next: KindFilter) {
+    if (next === "all") {
+      applyKindFilters(selectAll(filters));
+      return;
+    }
+    if (next === kindFilter) return;
+    applyKindFilters(changeKind(filters, next));
   }
 
   function reloadCategories() {
@@ -232,9 +241,11 @@ export default function BrowseToolsScreen() {
     }
   }
 
+  const heading = browseHeading(view, kindFilter);
+
   return (
     <CommunityScreen
-      title={copy.browseTitle}
+      title={copy[heading === "explore" ? "exploreTitle" : heading]}
       titleAction={
         <Host matchContents seedColor={colors.action}>
           <ExpoButton
@@ -245,22 +256,27 @@ export default function BrowseToolsScreen() {
       }
       keyboard
     >
-      <Field
-        label={readCopy.titleSearch}
-        labelStyle={labelType}
-        style={localizedType("body", locale)}
-        value={rawQuery}
-        onChangeText={setRawQuery}
-        placeholder={copy.searchExample}
-        accessibilityHint={readCopy.titleHint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        clearButtonMode="while-editing"
-        returnKeyType="search"
-        maxLength={SEARCH_MAX_LENGTH}
-      />
+      <View style={styles.search}>
+        <Field
+          label={copy.searchLabel}
+          labelStyle={labelType}
+          style={localizedType("body", locale)}
+          value={rawQuery}
+          onChangeText={setRawQuery}
+          placeholder={copy.searchPlaceholder}
+          accessibilityHint={readCopy.titleHint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          maxLength={SEARCH_MAX_LENGTH}
+        />
+        <Text style={[supportingType, styles.secondary]}>
+          {readCopy.titleHint}
+        </Text>
+      </View>
       <View style={styles.filters}>
-        <View accessibilityRole="radiogroup" style={styles.segments}>
+        <View accessibilityRole="radiogroup" style={styles.links}>
           {KIND_FILTERS.map((option) => {
             const selected = kindFilter === option;
             return (
@@ -269,14 +285,14 @@ export default function BrowseToolsScreen() {
                 accessibilityRole="radio"
                 accessibilityLabel={copy[option]}
                 accessibilityState={{ checked: selected, selected }}
-                style={[styles.segment, selected && styles.selected]}
+                style={styles.link}
                 onPress={() => handleKindChange(option)}
               >
                 <Text
                   style={[
                     labelType,
-                    styles.segmentLabel,
-                    selected && styles.action,
+                    styles.action,
+                    selected && styles.underline,
                   ]}
                 >
                   {copy[option]}
@@ -285,61 +301,60 @@ export default function BrowseToolsScreen() {
             );
           })}
         </View>
+        {categoryLoad.state === "loading" ? (
+          <Text style={[supportingType, styles.secondary]}>
+            {copy.loadingCategories}
+          </Text>
+        ) : categoryLoad.state === "error" ? (
+          <View style={styles.categoryError}>
+            <Text style={[supportingType, styles.secondary]}>
+              {copy.categoriesError}
+            </Text>
+            {canRetry(categoryLoad.errorKind) ? (
+              <Button
+                label={copy.retry}
+                labelStyle={labelType}
+                variant="text"
+                onPress={reloadCategories}
+              />
+            ) : null}
+          </View>
+        ) : (
+          <View style={styles.links}>
+            {flatCategoryItems.map((item) => {
+              const selected = categoryId === item.id;
+              return (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={categoryName(item, locale)}
+                  accessibilityState={{ selected }}
+                  style={styles.link}
+                  onPress={() =>
+                    setCategoryId(selectCategory(filters, item.id).categoryId)
+                  }
+                >
+                  <Text
+                    style={[
+                      labelType,
+                      styles.action,
+                      selected && styles.underline,
+                    ]}
+                  >
+                    {categoryName(item, locale)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
         <Button
           label={myListingsCopy[locale].title}
           variant="text"
           onPress={() => router.push("/my-listings")}
         />
-        <View style={styles.category}>
-          <Text style={[supportingType, styles.secondary]}>
-            {copy.category}
-          </Text>
-          {categoryLoad.state === "loading" ? (
-            <Text style={[supportingType, styles.secondary]}>
-              {copy.loadingCategories}
-            </Text>
-          ) : categoryLoad.state === "error" ? (
-            <View style={styles.categoryError}>
-              <Text style={[supportingType, styles.secondary]}>
-                {copy.categoriesError}
-              </Text>
-              {canRetry(categoryLoad.errorKind) ? (
-                <Button
-                  label={copy.retry}
-                  labelStyle={labelType}
-                  variant="text"
-                  onPress={reloadCategories}
-                />
-              ) : null}
-            </View>
-          ) : (
-            <Host matchContents seedColor={colors.action}>
-              <Picker<string>
-                selectedValue={categoryId}
-                onValueChange={(id) => {
-                  if (
-                    id === "" ||
-                    flatCategoryItems.some((item) => item.id === id)
-                  ) {
-                    setCategoryId(id);
-                  }
-                }}
-                accessibilityLabel={copy.category}
-              >
-                <Picker.Item label={copy.allCategories} value="" />
-                {flatCategoryItems.map((item) => (
-                  <Picker.Item
-                    key={item.id}
-                    value={item.id}
-                    label={categoryName(item, locale)}
-                  />
-                ))}
-              </Picker>
-            </Host>
-          )}
-        </View>
       </View>
-      <View style={styles.results}>
+      <View>
         {view.status === "loading" ? (
           <View
             accessible
@@ -347,16 +362,8 @@ export default function BrowseToolsScreen() {
             accessibilityRole="progressbar"
             accessibilityLabel={copy.loadingListings}
           >
-            {[0, 1, 2, 3].map((index) => (
-              <View key={index} style={styles.row}>
-                <View style={[styles.thumbnail, styles.skeleton]} />
-                <View style={styles.rowCopy}>
-                  <View style={[styles.skeletonTitle, styles.skeleton]} />
-                  <View style={[styles.skeletonMeta, styles.skeleton]} />
-                  <View style={[styles.skeletonStatus, styles.skeleton]} />
-                </View>
-                <View style={[styles.skeletonChevron, styles.skeleton]} />
-              </View>
+            {[0, 1, 2].map((index) => (
+              <ListingRowSkeleton key={index} />
             ))}
           </View>
         ) : view.status === "error" ? (
@@ -377,14 +384,16 @@ export default function BrowseToolsScreen() {
           <View style={styles.empty}>
             <Text
               accessibilityLiveRegion="polite"
-              style={[supportingType, styles.secondary]}
+              style={[localizedType("body", locale), styles.ink]}
             >
-              {copy.empty}
+              {debouncedQuery
+                ? copy.emptyQuery(debouncedQuery)
+                : copy.emptyFiltered}
             </Text>
             {!view.refreshError ? (
               <Button
                 label={copy.askForIt}
-                labelStyle={labelType}
+                labelStyle={localizedType("button", locale)}
                 onPress={() => router.push("/ask")}
               />
             ) : null}
@@ -399,86 +408,35 @@ export default function BrowseToolsScreen() {
           </View>
         ) : null}
         {rows.map((listing) => {
-          const skill = listing.kind === "skill";
           const own =
             profileId !== null && profileId === listing.owner_user_id;
           const catNode = flatCategoryItems.find(
             (item) => item.id === listing.category_id,
           );
           const catLabel = catNode ? categoryName(catNode, locale) : null;
-          const lendLabel = readCopy[listing.lend_mode];
           const statusLabel = listingStatusLabel(listing, own, {
             yourListing: copy.yourListing,
+            available: copy.available,
+            askForTime: copy.askForTime,
             lentOut: copy.lentOut,
-            lendLabel,
+            paused: copy.paused,
           });
 
           return (
-            <Pressable
+            <ListingRow
               key={listing.id}
               accessibilityRole="link"
-              accessibilityLabel={[listing.title, catLabel, statusLabel]
-                .filter(Boolean)
-                .join(", ")}
-              style={styles.row}
+              title={listing.title}
+              description={catLabel ?? ""}
+              detail={statusLabel}
+              photo={listing.photo_url ? { uri: listing.photo_url } : undefined}
               onPress={() =>
                 router.push({
                   pathname: "/tools/[id]",
                   params: { id: listing.id },
                 })
               }
-            >
-              {listing.photo_url ? (
-                <Image
-                  source={{ uri: listing.photo_url }}
-                  style={styles.thumbnail}
-                  accessible={false}
-                />
-              ) : (
-                <View
-                  style={[styles.thumbnail, styles.placeholder]}
-                  accessible={false}
-                >
-                  <SymbolView
-                    name={
-                      skill
-                        ? {
-                            ios: "hand.raised",
-                            android: "handshake",
-                            web: "handshake",
-                          }
-                        : {
-                            ios: "wrench",
-                            android: "construction",
-                            web: "construction",
-                          }
-                    }
-                    size={22}
-                    tintColor={colors.action}
-                  />
-                </View>
-              )}
-              <View style={styles.rowCopy}>
-                <Text style={[labelType, styles.ink]}>{listing.title}</Text>
-                {catLabel ? (
-                  <Text style={[supportingType, styles.secondary]}>
-                    {catLabel}
-                  </Text>
-                ) : null}
-                <Text style={[supportingType, styles.action]}>
-                  {statusLabel}
-                </Text>
-              </View>
-              <SymbolView
-                name={{
-                  ios: "chevron.right",
-                  android: "chevron_right",
-                  web: "chevron_right",
-                }}
-                size={15}
-                tintColor={colors.secondary}
-              />
-            </Pressable>
+            />
           );
         })}
         {view.loadingMore ? (
@@ -530,80 +488,22 @@ export default function BrowseToolsScreen() {
 }
 
 const styles = StyleSheet.create({
-  filters: { gap: spacing["related-gap"] },
-  segments: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 3,
-    gap: 3,
-    backgroundColor: colors.paper,
-    borderRadius: 12,
-  },
-  segment: {
-    flexGrow: 1,
-    minWidth: 60,
-    minHeight: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: controls.radius,
-  },
-  selected: { backgroundColor: colors.wash },
-  segmentLabel: { color: colors.secondary, textAlign: "center" },
-  category: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    minHeight: 42,
-    gap: spacing["related-gap"],
-  },
+  search: { gap: spacing["related-gap"] },
+  filters: { gap: spacing["screen-gutter"] },
+  links: { gap: spacing["control-gap"] },
+  link: { minHeight: controls["touch-target"], justifyContent: "center" },
   categoryError: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing["related-gap"],
   },
-  results: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.rule,
-  },
   centered: {
     paddingTop: spacing["card-inset"],
     alignItems: "center",
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing["control-gap"],
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.rule,
-    paddingVertical: spacing["control-gap"],
-  },
-  rowCopy: { flex: 1, minWidth: 0 },
-  thumbnail: { width: 56, height: 56, borderRadius: controls.radius },
-  placeholder: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.wash,
-  },
-  skeleton: { backgroundColor: colors.wash },
-  skeletonTitle: {
-    height: 16,
-    width: "60%",
-    borderRadius: 4,
-    marginBottom: spacing["related-gap"],
-  },
-  skeletonMeta: {
-    height: 12,
-    width: "35%",
-    borderRadius: 4,
-    marginBottom: spacing["related-gap"],
-  },
-  skeletonStatus: { height: 12, width: "45%", borderRadius: 4 },
-  skeletonChevron: { width: 15, height: 15, borderRadius: 4 },
   empty: { paddingTop: spacing["card-inset"], gap: spacing["related-gap"] },
   action: { color: colors.action },
+  underline: { textDecorationLine: "underline" },
   secondary: { color: colors.secondary },
   ink: { color: colors.ink },
 });

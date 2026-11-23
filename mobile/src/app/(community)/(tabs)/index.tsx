@@ -1,13 +1,13 @@
-import { Image, type ImageSource } from "expo-image";
 import { router } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { ListingRow } from "@/components/listing-row";
 import { Button } from "@/components/ui";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { colors, controls, spacing } from "@/theme/tokens.json";
+import { colors, spacing } from "@/theme/tokens.json";
 
 const homeCopy = {
   en: {
@@ -47,54 +47,6 @@ const homeCopy = {
     backToYou: "নিজের ভিউতে ফিরুন",
   },
 };
-
-function HomeRow({
-  title,
-  description,
-  detail,
-  photo,
-  portrait,
-  onPress,
-}: {
-  title: string;
-  description: string;
-  detail: string;
-  photo?: ImageSource;
-  portrait?: boolean;
-  onPress: () => void;
-}) {
-  const { locale } = useOnboardingText();
-  const supporting = localizedType("supporting", locale);
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={[title, description, detail]
-        .filter(Boolean)
-        .join(", ")}
-      onPress={onPress}
-      style={styles.row}
-    >
-      {photo ? (
-        <Image
-          source={photo}
-          style={[styles.thumbnail, portrait && styles.portrait]}
-          contentFit="cover"
-          accessible={false}
-        />
-      ) : null}
-      <View style={styles.rowCopy}>
-        <Text style={[localizedType("field-label", locale), styles.ink]}>
-          {title}
-        </Text>
-        <Text style={[supporting, styles.secondary]}>{description}</Text>
-      </View>
-      {detail ? (
-        <Text style={[supporting, styles.rowDetail]}>{detail}</Text>
-      ) : null}
-    </Pressable>
-  );
-}
 
 export default function Home() {
   const { state } = useMemberships();
@@ -166,7 +118,7 @@ function CircleHome({ circleName }: { circleName: string }) {
         </Text>
         {openRequests.length ? (
           openRequests.map((request) => (
-            <HomeRow
+            <ListingRow
               key={request.id}
               title={request.title}
               description={people[request.createdBy].name}
@@ -214,23 +166,6 @@ const styles = StyleSheet.create({
   secondary: { color: colors.secondary },
   green: { color: colors.action },
   section: { gap: spacing["related-gap"] },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing["control-gap"],
-    minHeight: 64,
-    paddingVertical: 4,
-    borderRadius: controls.radius,
-  },
-  thumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: controls.radius,
-    backgroundColor: colors.paper,
-  },
-  portrait: { borderRadius: 28 },
-  rowCopy: { flex: 1 },
-  rowDetail: { color: colors.action, textAlign: "right", maxWidth: "30%" },
   demo: {
     borderTopWidth: 1,
     borderColor: colors.rule,
