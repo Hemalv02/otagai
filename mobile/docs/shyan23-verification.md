@@ -27,7 +27,7 @@ This workbench lacks an iOS simulator, approved test accounts and project-local 
 
 ## Listing mock cleanup (Task 3): details from the backend
 
-The listing detail screen at `src/app/(community)/tools/[id].tsx` now reads `api.getListing(id, signal, authUserId)` for the signed-in account and route UUID. It no longer uses demo listings or fixture owners. Home, Ask, request and exchange flows still use `demo-listings.tsx`.
+The listing detail screen at `src/app/(community)/tools/[id].tsx` now reads `api.getListing(id, signal, authUserId)` for the signed-in account and route UUID. It no longer uses demo listings or fixture owners. `demo-listings.tsx` is still imported by the root layout, Ask, Ask review, Ask suggestions, the request screen, the exchange chat, complete and pickup screens, `lending-photo.tsx` and `community-demo-state.ts` (type only). Home no longer imports it.
 
 Automated checks on Linux on 2026-11-24, from `mobile/`.
 
@@ -50,3 +50,4 @@ No backend or PostgreSQL was started, and no native or web app session was drive
 - Deleted and inaccessible listing IDs against a live backend, and the Home Browse link.
 - Signed photo rendering and thumbnail fallback with real signed URLs.
 - The English, Japanese and Bengali visual check, including the new `availableAgain` string.
+- Browse paging on a device: a searched listing on page two, a delayed response while switching account or filter, disconnecting while the second page loads and then reconnecting and retrying, and a duplicate ID returned on that page. The pure logic for these is covered by unit tests in `tests/browse-state.test.mjs`, but none of them was run on a device.
