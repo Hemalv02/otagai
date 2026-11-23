@@ -12,7 +12,7 @@ from app.database.models import (
     HandoverMedia,
     LoanExtension,
 )
-from app.database.models.enums import ExchangeStatus
+from app.database.models.enums import ExchangeMode, ExchangeStatus
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
@@ -74,6 +74,20 @@ class ExchangeRepository:
         if lock:
             statement = statement.with_for_update()
         return await self._session.scalar(statement)
+
+    async def is_listing_out_on_loan(self, listing_id: uuid.UUID) -> bool:
+        loan = select(Exchange.id).where(
+            Exchange.listing_id == listing_id,
+            Exchange.mode == ExchangeMode.LOAN.value,
+            Exchange.status.in_(
+                (
+                    ExchangeStatus.ACTIVE.value,
+                    ExchangeStatus.RETURNED.value,
+                    ExchangeStatus.DISPUTED.value,
+                )
+            ),
+        )
+        return bool(await self._session.scalar(select(loan.exists())))
 
 
 class ExtensionRepository:
