@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import {
   type ComponentRef,
   type PropsWithChildren,
+  type ReactElement,
   type ReactNode,
   type Ref,
   useState,
@@ -12,6 +13,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  type RefreshControlProps,
   ScrollView,
   StyleSheet,
   Text,
@@ -40,6 +42,7 @@ type CommunityScreenProps = PropsWithChildren<{
   showDemoPreview?: boolean;
   fixedTitle?: boolean;
   compactTitle?: boolean;
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
 const text = {
@@ -83,6 +86,7 @@ export function CommunityScreen({
   showDemoPreview = true,
   fixedTitle = false,
   compactTitle = false,
+  refreshControl,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -184,6 +188,7 @@ export function CommunityScreen({
           contentContainerStyle={[styles.column, styles.content]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          refreshControl={refreshControl}
         >
           {back ? (
             <Pressable

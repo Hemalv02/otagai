@@ -66,7 +66,62 @@ export type CircleMembership = {
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
 
+export type ProfileSummary = { id: string; display_name: string };
+
+export type FamilyLink = {
+  id: string;
+  user_id: string;
+  relative_user_id: string;
+  relation: string;
+  status: "pending" | "accepted" | "revoked";
+  other: ProfileSummary | null;
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type ProxyGrant = {
+  id: string;
+  member_user_id: string;
+  caretaker_user_id: string;
+  caretaker_role: string;
+  can_post_requests: boolean;
+  can_chat: boolean;
+  can_thank_and_pay: boolean;
+  can_view_activity: boolean;
+  can_manage_listings: boolean;
+  consent_method: string;
+  consented_at: string;
+  created_at: string;
+  other: ProfileSummary | null;
+};
+
+export type RequestKind = "borrow" | "help" | "borrow_with_help";
+export type RippleStage =
+  | "direct"
+  | "family"
+  | "han"
+  | "association"
+  | "nearby";
+
+export type RequestSummary = {
+  id: string;
+  requester_user_id: string;
+  kind: RequestKind;
+  status: string;
+  polite_text: string;
+  lang: Language;
+  listing_id: string | null;
+  direct_to_user_id: string | null;
+  needed_from: string | null;
+  needed_until: string | null;
+  ripple_stage: RippleStage;
+  ripple_max_stage: RippleStage;
+  created_at: string;
+};
+
 export type Page<T> = { items: T[]; next_cursor: string | null };
+
+const MAX_REQUEST_PAGES = 10;
 
 export async function request<T>(
   path: string,
@@ -149,6 +204,40 @@ export const api = {
       items.push(...page.items);
       cursor = page.next_cursor;
     } while (cursor);
+    return items;
+  },
+  listFamilyLinks: async () =>
+    (await request<{ items: FamilyLink[] }>("/users/me/family-links")).items,
+  listCaretakerGrants: async () =>
+    (
+      await request<{ items: ProxyGrant[] }>(
+        "/users/me/proxy-grants?as=caretaker",
+      )
+    ).items,
+  listOpenRequests: async ({
+    actingFor,
+    signal,
+  }: {
+    actingFor?: string;
+    signal?: AbortSignal;
+  }) => {
+    const headers: Record<string, string> = actingFor
+      ? { "X-Acting-For": actingFor }
+      : {};
+    const items: RequestSummary[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const query = new URLSearchParams({ status: "open", limit: "50" });
+      if (cursor) query.set("cursor", cursor);
+      const page: Page<RequestSummary> = await request(
+        `/users/me/requests?${query}`,
+        { headers, signal },
+      );
+      items.push(...page.items);
+      cursor = page.next_cursor;
+      pages += 1;
+    } while (cursor && pages < MAX_REQUEST_PAGES);
     return items;
   },
 };
