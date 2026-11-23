@@ -191,6 +191,15 @@ class HandoverRepository:
         )
         return list(await self._session.scalars(statement))
 
+    async def check_for_phase(
+        self, exchange_id: uuid.UUID, phase: str
+    ) -> HandoverCheck | None:
+        return await self._session.scalar(
+            select(HandoverCheck).where(
+                HandoverCheck.exchange_id == exchange_id, HandoverCheck.phase == phase
+            )
+        )
+
     async def items_for(self, check_id: uuid.UUID) -> list[HandoverItem]:
         statement = (
             select(HandoverItem)
@@ -228,3 +237,11 @@ class HandoverRepository:
         for media_id in media_ids:
             self._session.add(HandoverMedia(check_id=check_id, media_id=media_id))
         await self._session.flush()
+
+    async def media_ids_for(self, check_id: uuid.UUID) -> list[uuid.UUID]:
+        statement = (
+            select(HandoverMedia.media_id)
+            .where(HandoverMedia.check_id == check_id)
+            .order_by(HandoverMedia.media_id)
+        )
+        return list(await self._session.scalars(statement))

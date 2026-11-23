@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from tests.integration.conftest import auth, matched_exchange
+from tests.integration.conftest import auth, confirmed_pickup, matched_exchange
 
 
 @pytest.mark.parametrize("unavailable_status", ["paused", "deleted"])
@@ -68,8 +68,10 @@ async def test_two_matched_loans_cannot_pick_up_the_same_listing(client):
     )
     assert accepted.status_code == 200, accepted.text
     request = await client.get(second_request, headers=borrower)
-    second_path = f"/exchanges/{request.json()['exchange_id']}"
+    second_id = request.json()["exchange_id"]
+    second_path = f"/exchanges/{second_id}"
     assert second_path != first_path
+    await confirmed_pickup(client, second_id, first["requester"], first["helper"])
 
     paths = [first_path, second_path]
     pickups = await asyncio.gather(

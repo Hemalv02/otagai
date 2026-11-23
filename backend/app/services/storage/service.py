@@ -100,10 +100,14 @@ class Storage:
             async with response["Body"] as body:
                 if response["ContentLength"] > max_bytes:
                     raise StorageError("The object exceeds the allowed size.")
-                content = await body.read(max_bytes + 1)
-                if len(content) > max_bytes:
-                    raise StorageError("The object exceeds the allowed size.")
-                return content
+                content = bytearray()
+                while chunk := await body.read(
+                    min(64 * 1024, max_bytes + 1 - len(content))
+                ):
+                    content.extend(chunk)
+                    if len(content) > max_bytes:
+                        raise StorageError("The object exceeds the allowed size.")
+                return bytes(content)
         except ClientError as error:
             if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise ObjectNotFoundError("The object does not exist.") from error

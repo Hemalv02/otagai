@@ -6,6 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
     AssistantTurn,
+    Exchange,
+    HandoverCheck,
+    HandoverMedia,
     ListingMedia,
     MediaFile,
     MediaVariant,
@@ -71,6 +74,7 @@ class MediaRepository:
     async def is_referenced(self, media_id: uuid.UUID) -> bool:
         checks = (
             select(AssistantTurn.id).where(AssistantTurn.image_media_id == media_id),
+            select(HandoverMedia.media_id).where(HandoverMedia.media_id == media_id),
             select(ListingMedia.media_id).where(ListingMedia.media_id == media_id),
             select(RequestMedia.media_id).where(RequestMedia.media_id == media_id),
             select(MessageAttachment.media_id).where(
@@ -80,6 +84,23 @@ class MediaRepository:
         )
         statement = select(or_(*(exists(check) for check in checks)))
         return bool(await self._session.scalar(statement))
+
+    async def is_handover_participant(
+        self, media_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        matching = (
+            select(HandoverMedia.media_id)
+            .join(HandoverCheck, HandoverCheck.id == HandoverMedia.check_id)
+            .join(Exchange, Exchange.id == HandoverCheck.exchange_id)
+            .where(
+                HandoverMedia.media_id == media_id,
+                or_(
+                    Exchange.requester_user_id == user_id,
+                    Exchange.helper_user_id == user_id,
+                ),
+            )
+        )
+        return bool(await self._session.scalar(select(exists(matching))))
 
     async def update(self, media: MediaFile, values: dict[str, Any]) -> MediaFile:
         for name, value in values.items():

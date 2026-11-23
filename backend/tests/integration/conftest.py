@@ -211,8 +211,32 @@ def pytest_sessionfinish(session, exitstatus):
         handle.writelines(f"UNTESTED {method} {path}\n" for method, path in untested)
 
 
-async def matched_exchange(client: httpx2.AsyncClient, *, loan: bool = False) -> dict:
-    """Two circle-sharing users up to an accepted offer (exchange scheduled)."""
+async def confirmed_pickup(client, exchange_id, requester, helper):
+    created = await client.post(
+        f"/exchanges/{exchange_id}/handover-checks",
+        headers=auth(helper),
+        json={"phase": "pickup"},
+    )
+    assert created.status_code == 201, created.text
+    check = created.json()
+    for item in check["items"]:
+        marked = await client.patch(
+            f"/handover-checks/{check['id']}/items/{item['id']}",
+            headers=auth(helper),
+            json={"present": True},
+        )
+        assert marked.status_code == 200, marked.text
+    for participant in (requester, helper):
+        confirmed = await client.post(
+            f"/handover-checks/{check['id']}/confirm", headers=auth(participant)
+        )
+        assert confirmed.status_code == 200, confirmed.text
+
+
+async def matched_exchange(
+    client: httpx2.AsyncClient, *, loan: bool = False, pickup_ready: bool = True
+) -> dict:
+    """Two circle-sharing users with an accepted offer and a scheduled exchange."""
     requester = await make_user(client, display_name="Requester")
     helper = await make_user(client, display_name="Helper")
     circle_id = await make_circle(client, requester)
@@ -221,7 +245,11 @@ async def matched_exchange(client: httpx2.AsyncClient, *, loan: bool = False) ->
         await client.post(
             "/requests",
             headers=auth(requester),
-            json={"kind": "borrow", "raw_text": "Borrow a drill", "lang": "ja"},
+            json={
+                "kind": "borrow" if loan else "help",
+                "raw_text": "Borrow a drill" if loan else "Carry boxes",
+                "lang": "ja",
+            },
         )
     ).json()["id"]
     offer = {"kind": "offer"}
@@ -255,6 +283,8 @@ async def matched_exchange(client: httpx2.AsyncClient, *, loan: bool = False) ->
     exchange_id = (
         await client.get("/users/me/exchanges", headers=auth(helper))
     ).json()["items"][0]["id"]
+    if loan and pickup_ready:
+        await confirmed_pickup(client, exchange_id, requester, helper)
     return {
         "requester": requester,
         "helper": helper,

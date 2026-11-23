@@ -141,6 +141,10 @@ async def _can_view(session, viewer_id: uuid.UUID, media: MediaFile) -> bool:
         return True
     if media.purpose == MediaPurpose.ASK.value:
         return False
+    if media.purpose == MediaPurpose.HANDOVER.value:
+        return await MediaRepository(session).is_handover_participant(
+            media.id, viewer_id
+        )
     if await BlockRepository(session).is_blocked_either_way(
         viewer_id, media.owner_user_id
     ):

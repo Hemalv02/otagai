@@ -23,6 +23,7 @@ from app.repositories.pair_stats import PairStatsRepository
 from app.repositories.requests import RequestRepository
 from app.services.actors.service import Actor, ProxyScope
 from app.services.errors import BadRequestError, ConflictError, NotFoundError
+from app.services.exchanges.handover import require_pickup_check
 
 AVAILABLE_AGAIN_DELAY = timedelta(hours=1)
 
@@ -115,6 +116,8 @@ async def hand_over(
             return exchange
         if exchange.status != ExchangeStatus.SCHEDULED.value:
             raise ExchangeStateError("This exchange can't be handed over now.")
+        if exchange.mode == ExchangeMode.LOAN.value:
+            await require_pickup_check(session, exchange_id)
         requests = RequestRepository(session)
         request = await requests.get_for_update(exchange.request_id)
         listings = ListingRepository(session)
