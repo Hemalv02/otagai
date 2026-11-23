@@ -49,6 +49,11 @@ Coverage spans every major route group (`tests/integration/`):
 - **relationships / proxy** — managed-user + grant creation, family-link
   accept/revoke, grant lifecycle, and `X-Acting-For` proxy posting a request
   for a member (with scope `201`, without scope `403`, no grant `403`).
+  Family home (screen 33) reads `GET /users/me/requests?status=open` as self,
+  as a caretaker with `can_view_activity` (`200`), without it, after the scope
+  is removed, after the grant is revoked, with only a family link, as an
+  unrelated user and for a deleted member (`403`), and for managed accounts;
+  an unknown `status` or query parameter returns `422`.
 - **payments** — idempotency (same key/body returns the first result, different
   body `409`/`404`), missing `Idempotency-Key` `422`, bKash-mock
   simulate-success → thank-you `paid`, cancel, payee-cannot-pay `404`.

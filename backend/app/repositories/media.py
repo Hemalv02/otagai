@@ -5,6 +5,7 @@ from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
+    AssistantTurn,
     ListingMedia,
     MediaFile,
     MediaVariant,
@@ -69,6 +70,7 @@ class MediaRepository:
 
     async def is_referenced(self, media_id: uuid.UUID) -> bool:
         checks = (
+            select(AssistantTurn.id).where(AssistantTurn.image_media_id == media_id),
             select(ListingMedia.media_id).where(ListingMedia.media_id == media_id),
             select(RequestMedia.media_id).where(RequestMedia.media_id == media_id),
             select(MessageAttachment.media_id).where(

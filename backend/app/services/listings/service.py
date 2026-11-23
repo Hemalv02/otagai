@@ -170,6 +170,65 @@ async def _cards_with_thumbs(
     return PageResult(items=items, next_cursor=result.next_cursor)
 
 
+async def match_assistant_listings(
+    database: Database,
+    storage: Storage,
+    settings: Settings,
+    user_id: uuid.UUID,
+    tool_terms: list[str],
+    skill_terms: list[str],
+) -> list[tuple[ListingCard, str]]:
+    if not (tool_terms or skill_terms):
+        return []
+    async with database.session() as session:
+        circle_ids = await CircleRepository(session).approved_circle_ids(user_id)
+        hidden = await BlockRepository(session).blocked_either_way(user_id)
+        repository = ListingRepository(session)
+        matches = await repository.assistant_matches(
+            circle_ids=circle_ids,
+            excluded_owners=[user_id, *hidden],
+            tool_terms=tool_terms,
+            skill_terms=skill_terms,
+        )
+        thumbs = await repository.primary_thumbs([listing.id for listing, _ in matches])
+    result = await _cards_with_thumbs(
+        storage,
+        settings,
+        PageResult(items=[listing for listing, _ in matches], next_cursor=None),
+        thumbs,
+    )
+    return [(card, name) for card, (_, name) in zip(result.items, matches, strict=True)]
+
+
+async def assistant_listings_by_id(
+    database: Database,
+    storage: Storage,
+    settings: Settings,
+    user_id: uuid.UUID,
+    listing_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, tuple[ListingCard, str]]:
+    if not listing_ids:
+        return {}
+    async with database.session() as session:
+        circle_ids = await CircleRepository(session).approved_circle_ids(user_id)
+        hidden = await BlockRepository(session).blocked_either_way(user_id)
+        repository = ListingRepository(session)
+        matches = await repository.assistant_matches_by_id(
+            listing_ids, circle_ids, [user_id, *hidden]
+        )
+        thumbs = await repository.primary_thumbs([listing.id for listing, _ in matches])
+    result = await _cards_with_thumbs(
+        storage,
+        settings,
+        PageResult(items=[listing for listing, _ in matches], next_cursor=None),
+        thumbs,
+    )
+    return {
+        card.listing.id: (card, name)
+        for card, (_, name) in zip(result.items, matches, strict=True)
+    }
+
+
 async def list_my_listings(
     database: Database,
     storage: Storage,

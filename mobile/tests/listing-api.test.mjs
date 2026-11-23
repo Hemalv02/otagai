@@ -12,8 +12,16 @@ export const supabase = { auth: {
 } };
 `)}`;
 
+const platformStubs = {
+  "expo/fetch": `data:text/javascript,${encodeURIComponent("export const fetch = (...args) => globalThis.fetch(...args);")}`,
+  "react-native": `data:text/javascript,${encodeURIComponent('export const Platform = { OS: "web" };')}`,
+};
+
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (context.parentURL === apiUrl.href && platformStubs[specifier]) {
+      return { url: platformStubs[specifier], shortCircuit: true };
+    }
     if (context.parentURL === apiUrl.href && specifier === "@/lib/supabase") {
       return { url: sessionModule, shortCircuit: true };
     }

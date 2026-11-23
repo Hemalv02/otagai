@@ -2,6 +2,8 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import HelpRequest, RequestRecipient, RequestResponse
 from app.database.models.enums import (
@@ -14,9 +16,11 @@ from app.database.models.enums import (
     ParticipantRole,
     RequestKind,
     RequestStatus,
+    ResponseKind,
     ResponseStatus,
     RippleStage,
     TranslationStatus,
+    UserStatus,
 )
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
@@ -119,6 +123,8 @@ class RequestDetail:
     request: HelpRequest
     my_role: str
     my_response_status: str | None
+    my_response_id: uuid.UUID | None
+    exchange_id: uuid.UUID | None
 
 
 @dataclass(frozen=True)
@@ -136,85 +142,102 @@ async def _connected(session, viewer_id: uuid.UUID, other_id: uuid.UUID) -> bool
     return await CircleRepository(session).share_approved_circle(viewer_id, other_id)
 
 
+async def _visible_recipient(
+    session: AsyncSession, request: HelpRequest, viewer: uuid.UUID
+) -> RequestRecipient:
+    recipient = await RecipientRepository(session).get(request.id, viewer)
+    if recipient is None or await BlockRepository(session).is_blocked_either_way(
+        viewer, request.requester_user_id
+    ):
+        raise RequestNotFoundError
+    return recipient
+
+
 async def create_request(
     database: Database, actor: Actor, new_request: NewRequest
+) -> HelpRequest:
+    async with database.session() as session:
+        return await create_request_in_session(session, actor, new_request)
+
+
+async def create_request_in_session(
+    session: AsyncSession, actor: Actor, new_request: NewRequest
 ) -> HelpRequest:
     actor.require(ProxyScope.POST_REQUESTS)
     requester_id = actor.subject_id
     now = datetime.now(UTC)
-    async with database.session() as session:
-        circles = CircleRepository(session)
-        approved = await circles.approved_circle_ids(requester_id)
-        home_circle_id = new_request.home_circle_id
-        if home_circle_id is not None:
-            if home_circle_id not in approved:
-                raise NoCircleError
-        elif approved:
-            home_circle_id = approved[0]
-        else:
+    circles = CircleRepository(session)
+    approved = await circles.approved_circle_ids(requester_id)
+    home_circle_id = new_request.home_circle_id
+    if home_circle_id is not None:
+        if home_circle_id not in approved:
             raise NoCircleError
+    elif approved:
+        home_circle_id = approved[0]
+    else:
+        raise NoCircleError
 
-        media_ids = await _validated_media(session, requester_id, new_request.media_ids)
-        is_direct = new_request.direct_to_user_id is not None
-        if is_direct:
-            target_id = new_request.direct_to_user_id
-            if target_id == requester_id or not await _connected(
-                session, requester_id, target_id
-            ):
-                raise RecipientUnreachableError
-            ripple_max = RippleStage.DIRECT.value
-            ripple_stage = RippleStage.DIRECT.value
-        else:
-            ripple_max = new_request.ripple_max_stage
-            ripple_stage = RippleStage.HAN.value
+    media_ids = await _validated_media(session, requester_id, new_request.media_ids)
+    is_direct = new_request.direct_to_user_id is not None
+    if is_direct:
+        target_id = new_request.direct_to_user_id
+        if target_id == requester_id or not await _connected(
+            session, requester_id, target_id
+        ):
+            raise RecipientUnreachableError
+        ripple_max = RippleStage.DIRECT.value
+        ripple_stage = RippleStage.DIRECT.value
+    else:
+        ripple_max = new_request.ripple_max_stage
+        ripple_stage = RippleStage.HAN.value
 
-        requester = await UserRepository(session).get(requester_id)
-        values = {
-            "requester_user_id": requester_id,
-            "acted_by_user_id": actor.user.id,
-            "region": requester.region,
-            "kind": new_request.kind,
-            "category_id": new_request.category_id,
-            "listing_id": new_request.listing_id,
-            "direct_to_user_id": new_request.direct_to_user_id,
-            "raw_text": new_request.raw_text,
-            "polite_text": new_request.polite_text or new_request.raw_text,
-            "tone": new_request.tone,
-            "lang": new_request.lang,
-            "needed_from": new_request.needed_from,
-            "needed_until": new_request.needed_until,
-            "home_circle_id": home_circle_id,
-            "ripple_stage": ripple_stage,
-            "ripple_max_stage": ripple_max,
-            "status": RequestStatus.OPEN.value,
-            "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
-        }
-        request = await RequestRepository(session).create(values, media_ids)
+    requester = await UserRepository(session).get(requester_id)
+    values = {
+        "requester_user_id": requester_id,
+        "acted_by_user_id": actor.user.id,
+        "region": requester.region,
+        "kind": new_request.kind,
+        "category_id": new_request.category_id,
+        "listing_id": new_request.listing_id,
+        "direct_to_user_id": new_request.direct_to_user_id,
+        "raw_text": new_request.raw_text,
+        "polite_text": new_request.polite_text or new_request.raw_text,
+        "tone": new_request.tone,
+        "lang": new_request.lang,
+        "needed_from": new_request.needed_from,
+        "needed_until": new_request.needed_until,
+        "home_circle_id": home_circle_id,
+        "ripple_stage": ripple_stage,
+        "ripple_max_stage": ripple_max,
+        "status": RequestStatus.OPEN.value,
+        "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
+    }
+    request = await RequestRepository(session).create(values, media_ids)
 
-        blocked = await BlockRepository(session).blocked_either_way(requester_id)
-        if is_direct:
-            recipients = [new_request.direct_to_user_id]
-            notification_type = NotificationType.REQUEST_DIRECT.value
-        else:
-            members = await MembershipRepository(session).approved_member_ids(
-                home_circle_id
-            )
-            recipients = [
-                member
-                for member in members
-                if member != requester_id and member not in set(blocked)
-            ]
-            notification_type = NotificationType.REQUEST_NEARBY.value
-        if recipients:
-            await RecipientRepository(session).add_many(
-                request.id, ripple_stage, recipients
-            )
-            await NotificationRepository(session).create_many(
-                recipients,
-                notification_type,
-                {"request_id": str(request.id)},
-            )
-        return request
+    blocked = await BlockRepository(session).blocked_either_way(requester_id)
+    if is_direct:
+        recipients = [new_request.direct_to_user_id]
+        notification_type = NotificationType.REQUEST_DIRECT.value
+    else:
+        members = await MembershipRepository(session).approved_member_ids(
+            home_circle_id
+        )
+        recipients = [
+            member
+            for member in members
+            if member != requester_id and member not in set(blocked)
+        ]
+        notification_type = NotificationType.REQUEST_NEARBY.value
+    if recipients:
+        await RecipientRepository(session).add_many(
+            request.id, ripple_stage, recipients
+        )
+        await NotificationRepository(session).create_many(
+            recipients,
+            notification_type,
+            {"request_id": str(request.id)},
+        )
+    return request
 
 
 async def _validated_media(
@@ -236,6 +259,7 @@ async def _validated_media(
 async def list_my_requests(
     database: Database, actor: Actor, statuses: tuple[str, ...], page: PageRequest
 ) -> PageResult[HelpRequest]:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     async with database.session() as session:
         return await RequestRepository(session).list_for_requester(
             actor.subject_id, statuses, page
@@ -250,18 +274,40 @@ async def get_request(
         request = await RequestRepository(session).get(request_id)
         if request is None:
             raise RequestNotFoundError
-        if request.requester_user_id == viewer:
-            return RequestDetail(
-                request=request, my_role="requester", my_response_status=None
+        owns_request = request.requester_user_id == viewer
+        can_view_activity = actor.grant is None or actor.grant.can_view_activity
+        live = None
+        if not owns_request:
+            await _visible_recipient(session, request, viewer)
+            if can_view_activity:
+                live = await ResponseRepository(session).live_response_for(
+                    request_id, viewer
+                )
+        exchange = None
+        if (
+            can_view_activity
+            and request.status
+            in (
+                RequestStatus.MATCHED.value,
+                RequestStatus.IN_PROGRESS.value,
+                RequestStatus.DONE.value,
             )
-        recipient = await RecipientRepository(session).get(request_id, viewer)
-        if recipient is None:
-            raise RequestNotFoundError
-        live = await ResponseRepository(session).live_response_for(request_id, viewer)
+            and (
+                owns_request or (live and live.status == ResponseStatus.ACCEPTED.value)
+            )
+        ):
+            exchange = await ExchangeRepository(session).active_for_request(
+                request_id, lock=False
+            )
         return RequestDetail(
             request=request,
-            my_role="recipient",
+            my_role="requester" if owns_request else "recipient",
             my_response_status=live.status if live else None,
+            my_response_id=live.id if live else None,
+            exchange_id=exchange.id
+            if exchange
+            and viewer in (exchange.requester_user_id, exchange.helper_user_id)
+            else None,
         )
 
 
@@ -445,9 +491,10 @@ async def mark_received(
     now = datetime.now(UTC)
     async with database.session() as session:
         recipients = RecipientRepository(session)
-        recipient = await recipients.get(request_id, actor.subject_id)
-        if recipient is None:
+        request = await RequestRepository(session).get(request_id)
+        if request is None:
             raise RequestNotFoundError
+        recipient = await _visible_recipient(session, request, actor.subject_id)
         changes: dict = {}
         if seen and recipient.seen_at is None:
             changes["seen_at"] = now
@@ -457,7 +504,6 @@ async def mark_received(
             changes["hidden_at"] = None
         if changes:
             recipient = await recipients.update(recipient, changes)
-        request = await RequestRepository(session).get(request_id)
         live = await ResponseRepository(session).live_response_for(
             request_id, actor.subject_id
         )
@@ -475,9 +521,7 @@ async def create_response(
         request = await RequestRepository(session).get(request_id)
         if request is None:
             raise RequestNotFoundError
-        recipient = await RecipientRepository(session).get(request_id, actor.subject_id)
-        if recipient is None:
-            raise RequestNotFoundError
+        await _visible_recipient(session, request, actor.subject_id)
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         values = {
@@ -598,6 +642,19 @@ async def accept_response(
             return response
         if response.status != ResponseStatus.PENDING.value:
             raise ResponseNotPendingError
+        if response.kind == ResponseKind.QUESTION.value:
+            raise ConflictError("Choose a help offer or a suggested time to match.")
+        if response.proposed_start is not None and response.proposed_start <= now:
+            raise ConflictError("This proposed time has passed.")
+        helper = await UserRepository(session).get(response.responder_user_id)
+        if (
+            helper is None
+            or helper.status != UserStatus.ACTIVE.value
+            or await BlockRepository(session).is_blocked_either_way(
+                request.requester_user_id, response.responder_user_id
+            )
+        ):
+            raise ConflictError("This helper is no longer available.")
         try:
             accepted = await response_repo.update(
                 response,
@@ -610,7 +667,7 @@ async def accept_response(
         listing_id = response.listing_id or request.listing_id
         mode = (
             ExchangeMode.LOAN.value
-            if listing_id is not None and request.kind != RequestKind.HELP.value
+            if request.kind != RequestKind.HELP.value
             else ExchangeMode.HELP.value
         )
         exchange = await ExchangeRepository(session).create(

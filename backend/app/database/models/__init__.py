@@ -1,4 +1,4 @@
-from app.database.models.ai import AiRun
+from app.database.models.ai import AiRun, AssistantThread, AssistantTurn
 from app.database.models.base import Base
 from app.database.models.chat import (
     Conversation,
@@ -39,6 +39,8 @@ from app.database.models.users import PushToken, User
 __all__ = [
     "AiRun",
     "AskSession",
+    "AssistantThread",
+    "AssistantTurn",
     "Base",
     "Block",
     "Category",
