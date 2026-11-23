@@ -12,6 +12,26 @@ INDEX = "uq_help_requests_open_listing_per_requester"
 
 
 def upgrade() -> None:
+    op.execute(
+        sa.text(
+            """
+            UPDATE help_requests
+            SET status = 'expired'
+            WHERE id IN (
+                SELECT id FROM (
+                    SELECT id,
+                           row_number() OVER (
+                               PARTITION BY requester_user_id, listing_id
+                               ORDER BY created_at DESC, id DESC
+                           ) AS rank
+                    FROM help_requests
+                    WHERE listing_id IS NOT NULL AND status = 'open'
+                ) AS ranked
+                WHERE rank > 1
+            )
+            """
+        )
+    )
     op.create_index(
         INDEX,
         "help_requests",
