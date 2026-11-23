@@ -31,6 +31,7 @@ type CommunityScreenProps = PropsWithChildren<{
   footer?: ReactNode;
   live?: boolean;
   scroll?: boolean;
+  design?: boolean;
 }>;
 
 const text = {
@@ -71,6 +72,7 @@ export function CommunityScreen({
   footer,
   live = false,
   scroll = true,
+  design = false,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -104,9 +106,13 @@ export function CommunityScreen({
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.rule}>
-        <View style={[styles.column, styles.header]}>
+        <View
+          style={[styles.column, styles.header, design && styles.designHeader]}
+        >
           <Text className="type-wordmark text-action">Otagai</Text>
-          <View style={styles.headerActions}>
+          <View
+            style={[styles.headerActions, design && styles.designHeaderActions]}
+          >
             <Pressable
               accessibilityRole="button"
               onPress={() => openOptions("settings")}
@@ -138,7 +144,9 @@ export function CommunityScreen({
       >
         <Content
           contentContainerStyle={
-            scroll ? [styles.column, styles.content] : undefined
+            scroll
+              ? [styles.column, styles.content, design && styles.designContent]
+              : undefined
           }
           style={
             scroll ? undefined : [styles.column, styles.content, styles.flex]
@@ -161,7 +169,7 @@ export function CommunityScreen({
             </Pressable>
           ) : null}
           {title || eyebrow || subtitle ? (
-            <View style={styles.heading}>
+            <View style={[styles.heading, design && styles.designHeading]}>
               {eyebrow ? (
                 <Text style={[label, styles.green]}>{eyebrow}</Text>
               ) : null}
@@ -268,6 +276,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing["control-gap"],
   },
+  designHeader: { minHeight: 58, paddingVertical: 5 },
+  designHeaderActions: { gap: spacing["card-inset"] },
+  designContent: { paddingVertical: spacing["card-inset"] },
+  designHeading: { gap: 6 },
   headerButton: {
     minHeight: controls["touch-target"],
     minWidth: 32,

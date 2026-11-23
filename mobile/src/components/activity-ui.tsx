@@ -33,6 +33,7 @@ export function ActivityStatus({
 }) {
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
+  if (!loading && !error) return null;
   return (
     <View style={activityStyles.section}>
       {loading ? (

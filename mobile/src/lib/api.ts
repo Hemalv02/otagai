@@ -77,7 +77,18 @@ export type Exchange = {
   due_at: string | null;
   scheduled_at: string | null;
   handed_over_at: string | null;
+  returned_at: string | null;
   meet_place_note: string | null;
+};
+
+export type ListingDetail = {
+  title: string;
+  owner: { id: string; display_name: string } | null;
+  photos: {
+    media_id: string;
+    thumb_url: string | null;
+    display_url: string | null;
+  }[];
 };
 
 export type LoanExtension = {
@@ -162,7 +173,15 @@ export const api = {
   getExchange: (id: string) =>
     request<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
   getListing: (id: string) =>
-    request<{ title: string }>(`/listings/${encodeURIComponent(id)}`),
+    request<ListingDetail>(`/listings/${encodeURIComponent(id)}`),
+  getPublicProfile: (id: string) =>
+    request<{ id: string; display_name: string }>(
+      `/users/${encodeURIComponent(id)}`,
+    ),
+  recordLoanReturn: (id: string) =>
+    request<Exchange>(`/exchanges/${encodeURIComponent(id)}/return`, {
+      method: "POST",
+    }),
   listExtensions: (id: string, cursor?: string | null) =>
     request<Page<LoanExtension>>(
       `/exchanges/${encodeURIComponent(id)}/extensions?${pageQuery(cursor)}`,

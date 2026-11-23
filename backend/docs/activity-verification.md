@@ -1,6 +1,6 @@
 # Loans and notifications verification
 
-Implementation branch: `feat/loans-notifications`. Verified on 2026-11-23.
+Implementation branch: `feat/loans-notifications`. API, interaction, and design verification are recorded below.
 
 ## Entry points and scope
 
@@ -45,14 +45,43 @@ Passed interactions:
 1. Borrower opens Active loans, edits the extension message, and submits. Lender declines. Borrower reloads and sees the saved decision.
 2. Borrower submits again; lender accepts. Both reload and see the decision. The API confirms the due date changed.
 3. Inbox loads a second cursor page, marks one item read, marks all read, and retains the empty Unread state after reload. Home reloads with an unread badge of zero.
-4. Preferences save `22:30`–`07:15` and paused push. Reload retains both times and the switch state. Clearing quiet hours clears both API fields and resuming push persists.
+4. The quiet-hours row opens its editor. Preferences save `22:30`–`07:15` and paused push. Reload retains both times and the pause state. Clearing quiet hours clears both API fields and resuming push persists.
 5. A simulated save failure displays an error and succeeds after retry. A simulated loan-list outage displays the retry state and recovers after the outage ends.
 6. A third approved account sees an empty loan list and cannot open the participants’ loan or submit an extension.
 7. Japanese and Bengali preferences render with the existing locale fonts. Loan, inbox, and preferences screenshots were visually inspected at phone width. No browser page errors were reported.
 
-## Remaining manual acceptance
+## Figma alignment
 
-Figma MCP connected successfully, but the assignment file rejected both session and read-only design access with an editor-access error. The implementation follows the written brief and existing app styles; exact comparison with frames `16:1865` and `16:2482` remains pending access or exported references.
+Figma access was resolved. Both frames were read using `get_design_context`, including their screenshots, assets, typography, and layout measurements:
+
+- [25 · Loan and extension](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai?node-id=16-1865)
+- [43 · Notifications](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai?node-id=16-2482), which is the preferences view referenced by the assignment.
+
+The Active loans list and activity inbox remain supporting screens required by the written brief; it supplies no separate Figma frame for either.
+
+| Area | Earlier implementation | Correction from Figma |
+| --- | --- | --- |
+| Loan heading | Listing title followed by a separate role label | Due-focused heading with item and participant subtitle |
+| Loan dates | Large paper-colored date box and separate pickup fields | Compact 56 px listing-photo row with date/place/status, followed by the two-step pickup/return timeline |
+| Extension draft | Conventional outlined message/date form | Clay left-accented editable message; the one-day action opens the date and submission controls |
+| Loan actions | Extension submission only | Extension flow retained; Record return uses the existing live exchange return API |
+| Preferences | Two bordered settings cards | Flat activity rows, quiet-hours summary/editor, pause/resume push action, and Save notifications |
+| Shared chrome | Existing generic spacing | Opt-in 58 px toolbar, 16 px content spacing, and 6 px heading gap for these two frames |
+
+The existing arrow and sample drill asset exactly match the Figma downloads by SHA-256. The arrow is reused, while actual loan photos come from listing data and use a neutral fallback if missing. Figma progress-dot and on/off assets were downloaded locally for the timeline and the accessible quiet-hours toggle. No temporary Figma URLs are used at runtime.
+
+Intentional adaptations to the written scope:
+
+- Names, titles, photos, dates, roles, statuses, and extension history use API data instead of the prototype’s sample values. Missing or hidden listing/profile data has fallbacks.
+- The five activity-topic descriptions are informational. Per-topic push controls are explicitly separate work in the assignment, so no fake on/off states are displayed or saved.
+- The prototype’s message action is omitted from this live route while the existing chat screen still uses demo IDs.
+- The later-date editor, saved extension history, lender decisions, loading/retry states, and quiet-hours editor supplement the static frames to fulfill the acceptance requirements.
+
+The corrected screens were checked against the Figma screenshots at 390 px width in English, Japanese, and Bengali. Browser flow checks passed again, including the quiet-hours sheet, validation and save recovery, extension decisions/history, and the live Record return action removing the loan from Active loans. Asset checks confirmed 20 × 20 arrows, 56 × 56 listing photos, 12 × 12 progress dots, and 38 × 22 toggle artwork inside 48 px touch targets. The custom switch's web checked state and Space-key behavior were verified. Visual photo checks used the exact Figma-matching image as API-supplied test data; the application has no drill-image fallback.
+
+Typecheck, lint, production web export, and repository hooks passed after the alignment changes. The updated Android Metro bundle also compiled and was served successfully for Expo Go. This does not replace physical-device or iOS simulator UI acceptance.
+
+## Remaining manual acceptance
 
 An iOS simulator is unavailable on this Linux machine. Run the following with real test Supabase accounts on a Mac:
 
@@ -61,4 +90,4 @@ An iOS simulator is unavailable on this Linux machine. Run the following with re
 3. Sign in as the borrower; Requests → Active loans → details → request an extension. Sign in as the lender and decline. Repeat and accept. Relaunch both accounts and compare their history/due date with `GET /exchanges/{id}` and its extension history. Sign in as the outsider and verify denial for the real exchange ID.
 4. Create a real request and respond with a real offer to generate notifications. As the recipient, open the Home bell, mark one/all read, switch All/Unread, load another page when available, and relaunch. Compare the badge with `/users/me/unread-counts`. With the other account, verify those notification IDs are absent and PATCHing them returns 404.
 5. Save overnight quiet hours and pause push, relaunch, and compare with `GET /users/me`. Clear quiet hours and resume push. Confirm the inbox remains available throughout.
-6. Check empty states, an unreachable API and retry, the keyboard with date/time/message fields, larger accessibility text, and all three languages on native iOS. Resolve any differences against the two Figma frames once accessible.
+6. Check empty states, an unreachable API and retry, the keyboard with date/time/message fields, larger accessibility text, and all three languages on native iOS. Compare native rendering with the two Figma frames, allowing for actual loan/account data and the scope adaptations above.
