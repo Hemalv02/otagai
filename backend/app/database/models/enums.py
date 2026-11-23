@@ -385,3 +385,19 @@ class AiFeature(StrEnum):
 class AiRunStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class EventStatus(StrEnum):
+    SCHEDULED = "scheduled"
+    CANCELLED = "cancelled"
+
+
+class CheckInStatus(StrEnum):
+    SAFE = "safe"
+    NEED_HELP = "need_help"
+
+
+class AlertSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    EMERGENCY = "emergency"

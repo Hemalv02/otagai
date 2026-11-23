@@ -12,14 +12,76 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import Database
+from app.routes.check_ins.route import router as check_in_settings_router
+from app.routes.disaster.route import (
+    circle_router as disaster_circle_router,
+)
+from app.routes.disaster.route import (
+    router as disaster_alerts_router,
+)
+from app.routes.events.route import (
+    circle_router as circle_events_router,
+)
+from app.routes.events.route import (
+    router as events_router,
+)
+from app.routes.notices.route import (
+    circle_router as circle_notices_router,
+)
+from app.routes.notices.route import (
+    router as notices_router,
+)
 from app.routes.users.route import router as users_router
 from app.services.auth.service import TokenVerifier
-from app.services.errors import ServiceError
+from app.services.errors import (
+    BadRequestError,
+    ConflictError,
+    ContentTooLargeError,
+    NotFoundError,
+    PermissionDeniedError,
+    RateLimitedError,
+    RetryLaterError,
+    ServiceConfigurationError,
+    ServiceError,
+    UnsupportedMediaTypeError,
+    UpstreamUnavailableError,
+)
 from app.services.redis import create_redis
 from app.services.storage.service import Storage
 from app.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+
+ERROR_STATUSES: tuple[tuple[type[ServiceError], int], ...] = (
+    (BadRequestError, 400),
+    (PermissionDeniedError, 403),
+    (NotFoundError, 404),
+    (ConflictError, 409),
+    (ContentTooLargeError, 413),
+    (UnsupportedMediaTypeError, 415),
+    (RateLimitedError, 429),
+    (UpstreamUnavailableError, 503),
+)
+UNAVAILABLE_MESSAGE = "A backend dependency is unavailable."
+
+
+def service_error_response(error: ServiceError) -> JSONResponse:
+    for error_type, status_code in ERROR_STATUSES:
+        if isinstance(error, error_type):
+            headers = None
+            if isinstance(error, RetryLaterError) and error.retry_after_seconds:
+                headers = {"Retry-After": str(error.retry_after_seconds)}
+            return JSONResponse(
+                status_code=status_code,
+                content={"message": str(error)},
+                headers=headers,
+            )
+    if isinstance(error, ServiceConfigurationError):
+        logger.warning("Service not configured (%s)", type(error).__name__)
+        return JSONResponse(status_code=503, content={"message": UNAVAILABLE_MESSAGE})
+    logger.error("Unmapped service error (%s)", type(error).__name__)
+    return JSONResponse(status_code=500, content={"message": "Something went wrong."})
 
 
 async def check_service(
@@ -78,6 +140,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers=error.headers,
         )
 
+    @app.exception_handler(ServiceError)
+    async def service_error(request: Request, error: ServiceError) -> JSONResponse:
+        return service_error_response(error)
+
     @app.exception_handler(RequestValidationError)
     async def validation_error(
         request: Request, error: RequestValidationError
@@ -97,6 +163,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     app.include_router(users_router)
+    app.include_router(circle_notices_router)
+    app.include_router(notices_router)
+    app.include_router(circle_events_router)
+    app.include_router(events_router)
+    app.include_router(disaster_circle_router)
+    app.include_router(disaster_alerts_router)
+    app.include_router(check_in_settings_router)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

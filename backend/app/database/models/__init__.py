@@ -7,6 +7,14 @@ from app.database.models.chat import (
     MessageAttachment,
 )
 from app.database.models.circles import Circle, CircleInvite, CircleMembership
+from app.database.models.community import (
+    CheckInSetting,
+    CommunityEvent,
+    DisasterAlert,
+    DisasterCheckIn,
+    EventSignup,
+    Notice,
+)
 from app.database.models.exchanges import (
     Exchange,
     HandoverCheck,
@@ -34,11 +42,16 @@ __all__ = [
     "Base",
     "Block",
     "Category",
+    "CheckInSetting",
     "Circle",
     "CircleInvite",
     "CircleMembership",
+    "CommunityEvent",
     "Conversation",
     "ConversationParticipant",
+    "DisasterAlert",
+    "DisasterCheckIn",
+    "EventSignup",
     "Exchange",
     "FamilyLink",
     "HandoverCheck",
@@ -53,6 +66,7 @@ __all__ = [
     "MediaVariant",
     "Message",
     "MessageAttachment",
+    "Notice",
     "Notification",
     "PairStats",
     "Payment",
