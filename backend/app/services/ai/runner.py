@@ -209,9 +209,6 @@ async def suggest_listing(
     body: ListingDraftInput,
 ) -> ListingDraft:
     async def produce() -> ListingDraft:
-        async with database.session() as session:
-            categories = await CategoryRepository(session).list_all("tool")
-        live = {category.slug: category for category in categories}
         image_url = None
         if body.image_media_id is not None:
             try:
@@ -225,6 +222,9 @@ async def suggest_listing(
                 )
             except MediaNotFoundError:
                 raise ListingPhotoNotFoundError from None
+        async with database.session() as session:
+            categories = await CategoryRepository(session).list_all("tool")
+        live = {category.slug: category for category in categories}
         suggestion = await helpers.draft_listing(
             settings,
             body,

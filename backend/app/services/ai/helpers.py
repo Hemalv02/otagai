@@ -1,9 +1,16 @@
 import json
 import uuid
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from agents import TResponseInputItem
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 from app.services.ai.service import AIDraftError, draft
 from app.settings import Settings
@@ -95,21 +102,43 @@ class ListingDraftInput(BaseModel):
         return self
 
 
+def _capped(limit: int):
+    return BeforeValidator(
+        lambda value: value[:limit] if isinstance(value, str) else value
+    )
+
+
+def _capped_count(count: int):
+    return BeforeValidator(
+        lambda value: value[:count] if isinstance(value, list) else value
+    )
+
+
+def _capped_items(count: int, limit: int):
+    return BeforeValidator(
+        lambda value: (
+            [item[:limit] if isinstance(item, str) else item for item in value[:count]]
+            if isinstance(value, list)
+            else value
+        )
+    )
+
+
 class ListingSuggestion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     recognized: bool
-    title: str
-    category_slug: str | None
-    category_hint: str
-    parts: list[str]
-    safety_notes: str | None
+    title: Annotated[str, _capped(1000)]
+    category_slug: Annotated[str | None, _capped(64)]
+    category_hint: Annotated[str, _capped(1000)]
+    parts: Annotated[list[str], _capped_items(200, 1000)]
+    safety_notes: Annotated[str | None, _capped(8000)]
     suggested_lend_mode: LendSuggestion
-    brand: str | None
-    model: str | None
-    condition: str | None
-    details: str | None
-    unsure_fields: list[UnsureField]
+    brand: Annotated[str | None, _capped(1000)]
+    model: Annotated[str | None, _capped(1000)]
+    condition: Annotated[str | None, _capped(2000)]
+    details: Annotated[str | None, _capped(8000)]
+    unsure_fields: Annotated[list[UnsureField], _capped_count(20)]
 
 
 class ListingDraft(BaseModel):
@@ -152,7 +181,7 @@ async def draft_listing(
                 "role": "user",
                 "content": [
                     {"type": "input_text", "text": payload},
-                    {"type": "input_image", "image_url": image_url, "detail": "low"},
+                    {"type": "input_image", "image_url": image_url, "detail": "high"},
                 ],
             }
         ]

@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -133,7 +135,6 @@ async def test_photo_draft_sends_image_and_maps_category(client, stub_model):
     content = calls[0]["user_input"][0]["content"]
     image = next(part for part in content if part["type"] == "input_image")
     assert image["image_url"].startswith("data:image/webp;base64,")
-    assert image["detail"] == "low"
 
 
 async def test_unknown_category_slug_is_dropped(client, stub_model):
@@ -310,3 +311,91 @@ async def test_rate_limit_applies_before_any_photo_work(
     ]
     assert statuses == [404, 404, 429, 429]
     assert not calls
+
+
+async def test_oversized_markdown_noise_is_bounded_and_fast(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(details="![" * 50000, safety_notes="[" * 50000 + "(" * 50000))
+    started = time.monotonic()
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 200, response.text
+    assert time.monotonic() - started < 1
+    assert len(response.json()["details"] or "") <= 1000
+
+
+async def test_angle_bracket_in_prose_keeps_the_text(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            title="Drill < 500W, cordless",
+            safety_notes="Keep dry\n\nUse only if 2 < 3\nWear gloves",
+        )
+    )
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["title"] == "Drill < 500W, cordless"
+    assert body["safety_notes"] == "Keep dry\nUse only if 2 < 3\nWear gloves"
+
+
+async def test_links_and_contact_details_are_removed(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            title="Drill",
+            brand="Acme example.com",
+            model="X1 evil[.]example",
+            condition="good //evil.test/path",
+            details="javascript:alert(1) data:text/html,hi mailto:a@b.co mail me@evil.example ok",
+            safety_notes="See evil.example/safety now",
+        )
+    )
+    body = (await post(client, token, image_media_id=media_id)).json()
+    flat = " ".join(
+        body[key] for key in ("brand", "model", "condition", "details", "safety_notes")
+    )
+    for banned in ("example", "evil", "javascript:", "data:", "mailto:", "@", "//"):
+        assert banned not in flat
+    assert body["brand"] == "Acme"
+    assert body["details"].endswith("ok")
+
+
+async def test_markdown_emphasis_and_headings_are_stripped(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            title="# **Cordless** `drill`",
+            safety_notes="## Heads up\n**Wear** goggles",
+        )
+    )
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["title"] == "Cordless drill"
+    assert body["safety_notes"] == "Heads up\nWear goggles"
+
+
+async def test_text_request_sends_no_image_to_the_model(client, stub_model):
+    token = await make_user(client, language="en")
+    calls = stub_model(suggestion())
+    await post(client, token, description="A cordless drill")
+    assert "input_image" not in str(calls[0]["user_input"])
+
+
+async def test_photo_is_sent_at_high_detail(client, stub_model):
+    token, media_id = await setup(client)
+    calls = stub_model(suggestion())
+    await post(client, token, image_media_id=media_id)
+    content = calls[0]["user_input"][0]["content"]
+    image = next(part for part in content if part["type"] == "input_image")
+    assert image["detail"] == "high"
+
+
+async def test_stored_run_input_has_no_image_data(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion())
+    await post(client, token, image_media_id=media_id)
+    async with client._transport.app._app.state.database.engine.begin() as connection:
+        rows = (
+            await connection.execute(
+                text("SELECT input::text FROM ai_runs WHERE feature='photo_listing'")
+            )
+        ).all()
+    assert rows
+    assert all("data:" not in row[0] and "base64" not in row[0] for row in rows)
