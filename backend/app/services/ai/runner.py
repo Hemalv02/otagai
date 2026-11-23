@@ -12,13 +12,19 @@ from app.database.models.enums import (
     AiFeature,
     AiRunStatus,
     MediaKind,
+    MediaPurpose,
     MediaStatus,
     MediaVariantName,
 )
 from app.repositories.ai_runs import AiRunRepository
+from app.repositories.categories import CategoryRepository
 from app.repositories.media import MediaRepository
+from app.services.ai import helpers
+from app.services.ai.helpers import ListingDraft, ListingDraftInput
+from app.services.ai.sanitize import clean_list, clean_text
 from app.services.ai.service import AIDraftError
 from app.services.errors import NotFoundError, ServiceConfigurationError, ServiceError
+from app.services.media.service import MediaNotFoundError, ready_image_data_url
 from app.services.ratelimit import enforce
 from app.services.storage.service import Storage
 from app.settings import Settings
@@ -186,4 +192,92 @@ async def transcribe_voice(
         feature=AiFeature.TRANSCRIBE,
         input_payload={"media_id": str(media_id)},
         produce=produce,
+    )
+
+
+class ListingPhotoNotFoundError(NotFoundError):
+    def __init__(self) -> None:
+        super().__init__("Listing photo not found.")
+
+
+async def suggest_listing(
+    database: Database,
+    redis,
+    storage: Storage,
+    settings: Settings,
+    user: User,
+    body: ListingDraftInput,
+) -> ListingDraft:
+    async def produce() -> ListingDraft:
+        async with database.session() as session:
+            categories = await CategoryRepository(session).list_all("tool")
+        live = {category.slug: category for category in categories}
+        image_url = None
+        if body.image_media_id is not None:
+            try:
+                image_url = await ready_image_data_url(
+                    database,
+                    storage,
+                    settings,
+                    user.id,
+                    body.image_media_id,
+                    MediaPurpose.LISTING.value,
+                )
+            except MediaNotFoundError:
+                raise ListingPhotoNotFoundError from None
+        suggestion = await helpers.draft_listing(
+            settings,
+            body,
+            image_url=image_url,
+            categories=[
+                (category.slug, category.names.get("en") or category.slug)
+                for category in categories
+            ],
+        )
+        return _checked_draft(suggestion, live)
+
+    return await run_feature(
+        database,
+        redis,
+        settings,
+        user,
+        feature=AiFeature.PHOTO_LISTING,
+        input_payload={
+            "description": body.description,
+            "language": body.language,
+            "image_media_id": str(body.image_media_id) if body.image_media_id else None,
+        },
+        produce=produce,
+    )
+
+
+def _checked_draft(suggestion: helpers.ListingSuggestion, live: dict) -> ListingDraft:
+    title = clean_text(suggestion.title, 120)
+    recognized = suggestion.recognized and bool(title)
+    category = live.get(suggestion.category_slug or "") if recognized else None
+    risky = bool(category and category.is_risky)
+    lend_mode = "help_only" if risky else suggestion.suggested_lend_mode
+    unsure = list(dict.fromkeys(suggestion.unsure_fields))
+    return ListingDraft(
+        recognized=recognized,
+        title=title if recognized else "",
+        category_hint=clean_text(suggestion.category_hint, 120) if recognized else "",
+        category_id=category.id if category else None,
+        category_is_risky=risky,
+        parts=clean_list(suggestion.parts, 120, 30) if recognized else [],
+        safety_notes=(
+            clean_text(suggestion.safety_notes, 2000, multiline=True) or None
+            if recognized
+            else None
+        ),
+        suggested_lend_mode=lend_mode,
+        brand=clean_text(suggestion.brand, 80) or None if recognized else None,
+        model=clean_text(suggestion.model, 80) or None if recognized else None,
+        condition=clean_text(suggestion.condition, 200) or None if recognized else None,
+        details=(
+            clean_text(suggestion.details, 1000, multiline=True) or None
+            if recognized
+            else None
+        ),
+        unsure_fields=unsure if recognized else [],
     )

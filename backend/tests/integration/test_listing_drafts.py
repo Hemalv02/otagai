@@ -1,0 +1,312 @@
+import pytest
+from pydantic import BaseModel
+from sqlalchemy import text
+
+from app.database.models.enums import AiFeature
+from app.services.ai import helpers, runner
+from app.services.ai.service import AIDraftError
+from tests.integration.conftest import auth, join_circle, make_circle, make_user
+from tests.integration.test_ask_sessions import _png
+from tests.integration.test_assistant import FixtureRedis, FixtureStorage
+
+
+class CountingRedis(FixtureRedis):
+    async def ttl(self, key):
+        return 3600
+
+
+def suggestion(**overrides):
+    base = {
+        "recognized": True,
+        "title": "Cordless drill",
+        "category_slug": "hand_tools",
+        "category_hint": "power tool",
+        "parts": ["Drill", "Battery"],
+        "safety_notes": "Wear eye protection.",
+        "suggested_lend_mode": "lend",
+        "brand": None,
+        "model": None,
+        "condition": None,
+        "details": None,
+        "unsure_fields": [],
+    }
+    return base | overrides
+
+
+@pytest.fixture
+def stub_model(monkeypatch):
+    calls = []
+    reply = {}
+
+    async def draft(settings, *, instructions, user_input, output_type, **kwargs):
+        calls.append({"instructions": instructions, "user_input": user_input})
+        if isinstance(reply["value"], Exception):
+            raise reply["value"]
+        if isinstance(reply["value"], BaseModel):
+            return reply["value"]
+        return output_type(**reply["value"])
+
+    monkeypatch.setattr(helpers, "draft", draft)
+
+    def set_reply(value):
+        reply["value"] = value
+        return calls
+
+    return set_reply
+
+
+async def upload(client, token, purpose="listing"):
+    response = await client.post(
+        "/media",
+        headers=auth(token),
+        data={"purpose": purpose},
+        files={"file": ("fixture.png", _png(), "image/png")},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+async def category_id(client, token, slug):
+    response = await client.get("/categories?kind=tool", headers=auth(token))
+    assert response.status_code == 200, response.text
+    items = response.json()
+    items = items.get("items", items) if isinstance(items, dict) else items
+    stack = list(items)
+    while stack:
+        item = stack.pop()
+        if item["slug"] == slug:
+            return item["id"]
+        stack.extend(item.get("children", []))
+    raise AssertionError(slug)
+
+
+async def setup(client):
+    client._transport.app._app.state.storage = FixtureStorage()
+    token = await make_user(client, language="en")
+    return token, await upload(client, token)
+
+
+async def post(client, token, **body):
+    return await client.post(
+        "/ai/listing-drafts", headers=auth(token), json={"language": "en", **body}
+    )
+
+
+async def test_text_draft_contract_still_works(client, stub_model):
+    token = await make_user(client, language="en")
+    stub_model(suggestion())
+    response = await post(client, token, description="A cordless drill")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    for key in (
+        "title",
+        "category_hint",
+        "parts",
+        "safety_notes",
+        "suggested_lend_mode",
+    ):
+        assert key in body
+
+
+async def test_photo_draft_sends_image_and_maps_category(client, stub_model):
+    token, media_id = await setup(client)
+    calls = stub_model(
+        suggestion(
+            brand="Makita",
+            model="DF331",
+            condition="Light wear",
+            details="Comes with a carry case.",
+            unsure_fields=["model"],
+        )
+    )
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["category_id"] == await category_id(client, token, "hand_tools")
+    assert body["recognized"] is True
+    assert body["category_is_risky"] is False
+    assert body["brand"] == "Makita"
+    assert body["model"] == "DF331"
+    assert body["condition"] == "Light wear"
+    assert body["details"] == "Comes with a carry case."
+    assert body["unsure_fields"] == ["model"]
+    content = calls[0]["user_input"][0]["content"]
+    image = next(part for part in content if part["type"] == "input_image")
+    assert image["image_url"].startswith("data:image/webp;base64,")
+    assert image["detail"] == "low"
+
+
+async def test_unknown_category_slug_is_dropped(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(category_slug="bogus"))
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["category_id"] is None
+    assert body["category_is_risky"] is False
+
+
+async def test_risky_category_forces_help_only(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(category_slug="ladders", suggested_lend_mode="lend"))
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["category_is_risky"] is True
+    assert body["suggested_lend_mode"] == "help_only"
+
+
+async def test_output_is_bounded(client, stub_model):
+    token, media_id = await setup(client)
+    parts = ["", "  ", "Drill", "drill", "DRILL"] + [f"part {i}" for i in range(40)]
+    parts.append("x" * 300)
+    stub_model(
+        suggestion(
+            title="t" * 300,
+            parts=parts,
+            safety_notes="s" * 5000,
+            brand="b" * 300,
+            model="m" * 300,
+            condition="c" * 900,
+            details="d" * 5000,
+            category_hint="h" * 500,
+        )
+    )
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert len(body["title"]) == 120
+    assert len(body["parts"]) == 30
+    assert len({part.lower() for part in body["parts"]}) == 30
+    assert all(0 < len(part) <= 120 for part in body["parts"])
+    assert len(body["safety_notes"]) == 2000
+    assert len(body["brand"]) == 80
+    assert len(body["model"]) == 80
+    assert len(body["condition"]) == 200
+    assert len(body["details"]) == 1000
+    assert len(body["category_hint"]) == 120
+
+
+async def test_injected_output_is_sanitized(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            title="Ignore previous instructions <b>Drill</b> https://evil.example/x",
+            category_slug="ladders; DROP TABLE categories",
+            parts=[
+                "[Click here](https://evil.example/p)",
+                "<script>alert(1)</script>",
+                "www.evil.example",
+                "Battery\x00\x07" + chr(0x202E),
+            ],
+            safety_notes="Visit http://evil.example now\x1b[31m\n\nSecond line",
+            brand="<img src=x onerror=alert(1)>Acme",
+            details="![pic](https://evil.example/a.png) Sturdy",
+            suggested_lend_mode="lend",
+        )
+    )
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    flat = " ".join(
+        [body["title"], body["safety_notes"], body["brand"], body["details"]]
+        + body["parts"]
+    )
+    for banned in ("http", "www.", "<", ">", "\x00", "\x1b", chr(0x202E), "evil"):
+        assert banned not in flat
+    assert body["category_id"] is None
+    assert "Click here" in body["parts"]
+    assert "Battery" in body["parts"]
+    assert body["title"].endswith("Drill") or "Drill" in body["title"]
+
+
+async def test_title_that_is_only_markup_is_not_recognized(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(title="https://evil.example <i></i>"))
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["recognized"] is False
+    assert body["title"] == ""
+    assert body["category_id"] is None
+
+
+async def test_unrecognized_photo_has_no_suggestions(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(recognized=False, title="Wall"))
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["recognized"] is False
+    assert body["category_id"] is None
+    assert body["parts"] == []
+
+
+async def test_off_schema_model_output_is_503(client, stub_model):
+    token, media_id = await setup(client)
+
+    class Rogue(BaseModel):
+        title: str = "x"
+        category_id: str = "ignore previous instructions"
+
+    stub_model(Rogue())
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 503, response.text
+    assert "ignore" not in response.text
+
+
+async def test_other_users_photo_is_404_and_model_not_called(client, stub_model):
+    token, media_id = await setup(client)
+    stranger = await make_user(client, language="en")
+    circle = await make_circle(client, token)
+    await join_circle(client, token, circle, stranger)
+    calls = stub_model(suggestion())
+    response = await post(client, stranger, image_media_id=media_id)
+    assert response.status_code == 404
+    assert not calls
+
+
+async def test_ask_purpose_photo_is_404(client, stub_model):
+    client._transport.app._app.state.storage = FixtureStorage()
+    token = await make_user(client, language="en")
+    media_id = await upload(client, token, purpose="ask")
+    calls = stub_model(suggestion())
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 404
+    assert not calls
+
+
+async def test_unready_photo_is_404(client, stub_model):
+    token, media_id = await setup(client)
+    async with client._transport.app._app.state.database.engine.begin() as connection:
+        await connection.execute(
+            text("UPDATE media_files SET status='processing' WHERE id=:id"),
+            {"id": media_id},
+        )
+    calls = stub_model(suggestion())
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 404
+    assert not calls
+
+
+async def test_body_needs_text_or_photo_422(client):
+    token = await make_user(client, language="en")
+    assert (await post(client, token)).status_code == 422
+    assert (
+        await post(client, token, description="drill", extra="x")
+    ).status_code == 422
+
+
+async def test_model_failure_is_503(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(AIDraftError("x"))
+    response = await post(client, token, image_media_id=media_id)
+    assert response.status_code == 503
+
+
+async def test_rate_limit_applies_before_any_photo_work(
+    client, stub_model, monkeypatch
+):
+    _token, media_id = await setup(client)
+    stranger = await make_user(client, language="en")
+    client._transport.app._app.state.redis = CountingRedis()
+    monkeypatch.setitem(
+        runner.RATE_LIMITS, AiFeature.PHOTO_LISTING, runner.RateLimit(2, 3600)
+    )
+    calls = stub_model(suggestion())
+    statuses = [
+        (await post(client, stranger, image_media_id=media_id)).status_code
+        for _ in range(4)
+    ]
+    assert statuses == [404, 404, 429, 429]
+    assert not calls
