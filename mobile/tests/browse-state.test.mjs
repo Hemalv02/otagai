@@ -13,7 +13,7 @@ import {
   startFirstPage,
   startNextPage,
   visibleBrowseState,
-} from "../src/lib/browse-state.ts";
+} from "../src/lib/listing-workflow.ts";
 
 const row = (id, title = id) => ({
   id,
@@ -128,4 +128,32 @@ test("any filter change produces a new key and fresh state", () => {
 test("search is trimmed and capped at 100 characters", () => {
   assert.equal(normalizeSearch("  drill  "), "drill");
   assert.equal(normalizeSearch("a".repeat(150)).length, 100);
+});
+
+test("a failed refresh of a ready list keeps rows and sets refreshError, not nextError", () => {
+  const key = browseFilterKey(filters);
+  const loaded = firstPageLoaded(initialBrowseState(), key, {
+    items: [row("1")],
+    next_cursor: null,
+  });
+  const failed = firstPageFailed(loaded, key, "transient");
+  assert.equal(failed.status, "ready");
+  assert.equal(failed.refreshError, "transient");
+  assert.equal(failed.nextError, null);
+  assert.deepEqual(failed.rows.map((r) => r.id), ["1"]);
+  assert.equal(startFirstPage(failed, key).refreshError, null);
+});
+
+test("an auth failure on refresh clears rows into the first-page error state", () => {
+  const key = browseFilterKey(filters);
+  const loaded = firstPageLoaded(initialBrowseState(), key, {
+    items: [row("1")],
+    next_cursor: "c2",
+  });
+  const failed = firstPageFailed(loaded, key, "auth");
+  assert.equal(failed.status, "error");
+  assert.equal(failed.firstError, "auth");
+  assert.deepEqual(failed.rows, []);
+  assert.equal(failed.nextCursor, null);
+  assert.equal(failed.refreshError, null);
 });

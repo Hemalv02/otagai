@@ -24,12 +24,15 @@ import {
   nextPageFailed,
   nextPageLoaded,
   normalizeSearch,
+  startFirstPage,
   startNextPage,
   visibleBrowseState,
+  type BrowseErrorKind,
   type BrowseFilters,
   type BrowseState,
   type KindFilter,
-} from "@/lib/browse-state";
+  createLatestRequest,
+} from "@/lib/listing-workflow";
 import { lendingCopy } from "@/lib/lending-copy";
 import {
   categoryName,
@@ -37,7 +40,6 @@ import {
   listingReadCopy,
   requestApiError,
 } from "@/lib/listing-read";
-import { createLatestRequest } from "@/lib/listing-workflow";
 import { myListingsCopy } from "@/lib/my-listings-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -47,7 +49,7 @@ const KIND_FILTERS = ["all", "tool", "skill"] as const;
 
 type CategoryLoad =
   | { state: "loading" }
-  | { state: "error" }
+  | { state: "error"; errorKind: BrowseErrorKind }
   | { state: "ready"; items: CategoryNode[] };
 
 export default function BrowseToolsScreen() {
@@ -142,9 +144,9 @@ export default function BrowseToolsScreen() {
           items: flattenCategories(results.flatMap((result) => result.items)),
         });
       })
-      .catch(() => {
+      .catch((error) => {
         if (!request.isCurrent()) return;
-        setCategoryLoad({ state: "error" });
+        setCategoryLoad({ state: "error", errorKind: requestApiError(error) });
       });
     return () => categoryRequests.cancel();
   }, [account, kindFilter, categoryTick, categoryRequests]);
@@ -186,7 +188,12 @@ export default function BrowseToolsScreen() {
   }
 
   function retryFirstPage() {
-    setBrowse(initialBrowseState(filterKey));
+    const key = filterKey;
+    setBrowse((current) =>
+      current.status === "ready"
+        ? startFirstPage(current, key)
+        : initialBrowseState(key),
+    );
     setRefreshTick((tick) => tick + 1);
   }
 
@@ -275,12 +282,14 @@ export default function BrowseToolsScreen() {
               <Text style={[supportingType, styles.secondary]}>
                 {copy.categoriesError}
               </Text>
-              <Button
-                label={copy.retry}
-                labelStyle={labelType}
-                variant="text"
-                onPress={reloadCategories}
-              />
+              {canRetry(categoryLoad.errorKind) ? (
+                <Button
+                  label={copy.retry}
+                  labelStyle={labelType}
+                  variant="text"
+                  onPress={reloadCategories}
+                />
+              ) : null}
             </View>
           ) : (
             <Host matchContents seedColor={colors.action}>
@@ -355,7 +364,14 @@ export default function BrowseToolsScreen() {
           );
           const catLabel = catNode ? categoryName(catNode, locale) : null;
           const lendLabel = readCopy[listing.lend_mode];
-          const statusLabel = own ? copy.yourListing : lendLabel;
+          const lentOut = listing.status === "lent_out";
+          const statusLabel = [
+            own ? copy.yourListing : null,
+            lendLabel,
+            lentOut ? copy.lentOut : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
 
           return (
             <Pressable
@@ -428,6 +444,21 @@ export default function BrowseToolsScreen() {
         {view.loadingMore ? (
           <View style={styles.centered}>
             <ActivityIndicator accessibilityLabel={copy.loadingListings} />
+          </View>
+        ) : null}
+        {view.refreshError ? (
+          <View style={styles.empty}>
+            <Text style={[supportingType, styles.secondary]}>
+              {copy.refreshError}
+            </Text>
+            {canRetry(view.refreshError) ? (
+              <Button
+                label={copy.retry}
+                labelStyle={labelType}
+                variant="text"
+                onPress={retryFirstPage}
+              />
+            ) : null}
           </View>
         ) : null}
         {view.nextError ? (
