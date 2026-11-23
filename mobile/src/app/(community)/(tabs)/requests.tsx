@@ -6,6 +6,7 @@ import { Button } from "@/components/ui";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestCopy } from "@/lib/request-demo-copy";
+import { activityCopy } from "@/lib/activity-copy";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function RequestsScreen() {
@@ -28,6 +29,12 @@ export default function RequestsScreen() {
 
   return (
     <CommunityScreen title={copy.requests}>
+      <Button
+        label={activityCopy[locale].loans}
+        labelStyle={localizedType("button", locale)}
+        variant="secondary"
+        onPress={() => router.push("/loans")}
+      />
       <Button
         label={copy.newRequest}
         labelStyle={localizedType("button", locale)}

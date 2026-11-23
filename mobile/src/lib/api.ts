@@ -34,6 +34,8 @@ export type UserProfile = {
   simple_mode: boolean;
   text_scale_percent: number;
   push_enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
   status: string;
   created_at: string;
 };
@@ -63,7 +65,48 @@ export type CircleMembership = {
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
 
-type Page<T> = { items: T[]; next_cursor: string | null };
+export type Page<T> = { items: T[]; next_cursor: string | null };
+
+export type Exchange = {
+  id: string;
+  requester_user_id: string;
+  helper_user_id: string;
+  listing_id: string | null;
+  mode: string;
+  status: string;
+  due_at: string | null;
+  scheduled_at: string | null;
+  handed_over_at: string | null;
+  meet_place_note: string | null;
+};
+
+export type LoanExtension = {
+  id: string;
+  exchange_id: string;
+  requested_by_user_id: string;
+  new_due_at: string;
+  message: string | null;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type Notification = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type NotificationPreferences = Pick<
+  UserProfile,
+  "push_enabled" | "quiet_hours_start" | "quiet_hours_end"
+>;
+
+function pageQuery(cursor?: string | null) {
+  return new URLSearchParams({ limit: "20", ...(cursor ? { cursor } : {}) });
+}
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const { data, error } = await supabase.auth.getSession();
@@ -106,6 +149,53 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   getMyProfile: () => request<UserProfile>("/users/me"),
+  updateNotificationPreferences: (preferences: NotificationPreferences) =>
+    request<UserProfile>("/users/me", {
+      method: "PATCH",
+      body: JSON.stringify(preferences),
+    }),
+  listActiveExchanges: (cursor?: string | null) => {
+    const query = pageQuery(cursor);
+    query.set("status", "active");
+    return request<Page<Exchange>>(`/users/me/exchanges?${query}`);
+  },
+  getExchange: (id: string) =>
+    request<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
+  getListing: (id: string) =>
+    request<{ title: string }>(`/listings/${encodeURIComponent(id)}`),
+  listExtensions: (id: string, cursor?: string | null) =>
+    request<Page<LoanExtension>>(
+      `/exchanges/${encodeURIComponent(id)}/extensions?${pageQuery(cursor)}`,
+    ),
+  requestExtension: (
+    id: string,
+    body: { new_due_at: string; message?: string },
+  ) =>
+    request<LoanExtension>(`/exchanges/${encodeURIComponent(id)}/extensions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  decideExtension: (id: string, decision: "accept" | "decline") =>
+    request<LoanExtension>(
+      `/loan-extensions/${encodeURIComponent(id)}/${decision}`,
+      { method: "POST" },
+    ),
+  listNotifications: (unreadOnly: boolean, cursor?: string | null) => {
+    const query = pageQuery(cursor);
+    if (unreadOnly) query.set("unread_only", "true");
+    return request<Page<Notification>>(`/users/me/notifications?${query}`);
+  },
+  getUnreadCounts: () =>
+    request<{ notifications: number; messages: number }>(
+      "/users/me/unread-counts",
+    ),
+  markNotificationRead: (id: string) =>
+    request<Notification>(`/users/me/notifications/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: "{}",
+    }),
+  markAllNotificationsRead: () =>
+    request<void>("/users/me/notifications/read-all", { method: "POST" }),
   createProfile: (profile: NewProfile) =>
     request<UserProfile>("/users", {
       method: "POST",

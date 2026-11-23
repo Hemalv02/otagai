@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { NotificationBell } from "@/components/notification-bell";
 import { Button } from "@/components/ui";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useMemberships } from "@/lib/memberships";
@@ -145,6 +146,7 @@ function CircleHome({ circleName }: { circleName: string }) {
     <CommunityScreen
       title={copy.greet(people[actor].name)}
       eyebrow={circleName}
+      titleAction={<NotificationBell />}
     >
       <View style={styles.actions}>
         <Button

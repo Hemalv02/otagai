@@ -29,6 +29,8 @@ type CommunityScreenProps = PropsWithChildren<{
   back?: boolean;
   keyboard?: boolean;
   footer?: ReactNode;
+  live?: boolean;
+  scroll?: boolean;
 }>;
 
 const text = {
@@ -67,6 +69,8 @@ export function CommunityScreen({
   back,
   keyboard,
   footer,
+  live = false,
+  scroll = true,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -76,6 +80,7 @@ export function CommunityScreen({
   const copy = text[locale];
   const label = localizedType("field-label", locale);
   const body = localizedType("body", locale);
+  const Content = scroll ? ScrollView : View;
 
   function openOptions(kind: "settings" | "language") {
     setSaveFailed(false);
@@ -120,7 +125,7 @@ export function CommunityScreen({
           </View>
         </View>
       </View>
-      {actor === "neighbour" ? (
+      {!live && actor === "neighbour" ? (
         <View style={styles.preview}>
           <Text style={[label, styles.green]}>
             {copy.preview} {people.neighbour.name}
@@ -131,8 +136,13 @@ export function CommunityScreen({
         style={styles.flex}
         behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView
-          contentContainerStyle={[styles.column, styles.content]}
+        <Content
+          contentContainerStyle={
+            scroll ? [styles.column, styles.content] : undefined
+          }
+          style={
+            scroll ? undefined : [styles.column, styles.content, styles.flex]
+          }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
@@ -178,7 +188,7 @@ export function CommunityScreen({
             </View>
           ) : null}
           {children}
-        </ScrollView>
+        </Content>
         {footer ? (
           <View style={[styles.column, styles.footer]}>{footer}</View>
         ) : null}
