@@ -19,7 +19,7 @@ import {
   activityTime,
 } from "@/lib/activity-screen-copy";
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
-import { loanMessageCopy } from "@/lib/loan-message-copy";
+import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -107,8 +107,8 @@ export default function LoanDetailsScreen() {
   const itemName = title || copy.unnamedLoan;
   const messageAction = (
     <Button
-      label={loanMessageCopy[locale].messagePartner(
-        partnerName || loanMessageCopy[locale].neighbour,
+      label={exchangeMessageCopy[locale].messagePartner(
+        partnerName || exchangeMessageCopy[locale].neighbour,
       )}
       variant="text"
       labelStyle={localizedType("field-label", locale)}

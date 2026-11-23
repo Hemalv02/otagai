@@ -8,9 +8,11 @@ import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { HelpExchangeActions } from "@/components/help-exchange-actions";
 import { Button, ErrorText } from "@/components/ui";
 import { assistantError } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
+import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import {
@@ -34,30 +36,35 @@ export default function LiveExchangeScreen() {
   const { locale, t } = useOnboardingText();
   const live = liveRequestCopy[locale];
   const words = assistantCopy[locale];
+  const chat = exchangeMessageCopy[locale];
   const [summary, setSummary] = useState<Summary>();
   const [error, setError] = useState<string>();
   const version = useRef(0);
 
-  const load = useCallback(async () => {
-    const current = ++version.current;
-    setSummary(undefined);
-    setError(undefined);
-    try {
-      const exchange = await requestsApi.exchange(id);
-      const other =
-        exchange.requester_user_id === viewer
-          ? exchange.helper_user_id
-          : exchange.requester_user_id;
-      const [request, person] = await Promise.all([
-        requestsApi.detail(exchange.request_id),
-        requestsApi.person(other).catch(() => null),
-      ]);
-      if (current === version.current)
-        setSummary({ exchange, request, name: person?.display_name });
-    } catch (cause) {
-      if (current === version.current) setError(assistantError(cause, locale));
-    }
-  }, [id, locale, viewer]);
+  const load = useCallback(
+    async (keepSummary = false) => {
+      const current = ++version.current;
+      if (!keepSummary) setSummary(undefined);
+      setError(undefined);
+      try {
+        const exchange = await requestsApi.exchange(id);
+        const other =
+          exchange.requester_user_id === viewer
+            ? exchange.helper_user_id
+            : exchange.requester_user_id;
+        const [request, person] = await Promise.all([
+          requestsApi.detail(exchange.request_id),
+          requestsApi.person(other).catch(() => null),
+        ]);
+        if (current === version.current)
+          setSummary({ exchange, request, name: person?.display_name });
+      } catch (cause) {
+        if (current === version.current)
+          setError(assistantError(cause, locale));
+      }
+    },
+    [id, locale, viewer],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -113,6 +120,33 @@ export default function LiveExchangeScreen() {
               </Text>
             ) : null}
           </View>
+          <Button
+            label={chat.messagePartner(summary.name ?? chat.neighbour)}
+            labelStyle={label}
+            onPress={() =>
+              router.push({
+                pathname: "/exchanges/[id]/messages",
+                params: { id },
+              })
+            }
+          />
+          {viewer ? (
+            <HelpExchangeActions
+              exchange={summary.exchange}
+              viewerId={viewer}
+              onReload={() => load(true)}
+            />
+          ) : null}
+          {error ? (
+            <>
+              <ErrorText>{error}</ErrorText>
+              <Button
+                variant="text"
+                label={t("tryAgain")}
+                onPress={() => void load(true)}
+              />
+            </>
+          ) : null}
           <Button
             variant="text"
             label={words.viewRequest}
