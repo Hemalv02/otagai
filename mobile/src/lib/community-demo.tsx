@@ -7,10 +7,12 @@ import {
   useState,
 } from "react";
 
+import type { WallMaterial } from "@/lib/ask-suggestions";
 import {
   type Actor,
   applyCommunityAction,
   type DemoRequest,
+  type PickupItem,
   type RequestDraft,
   requestSeed,
 } from "@/lib/community-demo-state";
@@ -20,17 +22,20 @@ export type {
   Actor,
   DemoMessage,
   DemoRequest,
+  PickupItem,
   RequestDraft,
 } from "@/lib/community-demo-state";
+
+type AskDraft = Pick<RequestDraft, "title" | "description" | "listingId"> & {
+  wall?: WallMaterial;
+};
 
 type CommunityDemo = {
   actor: Actor;
   people: Record<Actor, { name: string }>;
   requests: DemoRequest[];
-  askDraft: Pick<RequestDraft, "title" | "description" | "listingId"> | null;
-  setAskDraft: (
-    draft: Pick<RequestDraft, "title" | "description" | "listingId"> | null,
-  ) => void;
+  askDraft: AskDraft | null;
+  setAskDraft: (draft: AskDraft | null) => void;
   switchActor: () => void;
   createRequest: (draft: RequestDraft) => string;
   offerHelp: (id: string) => void;
@@ -38,6 +43,9 @@ type CommunityDemo = {
   sendMessage: (id: string, text: string) => void;
   confirmHelp: (id: string) => void;
   sendThanks: (id: string, note: string) => void;
+  savePickup: (id: string, items: PickupItem[]) => void;
+  flagPickup: (id: string, items: PickupItem[], note: string) => void;
+  confirmPickup: (id: string, items: PickupItem[], checked: string[]) => void;
 };
 
 let demoId = 0;
@@ -112,6 +120,12 @@ export function CommunityDemoProvider({
         }),
       confirmHelp: (id) => dispatch({ type: "confirm", id, actor }),
       sendThanks: (id, note) => dispatch({ type: "thanks", id, actor, note }),
+      savePickup: (id, items) =>
+        dispatch({ type: "savePickup", id, actor, items }),
+      flagPickup: (id, items, note) =>
+        dispatch({ type: "flagPickup", id, actor, items, note }),
+      confirmPickup: (id, items, checked) =>
+        dispatch({ type: "confirmPickup", id, actor, items, checked }),
     };
   }, [actor, askDraft, locale, memberName, records]);
 

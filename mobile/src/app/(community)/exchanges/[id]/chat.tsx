@@ -6,7 +6,10 @@ import { CommunityScreen } from "@/components/community-screen";
 import { ExchangeUnavailable, useExchange } from "@/components/exchange-ui";
 import { RequestNotice } from "@/components/request-notice";
 import { Button, Field } from "@/components/ui";
+import { isPickupConfirmed } from "@/lib/community-demo-state";
+import { useDemoListings } from "@/lib/demo-listings";
 import { localizedType } from "@/lib/onboarding-i18n";
+import { pickupCopy } from "@/lib/pickup-copy";
 
 export default function ExchangeChatScreen() {
   const context = useExchange();
@@ -35,7 +38,12 @@ function ExchangeChat({
   const { actor, copy, locale, people, sendMessage } = context;
   const { partner, request } = exchange;
   const [message, setMessage] = useState("");
+  const { listings } = useDemoListings();
   const completed = request.status === "completed";
+  const isLoan = listings.some(
+    (item) => item.id === request.listingId && item.kind === "tool",
+  );
+  const needsPickup = !completed && isLoan && !isPickupConfirmed(request);
 
   function send() {
     if (message.trim()) {
@@ -135,11 +143,21 @@ function ExchangeChat({
         </>
       )}
       <Button
-        label={completed ? copy.completed : copy.confirm}
+        label={
+          needsPickup
+            ? pickupCopy[locale].title
+            : completed
+              ? copy.completed
+              : isLoan
+                ? copy.confirmReturn
+                : copy.confirm
+        }
         labelStyle={localizedType("button", locale)}
         onPress={() =>
           router.navigate({
-            pathname: "/exchanges/[id]/complete",
+            pathname: needsPickup
+              ? "/exchanges/[id]/pickup"
+              : "/exchanges/[id]/complete",
             params: { id: request.id },
           })
         }

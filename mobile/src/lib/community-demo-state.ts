@@ -1,4 +1,5 @@
 import type { Language } from "./api";
+import type { ListingText } from "./demo-listings";
 
 export type Actor = "member" | "neighbour";
 export type RequestDraft = {
@@ -17,6 +18,18 @@ export type DemoMessage = {
   translation?: Partial<Record<Language, string>>;
 };
 
+export type PickupItem = {
+  id: string;
+  label: ListingText;
+  detail?: ListingText;
+};
+
+type PickupChecklist = {
+  items: PickupItem[];
+  confirmedBy: Actor[];
+  issue?: { by: Actor; note: string };
+};
+
 export type DemoRequest = RequestDraft & {
   id: string;
   createdBy: Actor;
@@ -25,6 +38,7 @@ export type DemoRequest = RequestDraft & {
   messages: DemoMessage[];
   confirmedBy: Actor[];
   thankYou?: string;
+  pickup?: PickupChecklist;
 };
 
 export const requestSeed: DemoRequest = {
@@ -40,14 +54,69 @@ export const requestSeed: DemoRequest = {
   confirmedBy: [],
 };
 
+type PickupAction = { id: string; actor: Actor; items: PickupItem[] } & (
+  | { type: "savePickup" }
+  | { type: "confirmPickup"; checked: string[] }
+  | { type: "flagPickup"; note: string }
+);
+
 type CommunityAction =
   | { type: "create"; request: DemoRequest }
   | { type: "offer" | "accept" | "confirm"; id: string; actor: Actor }
   | { type: "message"; id: string; message: DemoMessage }
-  | { type: "thanks"; id: string; actor: Actor; note: string };
+  | { type: "thanks"; id: string; actor: Actor; note: string }
+  | PickupAction;
 
 function isParticipant(request: DemoRequest, actor: Actor) {
   return actor === request.createdBy || actor === request.offer?.by;
+}
+
+export function isPickupConfirmed(request: DemoRequest) {
+  return request.pickup?.confirmedBy.length === 2;
+}
+
+function updatePickup(request: DemoRequest, action: PickupAction): DemoRequest {
+  if (
+    !request.listingId ||
+    request.status !== "matched" ||
+    !isParticipant(request, action.actor) ||
+    isPickupConfirmed(request) ||
+    !action.items.length
+  )
+    return request;
+
+  if (action.type === "savePickup")
+    return { ...request, pickup: { items: action.items, confirmedBy: [] } };
+  if (request.pickup && action.items !== request.pickup.items) return request;
+
+  if (action.type === "flagPickup") {
+    const note = action.note.trim();
+    return note
+      ? {
+          ...request,
+          pickup: {
+            items: action.items,
+            confirmedBy: [],
+            issue: { by: action.actor, note },
+          },
+        }
+      : request;
+  }
+
+  const previouslyConfirmed = request.pickup?.confirmedBy ?? [];
+  if (
+    request.pickup?.issue ||
+    previouslyConfirmed.includes(action.actor) ||
+    !action.items.every(({ id }) => action.checked.includes(id))
+  )
+    return request;
+  return {
+    ...request,
+    pickup: {
+      items: action.items,
+      confirmedBy: [...previouslyConfirmed, action.actor],
+    },
+  };
 }
 
 function updateRequest(
@@ -55,6 +124,10 @@ function updateRequest(
   action: Exclude<CommunityAction, { type: "create" }>,
 ): DemoRequest {
   switch (action.type) {
+    case "savePickup":
+    case "flagPickup":
+    case "confirmPickup":
+      return updatePickup(request, action);
     case "offer":
       return request.status === "open" &&
         action.actor !== request.createdBy &&

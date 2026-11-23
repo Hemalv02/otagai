@@ -7,8 +7,10 @@ import { CommunityScreen } from "@/components/community-screen";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
 import { useCommunityDemo } from "@/lib/community-demo";
+import { isPickupConfirmed } from "@/lib/community-demo-state";
 import { listingText, useDemoListings } from "@/lib/demo-listings";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { pickupCopy } from "@/lib/pickup-copy";
 import { requestCopy } from "@/lib/request-demo-copy";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -41,6 +43,8 @@ export default function RequestDetailScreen() {
   const matchedPerson = request.status === "matched" ? person : undefined;
   const listing = listings.find((item) => item.id === request.listingId);
   const isLoan = listing?.kind === "tool";
+  const pickupDone = isPickupConfirmed(request);
+  const needsPickup = isLoan && !pickupDone;
   const body = localizedType("body", locale);
   const supporting = localizedType("supporting", locale);
   const fieldLabel = localizedType("field-label", locale);
@@ -93,12 +97,14 @@ export default function RequestDetailScreen() {
                   }
                 />
                 <Button
-                  label={copy.finish}
+                  label={needsPickup ? pickupCopy[locale].title : copy.finish}
                   labelStyle={button}
                   variant="secondary"
                   onPress={() =>
                     router.push({
-                      pathname: "/exchanges/[id]/complete",
+                      pathname: needsPickup
+                        ? "/exchanges/[id]/pickup"
+                        : "/exchanges/[id]/complete",
                       params: { id: request.id },
                     })
                   }
@@ -199,6 +205,19 @@ export default function RequestDetailScreen() {
               : listingText(listing.title, locale)
           }
           locale={locale}
+        />
+      ) : null}
+      {isLoan && pickupDone ? (
+        <Button
+          label={pickupCopy[locale].view}
+          labelStyle={fieldLabel}
+          variant="text"
+          onPress={() =>
+            router.push({
+              pathname: "/exchanges/[id]/pickup",
+              params: { id: request.id },
+            })
+          }
         />
       ) : null}
       {showLocation ? (

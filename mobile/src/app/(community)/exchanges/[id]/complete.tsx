@@ -6,8 +6,10 @@ import { CommunityScreen } from "@/components/community-screen";
 import { ExchangeUnavailable, useExchange } from "@/components/exchange-ui";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
+import { isPickupConfirmed } from "@/lib/community-demo-state";
 import { useDemoListings } from "@/lib/demo-listings";
 import { localizedType } from "@/lib/onboarding-i18n";
+import { pickupCopy } from "@/lib/pickup-copy";
 
 const tanakaPortrait = require("../../../../../assets/images/lending-tanaka-thumbnail.png");
 
@@ -28,6 +30,28 @@ export default function CompleteExchangeScreen() {
   const confirmed = request.confirmedBy.includes(actor);
   const partnerConfirmed = request.confirmedBy.includes(partner);
   const completed = request.status === "completed";
+  const pickup = pickupCopy[locale];
+  if (isLoan && !completed && !isPickupConfirmed(request)) {
+    return (
+      <CommunityScreen title={pickup.title} back>
+        <RequestNotice
+          title={pickup.title}
+          detail={pickup.required}
+          locale={locale}
+        />
+        <Button
+          label={pickup.view}
+          labelStyle={localizedType("button", locale)}
+          onPress={() =>
+            router.navigate({
+              pathname: "/exchanges/[id]/pickup",
+              params: { id: request.id },
+            })
+          }
+        />
+      </CommunityScreen>
+    );
+  }
   const partnerName = people[partner].name;
   const canThank =
     completed && actor === request.createdBy && !request.thankYou;

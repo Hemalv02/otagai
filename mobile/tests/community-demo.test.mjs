@@ -119,3 +119,84 @@ test("messages, confirmation, and thank-you follow the exchange state", () => {
   });
   assert.equal(thanked[0].thankYou, "Thank you!");
 });
+
+test("both sides confirm the same pickup checklist, and an unresolved difference blocks pickup", () => {
+  const id = "drill-loan";
+  const items = [
+    { id: "tool", label: "Drill" },
+    { id: "bit", label: "Two bits" },
+  ];
+  const current = [
+    {
+      ...requestSeed,
+      id,
+      listingId: "hammer-drill",
+      status: "matched",
+      createdBy: "member",
+      offer: { by: "neighbour" },
+    },
+  ];
+  const confirm = (records, actor, checked = ["tool", "bit"]) =>
+    applyCommunityAction(records, {
+      type: "confirmPickup",
+      id,
+      actor,
+      items,
+      checked,
+    });
+
+  assert.equal(confirm(current, "member", ["tool"]), current);
+  const first = confirm(current, "member");
+  assert.deepEqual(first[0].pickup.confirmedBy, ["member"]);
+
+  const reported = applyCommunityAction(first, {
+    type: "flagPickup",
+    id,
+    actor: "neighbour",
+    items,
+    note: " One bit is missing. ",
+  });
+  assert.deepEqual(reported[0].pickup.confirmedBy, []);
+  assert.deepEqual(reported[0].pickup.issue, {
+    by: "neighbour",
+    note: "One bit is missing.",
+  });
+  assert.equal(confirm(reported, "member"), reported);
+
+  const updatedItems = [
+    { id: "tool", label: "Drill" },
+    { id: "bit", label: "One bit" },
+  ];
+  const revised = applyCommunityAction(reported, {
+    type: "savePickup",
+    id,
+    actor: "neighbour",
+    items: updatedItems,
+  });
+  assert.equal(revised[0].pickup.issue, undefined);
+  assert.equal(confirm(revised, "member"), revised);
+  const borrower = applyCommunityAction(revised, {
+    type: "confirmPickup",
+    id,
+    actor: "member",
+    items: updatedItems,
+    checked: ["tool", "bit"],
+  });
+  const both = applyCommunityAction(borrower, {
+    type: "confirmPickup",
+    id,
+    actor: "neighbour",
+    items: updatedItems,
+    checked: ["tool", "bit"],
+  });
+  assert.deepEqual(both[0].pickup.confirmedBy, ["member", "neighbour"]);
+  assert.equal(
+    applyCommunityAction(both, {
+      type: "savePickup",
+      id,
+      actor: "member",
+      items,
+    }),
+    both,
+  );
+});
