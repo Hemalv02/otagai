@@ -31,10 +31,12 @@ Branch: `feature/family-home`. Spec: `screens.md` section 7, task notes for `mit
   - Link standing: pending (yours or theirs), can view, activity hidden, or no permission.
   - Request-entry transitions and date formatting.
   - It also filters out rows whose requester is not the selected account.
-- `src/components/family-ui.tsx` contains:
-  - The account switcher: a radio group showing a "Requests hidden" mark.
-  - Linked-family status rows.
-  - Request cards that expand inline, because there is no live request detail route yet.
+- `src/components/family-ui.tsx` follows the Figma frame "33 · Family home" (Family tab, account switcher, open request cards):
+  - "Choose who you're helping" list: a 56px round avatar, the name, a detail line ("Your account · <circle>", "Can see requests" or "Requests hidden"), and "Active" or "Switch" on the right. It is a radio group.
+  - Pending links and links without a grant are status rows in the same list, marked "Pending" or "No access".
+  - Open request rows: a 56px rounded-square thumbnail, the request text, the kind and time, and "Open" on the right. Each row expands inline because there is no live request detail route yet.
+  - The avatar and request photos in the frame are sample data. The APIs used here return no images, so the slots show initials.
+  - The frame's "Manage requests", "Review permissions" and "Add a family member" belong to screens 34 and 35 and are not part of this task.
   - Skeleton loaders and notices.
 - `src/lib/family-copy.ts` holds the copy in English, Japanese and Bengali.
 - `CommunityScreen` gained two opt-in props:
@@ -52,8 +54,8 @@ Branch: `feature/family-home`. Spec: `screens.md` section 7, task notes for `mit
 | TypeScript | `pnpm exec tsc --noEmit` | clean |
 | ESLint (with the React Compiler rules) | `pnpm lint` | clean |
 | Prettier | `pnpm exec prettier --check src` | clean |
-| Mobile unit tests | `node --test tests/*.test.mjs` | 27 passed (13 of them new) |
-| Browser end-to-end run | see below | 41 of 41 checks passed |
+| Mobile unit tests | `node --test tests/*.test.mjs` | 28 passed (14 of them new) |
+| Browser end-to-end run | see below | 45 of 45 checks passed |
 
 Mutation check: with the new `actor.require` line removed, exactly three tests fail. They are the caretaker without the scope, the scope removed after the grant, and the managed account with the scope off.
 
@@ -84,6 +86,7 @@ This ran the real Expo web bundle in Chrome against the real FastAPI app on a di
 - Removing the scope: the API returns `403`. In the app the rows disappear and the account is marked "Requests hidden".
 - A user with no family sees the empty states for family and for requests.
 - Failed family and request loads show errors, and **Try again** recovers them.
+- The Figma copy renders: "Your family", "Choose who you're helping", "Your account · <circle>", and "Active" on the selected row only.
 - Japanese and Bengali headings render.
 
 ## Local setup with real accounts
