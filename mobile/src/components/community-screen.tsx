@@ -1,11 +1,17 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { type PropsWithChildren, type ReactNode, useState } from "react";
+import {
+  type PropsWithChildren,
+  type ReactElement,
+  type ReactNode,
+  useState,
+} from "react";
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  type RefreshControlProps,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +35,8 @@ type CommunityScreenProps = PropsWithChildren<{
   back?: boolean;
   keyboard?: boolean;
   footer?: ReactNode;
+  live?: boolean;
+  refreshControl?: ReactElement<RefreshControlProps>;
 }>;
 
 const text = {
@@ -67,6 +75,8 @@ export function CommunityScreen({
   back,
   keyboard,
   footer,
+  live = false,
+  refreshControl,
 }: CommunityScreenProps) {
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -120,7 +130,7 @@ export function CommunityScreen({
           </View>
         </View>
       </View>
-      {actor === "neighbour" ? (
+      {actor === "neighbour" && !live ? (
         <View style={styles.preview}>
           <Text style={[label, styles.green]}>
             {copy.preview} {people.neighbour.name}
@@ -135,6 +145,7 @@ export function CommunityScreen({
           contentContainerStyle={[styles.column, styles.content]}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          refreshControl={refreshControl}
         >
           {back ? (
             <Pressable

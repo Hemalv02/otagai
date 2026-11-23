@@ -4,9 +4,14 @@ import { useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors } from "@/theme/tokens.json";
 
 const labels = {
-  en: { home: "Home", browse: "Browse", requests: "Requests" },
-  ja: { home: "ホーム", browse: "探す", requests: "依頼" },
-  bn: { home: "হোম", browse: "খুঁজুন", requests: "অনুরোধ" },
+  en: {
+    home: "Home",
+    browse: "Browse",
+    requests: "Requests",
+    family: "Family",
+  },
+  ja: { home: "ホーム", browse: "探す", requests: "依頼", family: "家族" },
+  bn: { home: "হোম", browse: "খুঁজুন", requests: "অনুরোধ", family: "পরিবার" },
 };
 
 export default function CommunityTabs() {
@@ -45,6 +50,13 @@ export default function CommunityTabs() {
           md="assignment"
         />
         <NativeTabs.Trigger.Label>{copy.requests}</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="family" accessibilityLabel={copy.family}>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "person.2", selected: "person.2.fill" }}
+          md="group"
+        />
+        <NativeTabs.Trigger.Label>{copy.family}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
