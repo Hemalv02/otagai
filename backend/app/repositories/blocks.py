@@ -1,11 +1,17 @@
 import uuid
 
-from sqlalchemy import or_, select
+from sqlalchemy import CompoundSelect, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import Block, User
 from app.repositories.pagination import PageRequest, PageResult, paginate
+
+
+def blocked_user_ids(user_id: uuid.UUID) -> CompoundSelect[tuple[uuid.UUID]]:
+    outgoing = select(Block.blocked_user_id).where(Block.blocker_user_id == user_id)
+    incoming = select(Block.blocker_user_id).where(Block.blocked_user_id == user_id)
+    return outgoing.union(incoming)
 
 
 class BlockRepository:
@@ -28,9 +34,7 @@ class BlockRepository:
         return await self._session.scalar(statement.limit(1)) is not None
 
     async def blocked_either_way(self, user_id: uuid.UUID) -> list[uuid.UUID]:
-        outgoing = select(Block.blocked_user_id).where(Block.blocker_user_id == user_id)
-        incoming = select(Block.blocker_user_id).where(Block.blocked_user_id == user_id)
-        result = await self._session.scalars(outgoing.union(incoming))
+        result = await self._session.scalars(blocked_user_ids(user_id))
         return list(result)
 
     async def create(

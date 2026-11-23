@@ -64,15 +64,15 @@ class ExchangeRepository:
             self._session, statement, page, Exchange.created_at, Exchange.id
         )
 
-    async def active_for_request(self, request_id: uuid.UUID) -> Exchange | None:
-        statement = (
-            select(Exchange)
-            .where(
-                Exchange.request_id == request_id,
-                Exchange.status != ExchangeStatus.CANCELLED.value,
-            )
-            .with_for_update()
+    async def active_for_request(
+        self, request_id: uuid.UUID, *, lock: bool = True
+    ) -> Exchange | None:
+        statement = select(Exchange).where(
+            Exchange.request_id == request_id,
+            Exchange.status != ExchangeStatus.CANCELLED.value,
         )
+        if lock:
+            statement = statement.with_for_update()
         return await self._session.scalar(statement)
 
 

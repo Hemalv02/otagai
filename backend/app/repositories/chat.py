@@ -3,9 +3,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Exists, Select, SQLColumnExpression, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.database.models import (
     Conversation,
@@ -13,6 +14,7 @@ from app.database.models import (
     Message,
     MessageAttachment,
 )
+from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
@@ -24,6 +26,21 @@ class DuplicateMessageError(Exception):
 def direct_key(user_a: uuid.UUID, user_b: uuid.UUID) -> str:
     low, high = sorted((str(user_a), str(user_b)))
     return f"{low}:{high}"
+
+
+def _blocked_participant(
+    conversation_id: uuid.UUID | SQLColumnExpression[uuid.UUID],
+    user_id: uuid.UUID,
+) -> Exists:
+    other = aliased(ConversationParticipant)
+    return (
+        select(other.user_id)
+        .where(
+            other.conversation_id == conversation_id,
+            other.user_id.in_(blocked_user_ids(user_id)),
+        )
+        .exists()
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +93,15 @@ class ConversationRepository:
         )
         return list(await self._session.scalars(statement))
 
+    async def has_blocked_participant(
+        self, conversation_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        return bool(
+            await self._session.scalar(
+                select(_blocked_participant(conversation_id, user_id))
+            )
+        )
+
     async def get_participant(
         self, conversation_id: uuid.UUID, user_id: uuid.UUID
     ) -> ConversationParticipant | None:
@@ -124,6 +150,7 @@ class ConversationRepository:
                 ConversationParticipant.left_at.is_(None),
                 ConversationParticipant.archived_at.is_(None),
                 Conversation.last_message_at.is_not(None),
+                ~_blocked_participant(Conversation.id, user_id),
             )
         )
         return await paginate(
@@ -280,6 +307,7 @@ class MessageRepository:
             .where(
                 Message.sender_user_id != user_id,
                 Message.deleted_at.is_(None),
+                ~_blocked_participant(Message.conversation_id, user_id),
                 (last_read.c.last_read_at.is_(None))
                 | (Message.created_at > last_read.c.last_read_at),
             )

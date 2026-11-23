@@ -139,6 +139,8 @@ async def upload_media(
 async def _can_view(session, viewer_id: uuid.UUID, media: MediaFile) -> bool:
     if viewer_id in (media.owner_user_id, media.uploaded_by_user_id):
         return True
+    if media.purpose == MediaPurpose.ASK.value:
+        return False
     if await BlockRepository(session).is_blocked_either_way(
         viewer_id, media.owner_user_id
     ):

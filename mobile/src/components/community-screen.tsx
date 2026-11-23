@@ -1,11 +1,19 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { type PropsWithChildren, type ReactNode, useState } from "react";
+import {
+  type ComponentRef,
+  type PropsWithChildren,
+  type ReactElement,
+  type ReactNode,
+  type Ref,
+  useState,
+} from "react";
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
+  type RefreshControlProps,
   ScrollView,
   StyleSheet,
   Text,
@@ -32,7 +40,12 @@ type CommunityScreenProps = PropsWithChildren<{
   backAction?: ReactNode;
   keyboard?: boolean;
   footer?: ReactNode;
-  live?: boolean;
+  scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
+  onContentSizeChange?: (width: number, height: number) => void;
+  showDemoPreview?: boolean;
+  fixedTitle?: boolean;
+  compactTitle?: boolean;
+  refreshControl?: ReactElement<RefreshControlProps>;
   scroll?: boolean;
   design?: boolean;
   renderList?: (header: ReactNode) => ReactNode;
@@ -76,7 +89,12 @@ export function CommunityScreen({
   backAction,
   keyboard,
   footer,
-  live = false,
+  scrollRef,
+  onContentSizeChange,
+  showDemoPreview = true,
+  fixedTitle = false,
+  compactTitle = false,
+  refreshControl,
   scroll = true,
   design = false,
   renderList,
@@ -89,7 +107,6 @@ export function CommunityScreen({
   const copy = text[locale];
   const label = localizedType("field-label", locale);
   const body = localizedType("body", locale);
-  const Content = scroll ? ScrollView : View;
 
   function openOptions(kind: "settings" | "language") {
     setSaveFailed(false);
@@ -121,6 +138,47 @@ export function CommunityScreen({
     </Pressable>
   ) : null;
 
+  const heading =
+    title || eyebrow || subtitle ? (
+      <View
+        style={[
+          styles.heading,
+          fixedTitle && styles.fixedHeading,
+          design && styles.designHeading,
+        ]}
+      >
+        {eyebrow ? <Text style={[label, styles.green]}>{eyebrow}</Text> : null}
+        {title || titleAction ? (
+          <View
+            style={[
+              styles.titleRow,
+              inlineTitleAction && styles.inlineTitleRow,
+            ]}
+          >
+            {title ? (
+              <Text
+                accessibilityRole="header"
+                style={[
+                  localizedType(
+                    compactTitle ? "field-label" : "screen-title",
+                    locale,
+                  ),
+                  styles.ink,
+                  styles.title,
+                ]}
+              >
+                {title}
+              </Text>
+            ) : null}
+            {titleAction}
+          </View>
+        ) : null}
+        {subtitle ? (
+          <Text style={[body, styles.secondary]}>{subtitle}</Text>
+        ) : null}
+      </View>
+    ) : null;
+
   const screenContent = (
     <>
       {back && backAction ? (
@@ -131,38 +189,7 @@ export function CommunityScreen({
       ) : (
         backButton
       )}
-      {title || eyebrow || subtitle ? (
-        <View style={[styles.heading, design && styles.designHeading]}>
-          {eyebrow ? (
-            <Text style={[label, styles.green]}>{eyebrow}</Text>
-          ) : null}
-          {title || titleAction ? (
-            <View
-              style={[
-                styles.titleRow,
-                inlineTitleAction && styles.inlineTitleRow,
-              ]}
-            >
-              {title ? (
-                <Text
-                  accessibilityRole="header"
-                  style={[
-                    localizedType("screen-title", locale),
-                    styles.ink,
-                    styles.title,
-                  ]}
-                >
-                  {title}
-                </Text>
-              ) : null}
-              {titleAction}
-            </View>
-          ) : null}
-          {subtitle ? (
-            <Text style={[body, styles.secondary]}>{subtitle}</Text>
-          ) : null}
-        </View>
-      ) : null}
+      {!fixedTitle && heading}
       {children}
     </>
   );
@@ -195,38 +222,39 @@ export function CommunityScreen({
           </View>
         </View>
       </View>
-      {!live && actor === "neighbour" ? (
+      {showDemoPreview && actor === "neighbour" ? (
         <View style={styles.preview}>
           <Text style={[label, styles.green]}>
             {copy.preview} {people.neighbour.name}
           </Text>
         </View>
       ) : null}
+      {fixedTitle ? heading : null}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={keyboard && Platform.OS === "ios" ? "padding" : undefined}
       >
         {renderList ? (
           renderList(screenContent)
-        ) : (
-          <Content
-            contentContainerStyle={
-              scroll
-                ? [
-                    styles.column,
-                    styles.content,
-                    design && styles.designContent,
-                  ]
-                : undefined
-            }
-            style={
-              scroll ? undefined : [styles.column, styles.content, styles.flex]
-            }
+        ) : scroll ? (
+          <ScrollView
+            ref={scrollRef}
+            onContentSizeChange={onContentSizeChange}
+            contentContainerStyle={[
+              styles.column,
+              styles.content,
+              design && styles.designContent,
+            ]}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            refreshControl={refreshControl}
           >
             {screenContent}
-          </Content>
+          </ScrollView>
+        ) : (
+          <View style={[styles.column, styles.content, styles.flex]}>
+            {screenContent}
+          </View>
         )}
         {footer ? (
           <View style={[styles.column, styles.footer]}>{footer}</View>
@@ -343,6 +371,14 @@ const styles = StyleSheet.create({
   },
   content: { padding: spacing["screen-gutter"], gap: spacing["card-inset"] },
   heading: { gap: spacing["related-gap"] },
+  fixedHeading: {
+    width: "100%",
+    maxWidth: 540,
+    alignSelf: "center",
+    paddingHorizontal: spacing["screen-gutter"],
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
   titleRow: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -1,10 +1,10 @@
 import type { Language, Notification } from "@/lib/api";
 
 const en = {
-  loans: "Active loans",
+  loans: "Loans",
   loan: "Loan details",
   unnamedLoan: "Borrowed item",
-  noLoans: "No active loans right now.",
+  noLoans: "No current loans.",
   due: "Return by",
   noDate: "Not arranged yet",
   pickup: "Pickup",
@@ -46,16 +46,16 @@ const en = {
   read: "Read",
   viewLoan: "View loan",
   quiet: "Quiet hours",
-  quietHelp:
-    "Choose local times in your profile’s time zone. Overnight ranges are supported.",
-  start: "Start time (HH:mm)",
-  end: "End time (HH:mm)",
+  quietHelp: "Choose when to pause and resume push notifications.",
+  start: "Start time",
+  end: "End time",
   pause: "Pause push notifications",
   pauseHelp:
     "Your in-app inbox stays available while push notifications are paused.",
   save: "Save preferences",
   saved: "Preferences saved.",
-  timeError:
+  timeError: "Choose different start and end times.",
+  typedTimeError:
     "Enter both times in 24-hour HH:mm format, with different start and end times.",
   loading: "Loading…",
   retry: "Try again",
@@ -72,7 +72,7 @@ type ActivityCopy = typeof en;
 export const activityCopy: Record<Language, ActivityCopy> = {
   en,
   ja: {
-    loans: "貸し借り中",
+    loans: "貸し借り",
     loan: "貸し借りの詳細",
     unnamedLoan: "借りているもの",
     noLoans: "現在、貸し借り中のものはありません。",
@@ -118,15 +118,15 @@ export const activityCopy: Record<Language, ActivityCopy> = {
     read: "既読",
     viewLoan: "貸し借りを見る",
     quiet: "通知を休む時間",
-    quietHelp:
-      "プロフィールのタイムゾーンで時刻を選んでください。日付をまたぐ時間帯も設定できます。",
-    start: "開始時刻（HH:mm）",
-    end: "終了時刻（HH:mm）",
+    quietHelp: "プッシュ通知を停止する時刻と再開する時刻を選んでください。",
+    start: "開始時刻",
+    end: "終了時刻",
     pause: "プッシュ通知を一時停止",
     pauseHelp: "プッシュ通知を止めても、アプリ内のお知らせは確認できます。",
     save: "設定を保存",
     saved: "設定を保存しました。",
-    timeError:
+    timeError: "開始時刻と終了時刻は別の時刻を選んでください。",
+    typedTimeError:
       "開始と終了を異なる時刻で、24時間表記のHH:mm形式で入力してください。",
     loading: "読み込み中…",
     retry: "再試行",
@@ -139,7 +139,7 @@ export const activityCopy: Record<Language, ActivityCopy> = {
     noLongerActive: "この貸し借りは終了しています。",
   },
   bn: {
-    loans: "চলমান ধার",
+    loans: "ধার দেওয়া ও নেওয়া",
     loan: "ধারের বিবরণ",
     unnamedLoan: "ধার নেওয়া জিনিস",
     noLoans: "এখন কোনো চলমান ধার নেই।",
@@ -166,7 +166,8 @@ export const activityCopy: Record<Language, ActivityCopy> = {
     decline: "অনুরোধ ফিরিয়ে দিন",
     noHistory: "এখনো সময় বাড়ানোর অনুরোধ নেই।",
     invalidDate: "বর্তমান ফেরতের সময়ের পরের একটি সঠিক ভবিষ্যৎ তারিখ দিন।",
-    conflict: "ধারের তথ্য বদলেছে। সর্বশেষ তথ্য ও অনুরোধের ইতিহাস আবার আনা হয়েছে।",
+    conflict:
+      "ধারের তথ্য বদলেছে। সর্বশেষ তথ্য ও অনুরোধের ইতিহাস আবার আনা হয়েছে।",
     unavailable:
       "এই ধারের তথ্য পাওয়া যাচ্ছে না। এটি শেষ হয়েছে বা আপনার দেখার অনুমতি নেই।",
     draft: (from, to) =>
@@ -183,15 +184,17 @@ export const activityCopy: Record<Language, ActivityCopy> = {
     read: "পঠিত",
     viewLoan: "ধারের বিবরণ দেখুন",
     quiet: "নীরব সময়",
-    quietHelp:
-      "আপনার প্রোফাইলের সময় অঞ্চল অনুযায়ী সময় বেছে নিন। রাত পেরিয়ে সকাল পর্যন্ত সময়ও দেওয়া যাবে।",
-    start: "শুরুর সময় (HH:mm)",
-    end: "শেষের সময় (HH:mm)",
+    quietHelp: "পুশ বিজ্ঞপ্তি কখন বন্ধ ও আবার চালু হবে তা বেছে নিন।",
+    start: "শুরুর সময়",
+    end: "শেষের সময়",
     pause: "পুশ বিজ্ঞপ্তি বিরতি দিন",
-    pauseHelp: "পুশ বিজ্ঞপ্তি বন্ধ থাকলেও অ্যাপের ভেতরে বিজ্ঞপ্তি দেখতে পারবেন।",
+    pauseHelp:
+      "পুশ বিজ্ঞপ্তি বন্ধ থাকলেও অ্যাপের ভেতরে বিজ্ঞপ্তি দেখতে পারবেন।",
     save: "পছন্দ সংরক্ষণ করুন",
     saved: "পছন্দ সংরক্ষণ হয়েছে।",
-    timeError: "২৪ ঘণ্টার HH:mm বিন্যাসে শুরু ও শেষের ভিন্ন দুটি সময় দিন।",
+    timeError: "শুরু ও শেষের জন্য আলাদা সময় বেছে নিন।",
+    typedTimeError:
+      "২৪ ঘণ্টার HH:mm বিন্যাসে শুরু ও শেষের ভিন্ন দুটি সময় দিন।",
     loading: "লোড হচ্ছে…",
     retry: "আবার চেষ্টা করুন",
     refresh: "আবার আনুন",

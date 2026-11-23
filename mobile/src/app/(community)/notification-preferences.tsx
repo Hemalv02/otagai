@@ -1,3 +1,4 @@
+import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -17,15 +18,30 @@ import { Button, ErrorText, Field } from "@/components/ui";
 import { api, type UserProfile } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
 import {
+  activityLocale,
   activityScreenCopy,
   quietHoursSummary,
 } from "@/lib/activity-screen-copy";
 import { useLiveResource } from "@/lib/live-resource";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
-import { colors, spacing } from "@/theme/tokens.json";
+import { colors, controls, spacing } from "@/theme/tokens.json";
 
 const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+const defaultStart = "22:00";
+const defaultEnd = "07:00";
+type QuietTime = "start" | "end";
+
+function pickerDate(time: string) {
+  const [hours, minutes] = time.split(":").map(Number);
+  return new Date(2000, 0, 1, hours, minutes);
+}
+
+function pickerTime(date: Date) {
+  return [date.getHours(), date.getMinutes()]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
 
 export default function NotificationPreferencesScreen() {
   const { locale } = useOnboardingText();
@@ -34,10 +50,9 @@ export default function NotificationPreferencesScreen() {
   const preferences = useLiveResource(api.getMyProfile);
   return (
     <CommunityScreen
-      live
+      showDemoPreview={false}
       design
       back
-      keyboard
       title={copy.notifications}
       subtitle={screen.preferencesBody}
     >
@@ -71,11 +86,14 @@ function PreferencesForm({
     Boolean(initial.quiet_hours_start && initial.quiet_hours_end),
   );
   const [start, setStart] = useState(
-    initial.quiet_hours_start?.slice(0, 5) ?? "",
+    initial.quiet_hours_start?.slice(0, 5) ?? defaultStart,
   );
-  const [end, setEnd] = useState(initial.quiet_hours_end?.slice(0, 5) ?? "");
+  const [end, setEnd] = useState(
+    initial.quiet_hours_end?.slice(0, 5) ?? defaultEnd,
+  );
   const [paused, setPaused] = useState(!initial.push_enabled);
   const [editing, setEditing] = useState(false);
+  const [activePicker, setActivePicker] = useState<QuietTime | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [timeError, setTimeError] = useState(false);
@@ -88,6 +106,22 @@ function PreferencesForm({
     [screen.thanks, screen.thanksDetail],
   ];
   const disabled = saving || loading;
+  const devicePicker = Platform.OS === "ios" || Platform.OS === "android";
+  const timeLocale = locale === "en" ? "en-US" : activityLocale(locale);
+  const timeFormat = new Intl.DateTimeFormat(timeLocale, {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: locale === "en" ? "h12" : "h23",
+  });
+  const timeFields = [
+    { key: "start", label: copy.start, value: start, update: setStart },
+    { key: "end", label: copy.end, value: end, update: setEnd },
+  ] as const;
+
+  function closeEditor() {
+    setActivePicker(null);
+    setEditing(false);
+  }
 
   function change(update: () => void) {
     update();
@@ -117,8 +151,8 @@ function PreferencesForm({
       });
       setProfile(result);
       setQuiet(Boolean(result.quiet_hours_start && result.quiet_hours_end));
-      setStart(result.quiet_hours_start?.slice(0, 5) ?? "");
-      setEnd(result.quiet_hours_end?.slice(0, 5) ?? "");
+      setStart(result.quiet_hours_start?.slice(0, 5) ?? defaultStart);
+      setEnd(result.quiet_hours_end?.slice(0, 5) ?? defaultEnd);
       setPaused(!result.push_enabled);
       setSaved(true);
     } catch {
@@ -186,7 +220,7 @@ function PreferencesForm({
         visible={editing}
         transparent
         animationType="slide"
-        onRequestClose={() => setEditing(false)}
+        onRequestClose={closeEditor}
       >
         <KeyboardAvoidingView
           style={styles.scrim}
@@ -210,40 +244,100 @@ function PreferencesForm({
                   label={copy.quiet}
                   value={quiet}
                   disabled={disabled}
-                  onChange={(value) => change(() => setQuiet(value))}
+                  onChange={(value) =>
+                    change(() => {
+                      setQuiet(value);
+                      setActivePicker(null);
+                    })
+                  }
                 />
               </View>
               <ActivityText>{copy.quietHelp}</ActivityText>
               <ActivityText>
                 {copy.timeZone}: {initial.timezone}
               </ActivityText>
-              {quiet ? (
-                <>
-                  <Field
-                    label={copy.start}
-                    labelStyle={localizedType("field-label", locale)}
-                    value={start}
-                    placeholder="22:00"
-                    onChangeText={(value) => change(() => setStart(value))}
-                    editable={!disabled}
-                    maxLength={5}
-                    keyboardType="numbers-and-punctuation"
-                    autoCapitalize="none"
-                  />
-                  <Field
-                    label={copy.end}
-                    labelStyle={localizedType("field-label", locale)}
-                    value={end}
-                    placeholder="07:00"
-                    onChangeText={(value) => change(() => setEnd(value))}
-                    editable={!disabled}
-                    maxLength={5}
-                    keyboardType="numbers-and-punctuation"
-                    autoCapitalize="none"
-                  />
-                </>
+              {quiet
+                ? timeFields.map(({ key, label, value, update }) => {
+                    if (!devicePicker) {
+                      return (
+                        <Field
+                          key={key}
+                          label={`${label} (HH:mm)`}
+                          labelStyle={localizedType("field-label", locale)}
+                          value={value}
+                          onChangeText={(text) => change(() => update(text))}
+                          editable={!disabled}
+                          maxLength={5}
+                          autoCapitalize="none"
+                        />
+                      );
+                    }
+                    const date = pickerDate(value);
+                    const expanded = activePicker === key;
+                    return (
+                      <View key={key}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={label}
+                          accessibilityValue={{ text: timeFormat.format(date) }}
+                          accessibilityState={{ expanded, disabled }}
+                          disabled={disabled}
+                          style={[
+                            styles.timeRow,
+                            expanded && styles.activeTimeRow,
+                          ]}
+                          onPress={() => setActivePicker(expanded ? null : key)}
+                        >
+                          <ActivityText strong>{label}</ActivityText>
+                          <Text
+                            style={[
+                              localizedType("field-label", locale),
+                              styles.timeValue,
+                            ]}
+                          >
+                            {timeFormat.format(date)}
+                          </Text>
+                        </Pressable>
+                        {expanded ? (
+                          <DateTimePicker
+                            value={date}
+                            mode="time"
+                            display={
+                              Platform.OS === "ios" ? "spinner" : "clock"
+                            }
+                            presentation={
+                              Platform.OS === "ios" ? "inline" : "dialog"
+                            }
+                            accentColor={colors.action}
+                            style={
+                              Platform.OS === "ios" ? styles.wheel : undefined
+                            }
+                            themeVariant="light"
+                            locale={timeLocale.replace("-", "_")}
+                            is24Hour={locale !== "en"}
+                            positiveButton={{ label: screen.done }}
+                            negativeButton={{ label: screen.cancel }}
+                            disabled={disabled}
+                            onDismiss={() => setActivePicker(null)}
+                            onValueChange={(_, selected) =>
+                              change(() => {
+                                update(pickerTime(selected));
+                                if (Platform.OS === "android") {
+                                  setActivePicker(null);
+                                }
+                              })
+                            }
+                          />
+                        ) : null}
+                      </View>
+                    );
+                  })
+                : null}
+              {timeError ? (
+                <ErrorText>
+                  {devicePicker ? copy.timeError : copy.typedTimeError}
+                </ErrorText>
               ) : null}
-              {timeError ? <ErrorText>{copy.timeError}</ErrorText> : null}
               <Button
                 label={screen.done}
                 labelStyle={localizedType("button", locale)}
@@ -253,7 +347,7 @@ function PreferencesForm({
                     setTimeError(true);
                     return;
                   }
-                  setEditing(false);
+                  closeEditor();
                 }}
               />
             </ScrollView>
@@ -275,6 +369,22 @@ const styles = StyleSheet.create({
     paddingBottom: 5,
   },
   rowCopy: { flex: 1 },
+  timeRow: {
+    minHeight: controls["touch-target"],
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: spacing["related-gap"],
+    paddingHorizontal: spacing["control-gap"],
+    paddingVertical: spacing["related-gap"],
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: controls.radius,
+  },
+  activeTimeRow: { backgroundColor: colors.wash, borderColor: colors.action },
+  wheel: { alignSelf: "center", width: "100%", maxWidth: 320 },
+  timeValue: { color: colors.action, fontVariant: ["tabular-nums"] },
   summary: { color: colors.action, width: 92, textAlign: "right" },
   ink: { color: colors.ink },
   scrim: {

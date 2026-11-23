@@ -4,9 +4,10 @@ Implementation branch: `feat/loans-notifications`. API, interaction, and design 
 
 ## Entry points and scope
 
-- Requests → **Active loans** → a loan’s details. The list pages through active exchanges and displays only loan-mode items. Details use the API exchange ID and signed-in profile, with listing titles when visible. Missing listing titles and dates have fallbacks. Borrowers submit extensions; lenders accept or decline them. Both participants can read saved history.
+- Requests → **Loans** → a loan’s details. The list includes scheduled loans, loans in progress, and returned loans awaiting confirmation. A matched loan request’s **View exchange** action also opens the loan. Either participant can record pickup and return. Each participant confirms the return from their account, after which the request is marked done and the listing is active again.
+- Borrowers submit extensions while a loan is active. Lenders can decline or accept a proposal that is still in the future and later than the current deadline. Both participants can read saved history.
 - Home → **Notifications** → **Notification preferences**. Settings also links directly to both screens, including from loan details. All/Unread filters, timestamps, cursor pagination, mark one/all read, and the badge use the API. Extension notifications open the live loan route. Other events remain readable in the inbox until their live destinations are available.
-- Quiet hours save both times in the profile’s displayed time zone. Overnight ranges are supported. Turning quiet hours off clears both fields. Pausing push does not hide the inbox. Device delivery and topic-specific push controls are outside this change.
+- Quiet hours use an Expo UI wheel on iOS, a Material 3 time picker dialog on Android, and typed time fields on web. Both times are saved in the profile’s displayed time zone and can span midnight. Turning quiet hours off clears both fields. The inbox stays available while push is paused. Device delivery and topic-specific push controls are outside this change.
 - New screens reuse the community components, typography, and tokens, with English, Japanese, and Bengali copy. They do not use the demo actor, fixtures, chat, or handover routes. Existing demo screens elsewhere remain in place. The loan's Message action opens a separate live text conversation, resolved from both the exchange's request ID and accepted response ID across conversation pages. Sender identity and participant access are enforced by the existing backend. Text history, sending, read status, and pagination use its chat API; manual Refresh retrieves replies. Media sending, translation, and streaming are outside this focused action.
 - Navigation waits for account and membership loading before evaluating protected routes, preserving a loan URL on relaunch.
 
@@ -83,13 +84,13 @@ Typecheck, lint, production web export, and repository hooks passed after the al
 
 The message/navigation follow-up passed an isolated browser flow at 390 px width: the two Screen 25 links have no extra gap; a conversation with the same request but a different response is skipped; the matching conversation is found on a later page; older messages load; both participants send and reload persisted replies; opening the conversation updates unread counts. A simulated lost response after a successful POST retains the draft, and retry reuses the client UUID and produces only one saved message. Missing conversations, closed conversations, outsider denial, and all three languages were checked. Settings links to both notification screens and the visibly labeled Home action reaches Screen 43 through the inbox. A fresh implementation screenshot was captured for comparison with the Figma frame.
 
-## Remaining manual acceptance
+## Live iPhone review against main
 
-An iOS simulator is unavailable on this Linux machine. Run the following with real test Supabase accounts on a Mac:
+The iPhone simulator used two accounts signed in through local Supabase Auth and a FastAPI backend connected to disposable PostgreSQL.
 
-1. Start the backend against a development database with `uv run uvicorn app.main:app --reload`. Set `EXPO_PUBLIC_API_URL` and matching test Supabase settings in `mobile/.env.local`, then run `pnpm ios` from `mobile/`.
-2. Approve borrower, lender, and outsider accounts in the same circle. With their real access tokens, create a borrower request (`kind: borrow`), a lender tool listing, an offer referencing that listing, and accept the offer. Read the exchange ID from `/users/me/exchanges`, set a future `due_at` and pickup details with `PATCH /exchanges/{id}`, then call `/hand-over`. The setup sequence is in `tests/integration/conftest.py::matched_exchange`.
-3. Sign in as the borrower; Requests → Active loans → details → request an extension. Sign in as the lender and decline. Repeat and accept. Relaunch both accounts and compare their history/due date with `GET /exchanges/{id}` and its extension history. Sign in as the outsider and verify denial for the real exchange ID.
-4. Create a real request and respond with a real offer to generate notifications. As the recipient, open the Home bell, mark one/all read, switch All/Unread, load another page when available, and relaunch. Compare the badge with `/users/me/unread-counts`. With the other account, verify those notification IDs are absent and PATCHing them returns 404.
-5. Save overnight quiet hours and pause push, relaunch, and compare with `GET /users/me`. Clear quiet hours and resume push. Confirm the inbox remains available throughout.
-6. Check empty states, an unreachable API and retry, the keyboard with date/time/message fields, larger accessibility text, and all three languages on native iOS. Compare native rendering with the two Figma frames, allowing for actual loan/account data and the scope adaptations above.
+- The borrower reached a scheduled loan from **View exchange**, recorded pickup and return, and confirmed. The lender could still open the returned loan from **Loans** and submitted the second confirmation. The API reported a completed loan, a done request, and an active listing.
+- Extension decline and approval persisted on both accounts. The API refused an extension submitted for acceptance after return and preserved the due date. A same-circle outsider could not read either the loan or its chat.
+- Both accounts exchanged live chat messages. After one blocked the other, the existing chat denied reading and sending. Removing the block restored access.
+- The notification inbox loaded another page and supported marking one or all items read. Changing both wheel selections and saving an overnight quiet-hours schedule persisted through reopening the editor.
+
+Android runtime acceptance is deferred.

@@ -1,286 +1,545 @@
-import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
+import { AssistantSheet } from "@/components/assistant-widgets";
 import { CommunityScreen } from "@/components/community-screen";
+import { DemoRequestDetail } from "@/components/demo-request-detail";
 import { RequestNotice } from "@/components/request-notice";
-import { Button } from "@/components/ui";
-import { useCommunityDemo } from "@/lib/community-demo";
-import { isPickupConfirmed } from "@/lib/community-demo-state";
-import { listingText, useDemoListings } from "@/lib/demo-listings";
+import { RequestResponseForm } from "@/components/request-response-form";
+import { Button, ErrorText } from "@/components/ui";
+import { ApiError, type Page } from "@/lib/api";
+import { assistantError, assistantApi } from "@/lib/assistant-api";
+import { assistantCopy } from "@/lib/assistant-copy";
+import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { pickupCopy } from "@/lib/pickup-copy";
 import { requestCopy } from "@/lib/request-demo-copy";
+import {
+  type RequestDetail,
+  type RequestResponse,
+  type ResponseKind,
+  requestsApi,
+} from "@/lib/requests-api";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
-const stairsPhoto = require("../../../../assets/images/request-mizunoura-steps.png");
-const tanakaPhoto = require("../../../../assets/images/lending-tanaka-thumbnail.png");
+const requestIdPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
+
+type RequestConfirmation = {
+  title: string;
+  message: string;
+  label: string;
+  action: () => Promise<unknown>;
+};
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { actor, people, requests, offerHelp, acceptOffer } =
-    useCommunityDemo();
-  const { listings } = useDemoListings();
-  const { locale } = useOnboardingText();
-  const copy = requestCopy[locale];
-  const [showOriginal, setShowOriginal] = useState(false);
-  const request = requests.find((item) => item.id === id);
+  return requestIdPattern.test(id) ? (
+    <LiveRequestDetail key={id} id={id} />
+  ) : (
+    <DemoRequestDetail id={id} />
+  );
+}
 
-  if (!request) {
-    return <CommunityScreen back title={copy.notFound} />;
+function LiveRequestDetail({ id }: { id: string }) {
+  const { locale, t } = useOnboardingText();
+  const copy = requestCopy[locale];
+  const live = liveRequestCopy[locale];
+  const words = assistantCopy[locale];
+  const [detail, setDetail] = useState<RequestDetail | null>(null);
+  const [responses, setResponses] = useState<Page<RequestResponse> | null>(
+    null,
+  );
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [error, setError] = useState<unknown>(null);
+  const [responseError, setResponseError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingResponses, setLoadingResponses] = useState(false);
+  const [actionError, setActionError] = useState<string>();
+  const [working, setWorking] = useState(false);
+  const mutating = useRef(false);
+  const version = useRef(0);
+  const markedSeen = useRef(false);
+  const [form, setForm] = useState<ResponseKind>();
+  const [confirmation, setConfirmation] = useState<RequestConfirmation>();
+  const [translation, setTranslation] = useState<{
+    locale: string;
+    text: string;
+    source: string;
+  }>();
+  const [translating, setTranslating] = useState(false);
+  const translated =
+    translation?.locale === locale &&
+    translation.source === detail?.polite_text;
+
+  const load = useCallback(async () => {
+    const current = ++version.current;
+    setLoading(true);
+    setLoadingResponses(false);
+    setError(null);
+    setResponseError(null);
+    try {
+      const data = await requestsApi.detail(id);
+      if (current !== version.current) return;
+      setDetail(data);
+      if (data.my_role === "requester") {
+        try {
+          const page = await requestsApi.responses(id);
+          if (current !== version.current) return;
+          setResponses(page);
+          void loadNames(
+            page.items.map((item) => item.responder_user_id),
+            current,
+          );
+        } catch (cause) {
+          if (current === version.current) setResponseError(cause);
+        }
+      } else {
+        void loadNames([data.requester_user_id], current);
+        if (!markedSeen.current) {
+          markedSeen.current = true;
+          void requestsApi.markSeen(id).catch(() => {
+            markedSeen.current = false;
+          });
+        }
+      }
+    } catch (cause) {
+      if (current !== version.current) return;
+      setError(cause);
+      if (cause instanceof ApiError && [403, 404].includes(cause.status))
+        setDetail(null);
+    } finally {
+      if (current === version.current) setLoading(false);
+    }
+  }, [id]);
+
+  async function loadNames(ids: string[], current: number) {
+    const people = await Promise.allSettled(
+      [...new Set(ids)].map(
+        async (person) =>
+          [person, (await requestsApi.person(person)).display_name] as const,
+      ),
+    );
+    if (current !== version.current) return;
+    setNames((existing) => ({
+      ...existing,
+      ...Object.fromEntries(
+        people.flatMap((person) =>
+          person.status === "fulfilled" ? [person.value] : [],
+        ),
+      ),
+    }));
   }
 
-  const ownsRequest = request.createdBy === actor;
-  const isRiceRequest = request.id === "carry-rice";
-  const isOpen = request.status === "open";
-  const canOffer = !ownsRequest && isOpen && !request.offer;
-  const canAccept = ownsRequest && isOpen && !!request.offer;
-  const canThank =
-    ownsRequest && request.status === "completed" && !request.thankYou;
-  const personId = ownsRequest ? request.offer?.by : request.createdBy;
-  const person = personId ? people[personId] : undefined;
-  const matchedPerson = request.status === "matched" ? person : undefined;
-  const listing = listings.find((item) => item.id === request.listingId);
-  const isLoan = listing?.kind === "tool";
-  const pickupDone = isPickupConfirmed(request);
-  const needsPickup = isLoan && !pickupDone;
-  const body = localizedType("body", locale);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+      return () => {
+        version.current += 1;
+      };
+    }, [load]),
+  );
+
+  async function loadMore() {
+    if (!responses?.next_cursor || loadingResponses || loading || working)
+      return;
+    const current = version.current;
+    setLoadingResponses(true);
+    setResponseError(null);
+    try {
+      const page = await requestsApi.responses(id, responses.next_cursor);
+      if (current !== version.current) return;
+      setResponses((previous) => ({
+        items: [...(previous?.items ?? []), ...page.items],
+        next_cursor: page.next_cursor,
+      }));
+      void loadNames(
+        page.items.map((item) => item.responder_user_id),
+        current,
+      );
+    } catch (cause) {
+      if (current === version.current) setResponseError(cause);
+    } finally {
+      if (current === version.current) setLoadingResponses(false);
+    }
+  }
+
+  async function apply(action: () => Promise<unknown>) {
+    if (mutating.current || loading) return;
+    mutating.current = true;
+    setWorking(true);
+    setActionError(undefined);
+    try {
+      await action();
+      setForm(undefined);
+      setConfirmation(undefined);
+      await load();
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        setForm(undefined);
+        setConfirmation(undefined);
+        await load();
+        setActionError(live.changed);
+      } else {
+        setActionError(assistantError(cause, locale));
+      }
+    } finally {
+      mutating.current = false;
+      setWorking(false);
+    }
+  }
+
+  async function showTranslation() {
+    if (!detail || translating) return;
+    if (translated) {
+      setTranslation(undefined);
+      return;
+    }
+    setTranslating(true);
+    setActionError(undefined);
+    try {
+      const result = await assistantApi.translate(
+        detail.polite_text,
+        detail.lang,
+        locale,
+      );
+      setTranslation({
+        locale,
+        text: result.translated,
+        source: detail.polite_text,
+      });
+    } catch (cause) {
+      setActionError(assistantError(cause, locale));
+    } finally {
+      setTranslating(false);
+    }
+  }
+
+  const label = localizedType("field-label", locale);
   const supporting = localizedType("supporting", locale);
-  const fieldLabel = localizedType("field-label", locale);
-  const button = localizedType("button", locale);
-  const showLocation = isRiceRequest && !ownsRequest;
-  const showMessageOriginal = showLocation && showOriginal && locale !== "ja";
-  const timingLabel = isRiceRequest
-    ? copy.riceDate
-    : isLoan
-      ? copy.listingTiming
-      : copy.timing;
-  const hasActions = canOffer || canAccept || matchedPerson || canThank;
+  const body = localizedType("body", locale);
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat(locale, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+
+  if (!detail) {
+    const unavailable =
+      error instanceof ApiError && [403, 404].includes(error.status);
+    return (
+      <CommunityScreen
+        back
+        title={unavailable ? copy.notFound : copy.requests}
+        showDemoPreview={false}
+      >
+        {loading ? (
+          <ActivityIndicator
+            accessibilityLabel={words.loading}
+            color={colors.action}
+          />
+        ) : null}
+        {error && !unavailable ? (
+          <>
+            <ErrorText>{assistantError(error, locale)}</ErrorText>
+            <Button
+              variant="text"
+              label={t("tryAgain")}
+              onPress={() => void load()}
+            />
+          </>
+        ) : null}
+      </CommunityScreen>
+    );
+  }
+
+  const owns = detail.my_role === "requester";
+  const isOpen = detail.status === "open";
+  const responding = !owns && isOpen && !detail.my_response_id;
+  const pendingResponse =
+    !owns && isOpen && detail.my_response_status === "pending";
+  const timing = [detail.needed_from, detail.needed_until]
+    .filter((value) => value !== null)
+    .map(formatDate)
+    .join(" – ");
+  const requesterName = names[detail.requester_user_id];
+  const disabled = loading || working;
+
+  function startForm(kind: ResponseKind) {
+    setActionError(undefined);
+    setForm(kind);
+  }
+
+  function confirmAction(
+    title: string,
+    message: string,
+    submitLabel: string,
+    action: () => Promise<unknown>,
+  ) {
+    setActionError(undefined);
+    setConfirmation({ title, message, label: submitLabel, action });
+  }
 
   return (
     <CommunityScreen
       back
-      title={request.title}
-      subtitle={
-        showLocation && isOpen
-          ? copy.fromCircle
-          : copy.requestStatus[request.status]
-      }
+      showDemoPreview={false}
+      title={copy.requests}
+      subtitle={live.status[detail.status]}
       footer={
-        hasActions ? (
-          <>
-            {canOffer ? (
-              <Button
-                label={copy.canHelp}
-                labelStyle={button}
-                onPress={() => offerHelp(request.id)}
-              />
-            ) : null}
-            {canAccept ? (
-              <Button
-                label={copy.accept}
-                labelStyle={button}
-                onPress={() => acceptOffer(request.id)}
-              />
-            ) : null}
-            {matchedPerson ? (
-              <>
-                <Button
-                  label={copy.chatWith.replace("{{name}}", matchedPerson.name)}
-                  labelStyle={button}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/exchanges/[id]/chat",
-                      params: { id: request.id },
-                    })
-                  }
-                />
-                <Button
-                  label={needsPickup ? pickupCopy[locale].title : copy.finish}
-                  labelStyle={button}
-                  variant="secondary"
-                  onPress={() =>
-                    router.push({
-                      pathname: needsPickup
-                        ? "/exchanges/[id]/pickup"
-                        : "/exchanges/[id]/complete",
-                      params: { id: request.id },
-                    })
-                  }
-                />
-              </>
-            ) : null}
-            {canThank ? (
-              <Button
-                label={copy.thank}
-                labelStyle={button}
-                onPress={() =>
-                  router.push({
-                    pathname: "/exchanges/[id]/thank-you",
-                    params: { id: request.id },
-                  })
-                }
-              />
-            ) : null}
-          </>
+        detail.exchange_id || responding ? (
+          <Button
+            label={detail.exchange_id ? live.openExchange : copy.canHelp}
+            labelStyle={label}
+            disabled={disabled}
+            onPress={() => {
+              if (detail.exchange_id) {
+                router.push({
+                  pathname: "/exchanges/[id]",
+                  params: { id: detail.exchange_id },
+                });
+              } else {
+                startForm("offer");
+              }
+            }}
+          />
         ) : undefined
       }
     >
-      {showLocation ? (
-        <View style={styles.photo}>
-          <Image
-            source={stairsPhoto}
-            style={styles.stairs}
-            contentFit="cover"
-            accessible={false}
+      <View style={styles.card}>
+        {!owns && requesterName ? (
+          <Text style={[supporting, styles.secondary]}>
+            {live.postedBy} · {requesterName}
+          </Text>
+        ) : null}
+        <Text style={[body, styles.ink]}>
+          {translated ? translation?.text : detail.polite_text}
+        </Text>
+        {timing ? (
+          <Text style={[supporting, styles.secondary]}>{timing}</Text>
+        ) : null}
+        {detail.lang !== locale ? (
+          <Button
+            variant="text"
+            label={translated ? words.original : words.translate}
+            labelStyle={label}
+            busy={translating}
+            onPress={() => void showTranslation()}
           />
-          <Text style={[supporting, styles.detail]}>{copy.steps}</Text>
+        ) : null}
+      </View>
+      {error ? (
+        <>
+          <ErrorText>{assistantError(error, locale)}</ErrorText>
+          <Button
+            variant="text"
+            label={t("tryAgain")}
+            onPress={() => void load()}
+          />
+        </>
+      ) : null}
+      {actionError && !form && !confirmation ? (
+        <ErrorText>{actionError}</ErrorText>
+      ) : null}
+
+      {responding ? (
+        <View style={styles.actions}>
+          <Button
+            variant="secondary"
+            label={live.question}
+            labelStyle={label}
+            disabled={disabled}
+            onPress={() => startForm("question")}
+          />
+          <Button
+            variant="secondary"
+            label={live.counter_time}
+            labelStyle={label}
+            disabled={disabled}
+            onPress={() => startForm("counter_time")}
+          />
         </View>
       ) : null}
-      {person ? (
-        <View style={styles.person}>
-          {personId === "neighbour" ? (
-            <Image
-              source={tanakaPhoto}
-              style={styles.avatar}
-              contentFit="cover"
-              accessible={false}
+
+      {!owns && detail.my_response_status ? (
+        <RequestNotice
+          title={live.responseSent}
+          detail={live.responseStatus[detail.my_response_status]}
+          locale={locale}
+        />
+      ) : null}
+      {pendingResponse && detail.my_response_id ? (
+        <Button
+          variant="text"
+          label={live.withdraw}
+          labelStyle={label}
+          disabled={disabled}
+          onPress={() =>
+            confirmAction(
+              live.withdraw,
+              live.withdrawDetail,
+              live.withdraw,
+              () => requestsApi.withdraw(id, detail.my_response_id!),
+            )
+          }
+        />
+      ) : null}
+
+      {owns ? (
+        <View style={styles.actions}>
+          <Text
+            accessibilityRole="header"
+            style={[localizedType("section-heading", locale), styles.ink]}
+          >
+            {live.received}
+          </Text>
+          {!loading && !responseError && !responses?.items.length ? (
+            <Text style={[supporting, styles.secondary]}>{live.available}</Text>
+          ) : null}
+          {responses?.items.map((response) => {
+            const canAccept =
+              isOpen &&
+              response.status === "pending" &&
+              response.kind !== "question";
+            const acceptLabel =
+              response.kind === "counter_time" ? live.acceptTime : copy.accept;
+            return (
+              <View key={response.id} style={styles.card}>
+                <Text style={[label, styles.ink]}>
+                  {names[response.responder_user_id] ?? copy.neighbour}
+                </Text>
+                <Text style={[supporting, styles.secondary]}>
+                  {live[response.kind]} · {live.responseStatus[response.status]}
+                </Text>
+                {response.proposed_start ? (
+                  <Text style={[label, styles.green]}>
+                    {formatDate(response.proposed_start)}
+                  </Text>
+                ) : null}
+                {response.message ? (
+                  <Text style={[body, styles.ink]}>{response.message}</Text>
+                ) : null}
+                {canAccept ? (
+                  <Button
+                    variant="secondary"
+                    label={acceptLabel}
+                    labelStyle={label}
+                    disabled={disabled}
+                    onPress={() =>
+                      confirmAction(
+                        live.acceptTitle,
+                        live.acceptDetail,
+                        acceptLabel,
+                        () => requestsApi.accept(id, response.id),
+                      )
+                    }
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+          {responseError ? (
+            <>
+              <ErrorText>{assistantError(responseError, locale)}</ErrorText>
+              <Button
+                variant="text"
+                label={t("tryAgain")}
+                onPress={() => void load()}
+              />
+            </>
+          ) : null}
+          {responses?.next_cursor && !responseError ? (
+            <Button
+              variant="text"
+              label={words.more}
+              busy={loadingResponses}
+              disabled={disabled}
+              onPress={() => void loadMore()}
             />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text
-                style={[fieldLabel, styles.title]}
-                accessibilityElementsHidden
-                importantForAccessibility="no"
-              >
-                {Array.from(person.name)[0]}
-              </Text>
-            </View>
-          )}
-          <View style={styles.personText}>
-            <Text style={[fieldLabel, styles.title]}>{person.name}</Text>
-            <Text style={[supporting, styles.detail]}>
-              {showLocation
-                ? copy.postedBy
-                : ownsRequest && isOpen
-                  ? copy.offeredToHelp
-                  : copy.neighbour}
-            </Text>
-          </View>
-          {ownsRequest && matchedPerson && isLoan ? (
-            <Text style={[supporting, styles.lending]}>{copy.lending}</Text>
+          ) : null}
+          {isOpen ? (
+            <Button
+              variant="text"
+              label={live.cancelRequest}
+              labelStyle={label}
+              disabled={disabled}
+              onPress={() =>
+                confirmAction(
+                  live.cancelRequest,
+                  live.cancelDetail,
+                  live.cancelRequest,
+                  () => requestsApi.cancel(id),
+                )
+              }
+            />
           ) : null}
         </View>
       ) : null}
-      <Text
-        style={[
-          showMessageOriginal ? localizedType("body", "ja") : body,
-          styles.title,
-        ]}
-      >
-        {showMessageOriginal ? copy.originalRiceRequest : request.description}
-      </Text>
-      <View style={styles.fact}>
-        <Text style={[fieldLabel, styles.title]}>{timingLabel}</Text>
-        {ownsRequest ? (
-          <View style={styles.timingField}>
-            <Text style={[body, styles.title]}>{request.timing}</Text>
-          </View>
-        ) : (
-          <Text style={[supporting, styles.detail]}>{request.timing}</Text>
-        )}
-      </View>
-      {listing ? (
-        <RequestNotice
-          title={isLoan && matchedPerson ? copy.collect : copy.relatedListing}
-          detail={
-            isLoan && matchedPerson
-              ? [
-                  listingText(listing.title, locale),
-                  listingText(listing.description, locale),
-                ]
-                  .filter(Boolean)
-                  .join("\n")
-              : listingText(listing.title, locale)
-          }
-          locale={locale}
+
+      {!loading && !working && !error ? (
+        <Button
+          variant="text"
+          label={live.refresh}
+          labelStyle={label}
+          onPress={() => void load()}
         />
       ) : null}
-      {isLoan && pickupDone ? (
-        <Button
-          label={pickupCopy[locale].view}
-          labelStyle={fieldLabel}
-          variant="text"
-          onPress={() =>
-            router.push({
-              pathname: "/exchanges/[id]/pickup",
-              params: { id: request.id },
-            })
+      {form ? (
+        <RequestResponseForm
+          kind={form}
+          locale={locale}
+          busy={working}
+          error={actionError}
+          close={() => {
+            if (!mutating.current) setForm(undefined);
+          }}
+          send={(response) =>
+            void apply(() => requestsApi.respond(id, response))
           }
         />
       ) : null}
-      {showLocation ? (
-        <View style={styles.fact}>
-          <Text style={[fieldLabel, styles.title]}>{copy.riceLocation}</Text>
-          <Text style={[supporting, styles.detail]}>{copy.meeting}</Text>
-        </View>
-      ) : null}
-      {ownsRequest && isOpen && !request.offer ? (
-        <Text style={[supporting, styles.detail]}>{copy.noOffers}</Text>
-      ) : null}
-      {!ownsRequest && isOpen && request.offer ? (
-        <RequestNotice
-          title={copy.offerSent}
-          detail={copy.waitForReply}
+      {confirmation ? (
+        <AssistantSheet
+          title={confirmation.title}
           locale={locale}
-        />
-      ) : null}
-      {showLocation && locale !== "ja" ? (
-        <Button
-          label={showMessageOriginal ? copy.showRequest : copy.originalJapanese}
-          labelStyle={fieldLabel}
-          variant="text"
-          onPress={() => setShowOriginal(!showOriginal)}
-        />
-      ) : null}
-      {request.thankYou ? (
-        <RequestNotice
-          title={copy.thanksSent}
-          detail={request.thankYou}
-          locale={locale}
-        />
+          close={() => {
+            if (!mutating.current) setConfirmation(undefined);
+          }}
+          footer={
+            <View style={styles.actions}>
+              <Button
+                label={confirmation.label}
+                labelStyle={label}
+                busy={working}
+                onPress={() => void apply(confirmation.action)}
+              />
+              <Button
+                variant="secondary"
+                label={live.cancel}
+                labelStyle={label}
+                disabled={working}
+                onPress={() => setConfirmation(undefined)}
+              />
+            </View>
+          }
+        >
+          <Text style={[body, styles.ink]}>{confirmation.message}</Text>
+          {actionError ? <ErrorText>{actionError}</ErrorText> : null}
+        </AssistantSheet>
       ) : null}
     </CommunityScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  photo: { gap: 4 },
-  stairs: { width: "100%", height: 146, borderRadius: controls.radius },
-  avatar: { width: 56, height: 56, borderRadius: 28 },
-  avatarFallback: {
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.wash,
-  },
-  person: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing["control-gap"],
-  },
-  personText: { flex: 1 },
-  fact: { gap: 4 },
-  timingField: {
-    minHeight: controls["touch-target"],
-    borderColor: colors.control,
-    borderRadius: controls.radius,
+  card: {
     borderWidth: 1,
-    justifyContent: "center",
-    paddingHorizontal: spacing["control-gap"],
-    paddingVertical: spacing["related-gap"],
+    borderColor: colors.rule,
+    borderRadius: controls.radius,
+    padding: spacing["card-inset"],
+    gap: 8,
   },
-  title: { color: colors.ink },
-  detail: { color: colors.secondary },
-  lending: { color: colors.action, flexShrink: 1 },
+  actions: { gap: spacing["related-gap"] },
+  ink: { color: colors.ink },
+  secondary: { color: colors.secondary },
+  green: { color: colors.action },
 });

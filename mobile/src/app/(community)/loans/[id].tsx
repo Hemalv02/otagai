@@ -20,6 +20,7 @@ import {
 } from "@/lib/activity-screen-copy";
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
 import { loanMessageCopy } from "@/lib/loan-message-copy";
+import { loanStage } from "@/lib/loan-state";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -67,10 +68,11 @@ async function loadLoan(id: string, profileId: string | null) {
 }
 
 type ExtensionRequest = { new_due_at: string; message?: string };
+type ExchangeAction = Parameters<typeof api.advanceLoan>[1];
 type LoanAction =
   | { decision: "accept" | "decline" }
   | { request: ExtensionRequest }
-  | { returned: true };
+  | { advance: ExchangeAction };
 
 export default function LoanDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -91,7 +93,17 @@ export default function LoanDetailsScreen() {
   const lender = profileId === exchange?.helper_user_id;
   const pending = history.find((item) => item.status === "pending");
   const overdue = exchange?.due_at && new Date(exchange.due_at).getTime() < now;
-  const active = exchange?.status === "active";
+  const stage = exchange && loanStage(exchange, profileId);
+  const active = stage === "return";
+  const progression = {
+    pickup: { label: screen.recordPickup, advance: "hand-over" },
+    return: { label: screen.recordReturn, advance: "return" },
+    confirm: { label: screen.confirmReturn, advance: "confirm" },
+  } as const;
+  const next =
+    stage === "pickup" || stage === "return" || stage === "confirm"
+      ? progression[stage]
+      : null;
   const itemName = title || copy.unnamedLoan;
   const messageAction = (
     <Button
@@ -106,16 +118,21 @@ export default function LoanDetailsScreen() {
       }
     />
   );
-  const heading = exchange?.returned_at
-    ? screen.returned
-    : exchange?.due_at
-      ? borrower
-        ? screen.returnTitle(
-            itemName,
-            activityDay(exchange.due_at, locale, true),
-          )
-        : screen.lenderTitle(activityDay(exchange.due_at, locale, true))
-      : copy.loan;
+  const heading =
+    stage === "completed"
+      ? screen.completed
+      : stage === "pickup"
+        ? screen.pickupPlanned
+        : exchange?.returned_at
+          ? screen.returned
+          : active && exchange?.due_at
+            ? borrower
+              ? screen.returnTitle(
+                  itemName,
+                  activityDay(exchange.due_at, locale, true),
+                )
+              : screen.lenderTitle(activityDay(exchange.due_at, locale, true))
+            : copy.loan;
   const relationship = partnerName
     ? borrower
       ? screen.borrowedFrom(partnerName)
@@ -134,7 +151,8 @@ export default function LoanDetailsScreen() {
         await api.decideExtension(pending.id, action.decision);
       else if ("request" in action)
         await api.requestExtension(exchange.id, action.request);
-      else if ("returned" in action) await api.recordLoanReturn(exchange.id);
+      else if ("advance" in action)
+        await api.advanceLoan(exchange.id, action.advance);
       await loan.reload();
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
@@ -148,7 +166,7 @@ export default function LoanDetailsScreen() {
 
   return (
     <CommunityScreen
-      live
+      showDemoPreview={false}
       design
       back
       keyboard
@@ -169,17 +187,25 @@ export default function LoanDetailsScreen() {
             <LoanThumbnail key={photo ?? "none"} photo={photo ?? null} />
             <View style={[styles.rowCopy, styles.returnCopy]}>
               <ActivityText strong>
-                {exchange.due_at
-                  ? screen.returnBy(
-                      activityTime(new Date(exchange.due_at), locale),
-                    )
-                  : copy.due}
+                {stage === "pickup"
+                  ? copy.pickup
+                  : exchange.returned_at
+                    ? screen.returned
+                    : exchange.due_at
+                      ? screen.returnBy(
+                          activityTime(new Date(exchange.due_at), locale),
+                        )
+                      : copy.due}
               </ActivityText>
               <ActivityText>
                 {[
-                  exchange.due_at
-                    ? activityDay(exchange.due_at, locale)
-                    : copy.noDate,
+                  formatActivityDate(
+                    exchange.returned_at ??
+                      (stage === "pickup"
+                        ? exchange.scheduled_at
+                        : exchange.due_at),
+                    locale,
+                  ),
                   exchange.meet_place_note,
                 ]
                   .filter(Boolean)
@@ -187,13 +213,34 @@ export default function LoanDetailsScreen() {
               </ActivityText>
             </View>
             <Text style={[localizedType("supporting", locale), styles.status]}>
-              {exchange.returned_at
-                ? screen.returned
-                : overdue
-                  ? screen.overdue
-                  : screen.due}
+              {stage === "pickup"
+                ? screen.pickupPlanned
+                : stage === "completed"
+                  ? screen.completed
+                  : exchange.returned_at
+                    ? screen.returned
+                    : overdue
+                      ? screen.overdue
+                      : screen.due}
             </Text>
           </View>
+          {notice ? <ActivityText>{notice}</ActivityText> : null}
+          {error ? <ErrorText>{error}</ErrorText> : null}
+          {next ? (
+            <Button
+              label={next.label}
+              labelStyle={localizedType("button", locale)}
+              busy={busy}
+              disabled={loan.loading || loan.error}
+              onPress={() => act({ advance: next.advance })}
+            />
+          ) : stage === "waiting" || stage === "closed" ? (
+            <ActivityText>
+              {stage === "waiting"
+                ? screen.waitingForReturn
+                : copy.noLongerActive}
+            </ActivityText>
+          ) : null}
           <View style={styles.progress}>
             <ProgressStep
               filled={Boolean(exchange.handed_over_at)}
@@ -236,8 +283,6 @@ export default function LoanDetailsScreen() {
           ) : (
             messageAction
           )}
-          {notice ? <ActivityText>{notice}</ActivityText> : null}
-          {error ? <ErrorText>{error}</ErrorText> : null}
           {history.length ? (
             <View style={styles.history}>
               <Text
@@ -248,7 +293,11 @@ export default function LoanDetailsScreen() {
               </Text>
               {history.map((item) => (
                 <View key={item.id} style={styles.historyRow}>
-                  <ActivityText strong>{copy[item.status]}</ActivityText>
+                  <ActivityText strong>
+                    {item.status === "pending" && !active
+                      ? screen.extensionClosed
+                      : copy[item.status]}
+                  </ActivityText>
                   <ActivityText>
                     {copy.due}: {formatActivityDate(item.new_due_at, locale)}
                   </ActivityText>
@@ -263,13 +312,23 @@ export default function LoanDetailsScreen() {
                   </ActivityText>
                   {item.status === "pending" && lender && active ? (
                     <>
-                      <Button
-                        label={copy.accept}
-                        labelStyle={localizedType("button", locale)}
-                        busy={busy}
-                        disabled={loan.loading || loan.error}
-                        onPress={() => act({ decision: "accept" })}
-                      />
+                      {new Date(item.new_due_at).getTime() <=
+                      Math.max(
+                        now,
+                        exchange.due_at
+                          ? new Date(exchange.due_at).getTime()
+                          : 0,
+                      ) ? (
+                        <ActivityText>{screen.extensionOutdated}</ActivityText>
+                      ) : (
+                        <Button
+                          label={copy.accept}
+                          labelStyle={localizedType("button", locale)}
+                          busy={busy}
+                          disabled={loan.loading || loan.error}
+                          onPress={() => act({ decision: "accept" })}
+                        />
+                      )}
                       <Button
                         label={copy.decline}
                         labelStyle={localizedType("button", locale)}
@@ -283,20 +342,7 @@ export default function LoanDetailsScreen() {
               ))}
             </View>
           ) : null}
-          {active ? (
-            <Button
-              label={screen.recordReturn}
-              labelStyle={localizedType("button", locale)}
-              busy={busy}
-              disabled={loan.loading || loan.error}
-              onPress={() => act({ returned: true })}
-            />
-          ) : (
-            <ActivityText>
-              {exchange.returned_at ? screen.returned : copy.noLongerActive}
-            </ActivityText>
-          )}
-          {history.length ? (
+          {stage === "waiting" || history.length ? (
             <Button
               variant="text"
               label={copy.refresh}

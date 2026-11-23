@@ -1,3 +1,6 @@
+import { fetch as expoFetch } from "expo/fetch";
+import { Platform } from "react-native";
+
 import { supabase } from "@/lib/supabase";
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -65,8 +68,6 @@ export type CircleMembership = {
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
 
-export type Page<T> = { items: T[]; next_cursor: string | null };
-
 export type Exchange = {
   id: string;
   request_id: string;
@@ -80,6 +81,8 @@ export type Exchange = {
   scheduled_at: string | null;
   handed_over_at: string | null;
   returned_at: string | null;
+  requester_confirmed_at: string | null;
+  helper_confirmed_at: string | null;
   meet_place_note: string | null;
 };
 
@@ -139,14 +142,74 @@ function pageQuery(cursor?: string | null) {
   return new URLSearchParams({ limit: "20", ...(cursor ? { cursor } : {}) });
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export type ProfileSummary = { id: string; display_name: string };
+
+export type FamilyLink = {
+  id: string;
+  user_id: string;
+  relative_user_id: string;
+  relation: string;
+  status: "pending" | "accepted" | "revoked";
+  other: ProfileSummary | null;
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type ProxyGrant = {
+  id: string;
+  member_user_id: string;
+  caretaker_user_id: string;
+  caretaker_role: string;
+  can_post_requests: boolean;
+  can_chat: boolean;
+  can_thank_and_pay: boolean;
+  can_view_activity: boolean;
+  can_manage_listings: boolean;
+  consent_method: string;
+  consented_at: string;
+  created_at: string;
+  other: ProfileSummary | null;
+};
+
+export type RequestKind = "borrow" | "help" | "borrow_with_help";
+export type RippleStage =
+  | "direct"
+  | "family"
+  | "han"
+  | "association"
+  | "nearby";
+
+export type RequestSummary = {
+  id: string;
+  requester_user_id: string;
+  kind: RequestKind;
+  status: string;
+  polite_text: string;
+  lang: Language;
+  listing_id: string | null;
+  direct_to_user_id: string | null;
+  needed_from: string | null;
+  needed_until: string | null;
+  ripple_stage: RippleStage;
+  ripple_max_stage: RippleStage;
+  created_at: string;
+};
+
+export type Page<T> = { items: T[]; next_cursor: string | null };
+
+const MAX_REQUEST_PAGES = 10;
+
+export async function request<T>(
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const { data, error } = await supabase.auth.getSession();
   if (error) {
     throw new ApiError(401, "Sign in again to continue.");
   }
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
-  if (init.body) {
+  if (typeof init.body === "string" && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (data.session) {
@@ -155,7 +218,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   let response: Response;
   try {
-    response = await fetch(`${apiUrl}${path}`, { ...init, headers });
+    const fetcher =
+      init.body instanceof FormData && Platform.OS !== "web"
+        ? expoFetch
+        : fetch;
+    response = await fetcher(`${apiUrl}${path}`, { ...init, headers });
   } catch {
     throw new ApiError(0, "Could not reach Otagai. Check your connection.");
   }
@@ -185,9 +252,9 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(preferences),
     }),
-  listActiveExchanges: (cursor?: string | null) => {
+  listOpenLoanExchanges: (cursor?: string | null) => {
     const query = pageQuery(cursor);
-    query.set("status", "active");
+    query.set("status", "scheduled,active,returned");
     return request<Page<Exchange>>(`/users/me/exchanges?${query}`);
   },
   getExchange: (id: string) =>
@@ -228,8 +295,8 @@ export const api = {
     request<{ id: string; display_name: string }>(
       `/users/${encodeURIComponent(id)}`,
     ),
-  recordLoanReturn: (id: string) =>
-    request<Exchange>(`/exchanges/${encodeURIComponent(id)}/return`, {
+  advanceLoan: (id: string, action: "hand-over" | "return" | "confirm") =>
+    request<Exchange>(`/exchanges/${encodeURIComponent(id)}/${action}`, {
       method: "POST",
     }),
   listExtensions: (id: string, cursor?: string | null) =>
@@ -298,6 +365,40 @@ export const api = {
       items.push(...page.items);
       cursor = page.next_cursor;
     } while (cursor);
+    return items;
+  },
+  listFamilyLinks: async () =>
+    (await request<{ items: FamilyLink[] }>("/users/me/family-links")).items,
+  listCaretakerGrants: async () =>
+    (
+      await request<{ items: ProxyGrant[] }>(
+        "/users/me/proxy-grants?as=caretaker",
+      )
+    ).items,
+  listOpenRequests: async ({
+    actingFor,
+    signal,
+  }: {
+    actingFor?: string;
+    signal?: AbortSignal;
+  }) => {
+    const headers: Record<string, string> = actingFor
+      ? { "X-Acting-For": actingFor }
+      : {};
+    const items: RequestSummary[] = [];
+    let cursor: string | null = null;
+    let pages = 0;
+    do {
+      const query = new URLSearchParams({ status: "open", limit: "50" });
+      if (cursor) query.set("cursor", cursor);
+      const page: Page<RequestSummary> = await request(
+        `/users/me/requests?${query}`,
+        { headers, signal },
+      );
+      items.push(...page.items);
+      cursor = page.next_cursor;
+      pages += 1;
+    } while (cursor && pages < MAX_REQUEST_PAGES);
     return items;
   },
 };

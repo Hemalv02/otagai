@@ -1,5 +1,8 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
+from app.services.exchanges import service as exchange_service
 from tests.integration.conftest import auth, make_user, matched_exchange
 
 
@@ -176,6 +179,59 @@ async def test_extension_without_initial_due_date(client):
     assert accepted.status_code == 200
     saved = await client.get(f"/exchanges/{exch}", headers=auth(borrower))
     assert datetime.fromisoformat(saved.json()["due_at"]) == due
+
+
+@pytest.mark.parametrize("stale_reason", ["returned", "expired", "due_date_changed"])
+async def test_stale_extension_can_be_declined_but_cannot_be_accepted(
+    client, monkeypatch, stale_reason
+):
+    ctx = await matched_exchange(client, loan=True)
+    exchange_path = f"/exchanges/{ctx['exchange_id']}"
+    borrower = auth(ctx["requester"])
+    lender = auth(ctx["helper"])
+    due_at = datetime.now(UTC) + timedelta(days=1)
+    proposed_due_at = due_at + timedelta(days=1)
+
+    scheduled = await client.patch(
+        exchange_path, headers=borrower, json={"due_at": due_at.isoformat()}
+    )
+    assert scheduled.status_code == 200, scheduled.text
+    handed_over = await client.post(f"{exchange_path}/hand-over", headers=lender)
+    assert handed_over.status_code == 200, handed_over.text
+    requested = await client.post(
+        f"{exchange_path}/extensions",
+        headers=borrower,
+        json={"new_due_at": proposed_due_at.isoformat()},
+    )
+    assert requested.status_code == 201, requested.text
+    decision_path = f"/loan-extensions/{requested.json()['id']}"
+
+    if stale_reason == "returned":
+        returned = await client.post(f"{exchange_path}/return", headers=lender)
+        assert returned.status_code == 200, returned.text
+    elif stale_reason == "expired":
+
+        class AtProposedDate(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return proposed_due_at.astimezone(tz)
+
+        monkeypatch.setattr(exchange_service, "datetime", AtProposedDate)
+    else:
+        due_at = proposed_due_at + timedelta(days=1)
+        rescheduled = await client.patch(
+            exchange_path, headers=borrower, json={"due_at": due_at.isoformat()}
+        )
+        assert rescheduled.status_code == 200, rescheduled.text
+
+    accepted = await client.post(f"{decision_path}/accept", headers=lender)
+    assert accepted.status_code == 409, accepted.text
+
+    saved = await client.get(exchange_path, headers=borrower)
+    assert datetime.fromisoformat(saved.json()["due_at"]) == due_at
+    declined = await client.post(f"{decision_path}/decline", headers=lender)
+    assert declined.status_code == 200, declined.text
+    assert declined.json()["status"] == "declined"
 
 
 async def test_handover_checklist_flow(client):

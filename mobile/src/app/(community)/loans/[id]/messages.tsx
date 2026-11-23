@@ -1,10 +1,27 @@
 import { randomUUID } from "expo-crypto";
-import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { CommunityScreen } from "@/components/community-screen";
+import { router, useLocalSearchParams } from "expo-router";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
-import { Button, ErrorText, Field } from "@/components/ui";
+import { Button, ErrorText } from "@/components/ui";
 import { api, ApiError, type Conversation } from "@/lib/api";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
 import { exchangeCopy } from "@/lib/exchange-copy";
@@ -26,46 +43,132 @@ export default function LoanMessagesScreen() {
   const copy = loanMessageCopy[locale];
   const partnerName = loan.data?.partnerName || copy.neighbour;
   const conversation = loan.data?.conversation;
-  return (
-    <CommunityScreen
-      live
-      design
-      back
-      keyboard
-      scroll={false}
-      title={exchangeCopy[locale].chatWith(partnerName)}
-    >
-      <ActivityStatus
-        loading={loan.loading}
-        error={loan.error}
-        retry={loan.reload}
+
+  if (conversation) {
+    return (
+      <LoanChat
+        key={`${conversation.id}:${profileId}`}
+        loanId={id}
+        conversation={conversation}
+        profileId={profileId}
+        partnerName={partnerName}
       />
-      {conversation ? (
-        <LoanChat
-          key={`${conversation.id}:${profileId}`}
-          conversation={conversation}
-          profileId={profileId}
-          partnerName={partnerName}
+    );
+  }
+
+  return (
+    <ChatFrame
+      loanId={id}
+      title={partnerName}
+      refreshing={loan.loading}
+      refresh={loan.reload}
+    >
+      <View style={styles.notice}>
+        <ActivityStatus
+          loading={loan.loading}
+          error={loan.error}
+          retry={loan.reload}
         />
-      ) : !loan.loading && !loan.error ? (
-        <View style={styles.section}>
-          <ActivityText>{copy.unavailable}</ActivityText>
-          <Button
-            variant="secondary"
-            label={activityCopy[locale].retry}
-            onPress={loan.reload}
+        {!loan.loading && !loan.error ? (
+          <View style={styles.section}>
+            <ActivityText>{copy.unavailable}</ActivityText>
+            <Button
+              variant="secondary"
+              label={activityCopy[locale].retry}
+              onPress={loan.reload}
+            />
+          </View>
+        ) : null}
+      </View>
+    </ChatFrame>
+  );
+}
+
+const chatIcons = {
+  back: { ios: "chevron.backward", android: "arrow_back", web: "arrow_back" },
+  refresh: { ios: "arrow.clockwise", android: "refresh", web: "refresh" },
+  send: { ios: "arrow.up", android: "arrow_upward", web: "arrow_upward" },
+} satisfies Record<string, SymbolViewProps["name"]>;
+
+function ChatFrame({
+  children,
+  loanId,
+  title,
+  refreshing,
+  refresh,
+}: {
+  children: ReactNode;
+  loanId: string;
+  title: string;
+  refreshing: boolean;
+  refresh: () => void;
+}) {
+  const { locale, t } = useOnboardingText();
+  return (
+    <SafeAreaView style={styles.screen}>
+      <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("back")}
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else
+              router.replace({
+                pathname: "/loans/[id]",
+                params: { id: loanId },
+              });
+          }}
+          style={styles.iconButton}
+        >
+          <SymbolView
+            name={chatIcons.back}
+            size={22}
+            tintColor={colors.action}
           />
-        </View>
-      ) : null}
-    </CommunityScreen>
+        </Pressable>
+        <Text
+          accessibilityRole="header"
+          numberOfLines={1}
+          style={[localizedType("card-title", locale), styles.title]}
+        >
+          {title}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={activityCopy[locale].refresh}
+          accessibilityState={{ disabled: refreshing, busy: refreshing }}
+          disabled={refreshing}
+          onPress={refresh}
+          style={styles.iconButton}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={colors.action} />
+          ) : (
+            <SymbolView
+              name={chatIcons.refresh}
+              size={20}
+              tintColor={colors.action}
+            />
+          )}
+        </Pressable>
+      </View>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        {children}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 function LoanChat({
+  loanId,
   conversation,
   profileId,
   partnerName,
 }: {
+  loanId: string;
   conversation: Conversation;
   profileId: string;
   partnerName: string;
@@ -88,6 +191,7 @@ function LoanChat({
     ),
   );
   const [draft, setDraft] = useState("");
+  const [inputHeight, setInputHeight] = useState(48);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const pending = useRef<{ body: string; id: string } | null>(null);
@@ -113,6 +217,7 @@ function LoanChat({
       if (!mounted.current) return;
       pending.current = null;
       setDraft("");
+      setInputHeight(48);
       await messages.reload();
     } catch (error) {
       if (!mounted.current) return;
@@ -124,21 +229,23 @@ function LoanChat({
     }
   }
 
+  const canSend = !!draft.trim() && !sending && !messages.error;
   return (
-    <View style={styles.flex}>
-      <View style={styles.tools}>
-        <Button
-          label={activity.refresh}
-          variant="text"
-          disabled={messages.loading || sending}
-          onPress={messages.reload}
-        />
-      </View>
-      <ActivityStatus
-        loading={messages.loading}
-        error={messages.error}
-        retry={messages.retry}
-      />
+    <ChatFrame
+      loanId={loanId}
+      title={partnerName}
+      refreshing={messages.loading}
+      refresh={messages.reload}
+    >
+      {messages.error ? (
+        <View style={styles.notice}>
+          <ActivityStatus
+            loading={messages.loading}
+            error={messages.error}
+            retry={messages.retry}
+          />
+        </View>
+      ) : null}
       <FlatList
         inverted
         style={styles.flex}
@@ -146,6 +253,7 @@ function LoanChat({
         data={messages.items}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         ListEmptyComponent={
           !messages.loading && !messages.error ? (
             <View style={styles.section}>
@@ -164,82 +272,165 @@ function LoanChat({
             />
           ) : undefined
         }
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.message,
-              item.sender_user_id === profileId && styles.own,
-            ]}
-          >
-            <ActivityText strong>
-              {item.sender_user_id === profileId
-                ? chat.you
-                : item.sender_user_id
-                  ? partnerName
-                  : "Otagai"}
-            </ActivityText>
-            <ActivityText>
-              {item.deleted ? copy.deleted : item.body || copy.attachment}
-            </ActivityText>
-            <ActivityText>
-              {formatActivityDate(item.created_at, locale)}
-            </ActivityText>
-          </View>
-        )}
+        renderItem={({ item }) => {
+          const body = item.deleted
+            ? copy.deleted
+            : item.body || copy.attachment;
+          if (!item.sender_user_id) {
+            return (
+              <Text
+                style={[localizedType("supporting", locale), styles.system]}
+              >
+                {body}
+              </Text>
+            );
+          }
+          const own = item.sender_user_id === profileId;
+          const stamp = formatActivityDate(item.created_at, locale);
+          return (
+            <View
+              accessible
+              accessibilityLabel={`${own ? chat.you : partnerName}. ${body} ${stamp}`}
+              style={[styles.message, own && styles.own]}
+            >
+              <Text style={[localizedType("body", locale), styles.ink]}>
+                {body}
+              </Text>
+              <Text style={[localizedType("supporting", locale), styles.stamp]}>
+                {stamp}
+              </Text>
+            </View>
+          );
+        }}
       />
       <View style={styles.composer}>
         {closed ? (
           <ActivityText>{copy.closed}</ActivityText>
         ) : (
-          <>
-            <Field
-              label={chat.message}
-              labelStyle={localizedType("field-label", locale)}
-              style={localizedType("body", locale)}
+          <View style={styles.composeRow}>
+            <TextInput
+              accessibilityLabel={chat.message}
+              style={[
+                localizedType("body", locale),
+                styles.input,
+                { height: inputHeight },
+              ]}
               value={draft}
               onChangeText={(value) => {
                 setDraft(value);
                 setSendError(false);
               }}
               placeholder={chat.writeMessage}
+              placeholderTextColor={colors.control}
+              onContentSizeChange={(event) => {
+                setInputHeight(
+                  Math.max(
+                    48,
+                    Math.min(event.nativeEvent.contentSize.height, 120),
+                  ),
+                );
+              }}
               multiline
               maxLength={4000}
               editable={!sending}
             />
-            <Button
-              label={chat.sendMessage}
-              labelStyle={localizedType("button", locale)}
-              busy={sending}
-              disabled={!draft.trim() || messages.error}
-              onPress={send}
-            />
-          </>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={chat.sendMessage}
+              accessibilityState={{ disabled: !canSend, busy: sending }}
+              disabled={!canSend}
+              onPress={() => void send()}
+              style={[
+                styles.iconButton,
+                styles.send,
+                !canSend && !sending && styles.disabled,
+              ]}
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color={colors["on-action"]} />
+              ) : (
+                <SymbolView
+                  name={chatIcons.send}
+                  size={22}
+                  tintColor={colors["on-action"]}
+                />
+              )}
+            </Pressable>
+          </View>
         )}
         {sendError ? <ErrorText>{activity.actionError}</ErrorText> : null}
       </View>
-    </View>
+    </ChatFrame>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  section: { gap: spacing["related-gap"] },
-  tools: { alignItems: "flex-end" },
-  messageList: {
-    gap: spacing["related-gap"],
-    paddingVertical: spacing["related-gap"],
-  },
-  message: {
-    padding: spacing["card-inset"],
-    borderRadius: controls.radius,
-    backgroundColor: colors.paper,
-    gap: spacing["related-gap"],
-  },
-  own: { backgroundColor: colors.wash },
-  composer: {
-    gap: spacing["related-gap"],
-    paddingTop: spacing["related-gap"],
-    borderTopWidth: 1,
+  screen: { flex: 1, backgroundColor: colors.canvas },
+  header: {
+    minHeight: 56,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: colors.rule,
   },
+  title: { flex: 1, minWidth: 0, color: colors.ink },
+  iconButton: {
+    width: controls["touch-target"],
+    height: controls["touch-target"],
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 24,
+  },
+  notice: { padding: spacing["card-inset"] },
+  section: { gap: spacing["related-gap"] },
+  messageList: {
+    gap: spacing["related-gap"],
+    padding: spacing["card-inset"],
+  },
+  message: {
+    alignSelf: "flex-start",
+    maxWidth: "86%",
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 16,
+    backgroundColor: colors.paper,
+    gap: 4,
+  },
+  own: { alignSelf: "flex-end", backgroundColor: colors.wash },
+  ink: { color: colors.ink },
+  stamp: {
+    alignSelf: "flex-end",
+    color: colors.secondary,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  system: {
+    alignSelf: "center",
+    maxWidth: "88%",
+    color: colors.secondary,
+    textAlign: "center",
+  },
+  composer: {
+    gap: spacing["related-gap"],
+    paddingHorizontal: spacing["card-inset"],
+    paddingVertical: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.rule,
+  },
+  composeRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
+  input: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: 20,
+    color: colors.ink,
+  },
+  send: { backgroundColor: colors.action },
+  disabled: { opacity: 0.45 },
 });

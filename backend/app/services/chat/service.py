@@ -69,12 +69,19 @@ class ConversationView:
 
 
 async def _require_participant(
-    session, conversation_id: uuid.UUID, user_id: uuid.UUID
+    session, conversation_id: uuid.UUID, user_id: uuid.UUID, *, lock: bool = False
 ) -> ConversationParticipant:
-    participant = await ConversationRepository(session).get_participant(
-        conversation_id, user_id
+    conversations = ConversationRepository(session)
+    participant = (
+        await conversations.get_participant_for_update(conversation_id, user_id)
+        if lock
+        else await conversations.get_participant(conversation_id, user_id)
     )
-    if participant is None or participant.left_at is not None:
+    if (
+        participant is None
+        or participant.left_at is not None
+        or await conversations.has_blocked_participant(conversation_id, user_id)
+    ):
         raise ConversationNotFoundError
     return participant
 
@@ -444,9 +451,10 @@ async def verify_stream_access(
 
 
 async def messages_since(
-    database: Database, conversation_id: uuid.UUID, after: datetime
+    database: Database, actor: Actor, conversation_id: uuid.UUID, after: datetime
 ) -> list[Message]:
     async with database.session() as session:
+        await _require_participant(session, conversation_id, actor.subject_id)
         return await MessageRepository(session).since(conversation_id, after)
 
 
@@ -456,16 +464,16 @@ async def update_participant_settings(
     conversation_id: uuid.UUID,
     changes: dict,
 ) -> ConversationParticipant:
+    actor.require(ProxyScope.CHAT)
     async with database.session() as session:
-        conversations = ConversationRepository(session)
-        participant = await conversations.get_participant_for_update(
-            conversation_id, actor.subject_id
+        participant = await _require_participant(
+            session, conversation_id, actor.subject_id, lock=True
         )
-        if participant is None or participant.left_at is not None:
-            raise ConversationNotFoundError
         if not changes:
             return participant
-        return await conversations.update_participant(participant, changes)
+        return await ConversationRepository(session).update_participant(
+            participant, changes
+        )
 
 
 def participant_for(

@@ -20,6 +20,7 @@ from app.repositories.pagination import (
 from app.routes.dependencies import ActorDep, DatabaseDep, SettingsDep, StorageDep
 from app.routes.pagination import Page, PageQuery
 from app.services.chat.service import (
+    ConversationNotFoundError,
     ConversationView,
     MessageView,
     delete_message,
@@ -377,7 +378,12 @@ async def conversation_events(
         while elapsed < SSE_MAX_DURATION_SECONDS:
             if await request.is_disconnected():
                 break
-            messages = await messages_since(database, conversation_id, cursor)
+            try:
+                messages = await messages_since(
+                    database, actor, conversation_id, cursor
+                )
+            except ConversationNotFoundError:
+                break
             for message in messages:
                 cursor = max(cursor, message.created_at)
                 yield _sse(

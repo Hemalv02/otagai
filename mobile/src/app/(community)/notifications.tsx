@@ -60,7 +60,7 @@ export default function NotificationsScreen() {
 
   return (
     <CommunityScreen
-      live
+      showDemoPreview={false}
       design
       back
       title={copy.notifications}
