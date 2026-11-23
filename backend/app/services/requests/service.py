@@ -16,9 +16,11 @@ from app.database.models.enums import (
     ParticipantRole,
     RequestKind,
     RequestStatus,
+    ResponseKind,
     ResponseStatus,
     RippleStage,
     TranslationStatus,
+    UserStatus,
 )
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
@@ -121,6 +123,8 @@ class RequestDetail:
     request: HelpRequest
     my_role: str
     my_response_status: str | None
+    my_response_id: uuid.UUID | None
+    exchange_id: uuid.UUID | None
 
 
 @dataclass(frozen=True)
@@ -136,6 +140,17 @@ async def _connected(session, viewer_id: uuid.UUID, other_id: uuid.UUID) -> bool
     if await BlockRepository(session).is_blocked_either_way(viewer_id, other_id):
         return False
     return await CircleRepository(session).share_approved_circle(viewer_id, other_id)
+
+
+async def _visible_recipient(
+    session: AsyncSession, request: HelpRequest, viewer: uuid.UUID
+) -> RequestRecipient:
+    recipient = await RecipientRepository(session).get(request.id, viewer)
+    if recipient is None or await BlockRepository(session).is_blocked_either_way(
+        viewer, request.requester_user_id
+    ):
+        raise RequestNotFoundError
+    return recipient
 
 
 async def create_request(
@@ -258,18 +273,40 @@ async def get_request(
         request = await RequestRepository(session).get(request_id)
         if request is None:
             raise RequestNotFoundError
-        if request.requester_user_id == viewer:
-            return RequestDetail(
-                request=request, my_role="requester", my_response_status=None
+        owns_request = request.requester_user_id == viewer
+        can_view_activity = actor.grant is None or actor.grant.can_view_activity
+        live = None
+        if not owns_request:
+            await _visible_recipient(session, request, viewer)
+            if can_view_activity:
+                live = await ResponseRepository(session).live_response_for(
+                    request_id, viewer
+                )
+        exchange = None
+        if (
+            can_view_activity
+            and request.status
+            in (
+                RequestStatus.MATCHED.value,
+                RequestStatus.IN_PROGRESS.value,
+                RequestStatus.DONE.value,
             )
-        recipient = await RecipientRepository(session).get(request_id, viewer)
-        if recipient is None:
-            raise RequestNotFoundError
-        live = await ResponseRepository(session).live_response_for(request_id, viewer)
+            and (
+                owns_request or (live and live.status == ResponseStatus.ACCEPTED.value)
+            )
+        ):
+            exchange = await ExchangeRepository(session).active_for_request(
+                request_id, lock=False
+            )
         return RequestDetail(
             request=request,
-            my_role="recipient",
+            my_role="requester" if owns_request else "recipient",
             my_response_status=live.status if live else None,
+            my_response_id=live.id if live else None,
+            exchange_id=exchange.id
+            if exchange
+            and viewer in (exchange.requester_user_id, exchange.helper_user_id)
+            else None,
         )
 
 
@@ -453,9 +490,10 @@ async def mark_received(
     now = datetime.now(UTC)
     async with database.session() as session:
         recipients = RecipientRepository(session)
-        recipient = await recipients.get(request_id, actor.subject_id)
-        if recipient is None:
+        request = await RequestRepository(session).get(request_id)
+        if request is None:
             raise RequestNotFoundError
+        recipient = await _visible_recipient(session, request, actor.subject_id)
         changes: dict = {}
         if seen and recipient.seen_at is None:
             changes["seen_at"] = now
@@ -465,7 +503,6 @@ async def mark_received(
             changes["hidden_at"] = None
         if changes:
             recipient = await recipients.update(recipient, changes)
-        request = await RequestRepository(session).get(request_id)
         live = await ResponseRepository(session).live_response_for(
             request_id, actor.subject_id
         )
@@ -483,9 +520,7 @@ async def create_response(
         request = await RequestRepository(session).get(request_id)
         if request is None:
             raise RequestNotFoundError
-        recipient = await RecipientRepository(session).get(request_id, actor.subject_id)
-        if recipient is None:
-            raise RequestNotFoundError
+        await _visible_recipient(session, request, actor.subject_id)
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         values = {
@@ -606,6 +641,19 @@ async def accept_response(
             return response
         if response.status != ResponseStatus.PENDING.value:
             raise ResponseNotPendingError
+        if response.kind == ResponseKind.QUESTION.value:
+            raise ConflictError("Choose a help offer or a suggested time to match.")
+        if response.proposed_start is not None and response.proposed_start <= now:
+            raise ConflictError("This proposed time has passed.")
+        helper = await UserRepository(session).get(response.responder_user_id)
+        if (
+            helper is None
+            or helper.status != UserStatus.ACTIVE.value
+            or await BlockRepository(session).is_blocked_either_way(
+                request.requester_user_id, response.responder_user_id
+            )
+        ):
+            raise ConflictError("This helper is no longer available.")
         try:
             accepted = await response_repo.update(
                 response,
@@ -618,7 +666,7 @@ async def accept_response(
         listing_id = response.listing_id or request.listing_id
         mode = (
             ExchangeMode.LOAN.value
-            if listing_id is not None and request.kind != RequestKind.HELP.value
+            if request.kind != RequestKind.HELP.value
             else ExchangeMode.HELP.value
         )
         exchange = await ExchangeRepository(session).create(

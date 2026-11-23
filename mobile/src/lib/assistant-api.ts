@@ -61,6 +61,7 @@ export type AssistantTurn = {
   thread_id: string;
   text: string | null;
   reply: string;
+  no_matches: boolean;
   clarification:
     | "task"
     | "tool"
