@@ -1,6 +1,7 @@
 import { router, useFocusEffect } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
@@ -27,13 +28,14 @@ import {
 import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
-import { colors, spacing } from "@/theme/tokens.json";
+import { colors, controls, spacing } from "@/theme/tokens.json";
 
 const homeCopy = {
   en: {
     greet: (name: string) => `Hello, ${name}`,
     ask: "Ask",
     lend: "Lend",
+    family: "Family",
     browse: "Browse tools and skills",
     nearby: "Available nearby",
     today: "Today",
@@ -50,6 +52,7 @@ const homeCopy = {
     greet: (name: string) => `こんにちは、${name}`,
     ask: "お願いする",
     lend: "貸す",
+    family: "家族",
     browse: "道具とスキルを探す",
     nearby: "近所で借りられるもの",
     today: "今日",
@@ -65,6 +68,7 @@ const homeCopy = {
     greet: (name: string) => `স্বাগতম, ${name}`,
     ask: "সাহায্য চাই",
     lend: "ধার দিন",
+    family: "পরিবার",
     browse: "জিনিসপত্র ও সাহায্য দেখুন",
     nearby: "কাছাকাছি পাওয়া যাচ্ছে",
     today: "আজ",
@@ -198,6 +202,31 @@ function CircleHome({ circleName }: { circleName: string }) {
           />
         ) : null}
       </View>
+      {actor === "member" ? (
+        <Pressable
+          accessibilityRole="link"
+          accessibilityLabel={copy.family}
+          onPress={() => router.push("/family")}
+          android_ripple={{ color: colors.wash }}
+          style={styles.family}
+        >
+          <SymbolView
+            name={{ ios: "person.2", android: "group", web: "group" }}
+            size={20}
+            tintColor={colors.action}
+          />
+          <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
+          <SymbolView
+            name={{
+              ios: "chevron.forward",
+              android: "chevron_right",
+              web: "chevron_right",
+            }}
+            size={18}
+            tintColor={colors.action}
+          />
+        </Pressable>
+      ) : null}
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
@@ -314,6 +343,18 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: spacing["control-gap"] },
   action: { flex: 1 },
   secondaryButton: { borderColor: colors.control },
+  family: {
+    minHeight: controls["touch-target"],
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: controls.radius,
+    gap: spacing["control-gap"],
+    paddingHorizontal: spacing["control-gap"],
+    paddingVertical: spacing["related-gap"],
+  },
+  familyLabel: { flex: 1, color: colors.action },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },
   green: { color: colors.action },
