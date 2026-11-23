@@ -11,7 +11,9 @@ _DANGEROUS_SCHEME = re.compile(
 _EMAIL = re.compile(r"[\w.+-]{1,64}@[\w.-]{1,255}")
 _SCHEMELESS = re.compile(r"(?i)(?<!\S)(?:www\.|//)\S*")
 _BARE_DOMAIN = re.compile(
-    r"(?i)\b[\w-]{1,63}(?:\.[\w-]{1,63}){0,10}\.[a-z]{2,24}\b(?:[/:?#]\S*)?"
+    r"\b[\w-]{1,63}(?:\.[\w-]{1,63}){0,10}"
+    r"\.(?:[a-z]{2,24}|(?i:com|net|org|io|co|ly|jp|bd|me|app|dev|xyz|info|biz))"
+    r"\b(?:[/:?#]\S*)?"
 )
 _OBFUSCATED_DOT = re.compile(r"\s?[\[({]\s?\.\s?[\])}]\s?")
 _EMPHASIS = re.compile(r"\*\*|~~|`")

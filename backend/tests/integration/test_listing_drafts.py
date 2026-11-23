@@ -399,3 +399,32 @@ async def test_stored_run_input_has_no_image_data(client, stub_model):
         ).all()
     assert rows
     assert all("data:" not in row[0] and "base64" not in row[0] for row in rows)
+
+
+async def test_capitalised_words_after_a_dot_are_not_mistaken_for_domains(
+    client, stub_model
+):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            title="Li-ion 18V.Use with care",
+            brand="Makita.Good condition",
+            model="Model XR-5.Pro",
+            condition="etc.They work well",
+            details="Battery.Charger included",
+        )
+    )
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["title"] == "Li-ion 18V.Use with care"
+    assert body["brand"] == "Makita.Good condition"
+    assert body["model"] == "Model XR-5.Pro"
+    assert body["condition"] == "etc.They work well"
+    assert body["details"] == "Battery.Charger included"
+
+
+async def test_uppercase_common_domains_are_still_removed(client, stub_model):
+    token, media_id = await setup(client)
+    stub_model(suggestion(details="Order at EVIL.COM/x today", brand="SHOP.Io"))
+    body = (await post(client, token, image_media_id=media_id)).json()
+    assert body["details"] == "Order at today"
+    assert body["brand"] is None
