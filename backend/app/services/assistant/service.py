@@ -381,6 +381,7 @@ async def run_turn(
                 else None,
                 tool=find_circle_matches,
                 context=catalog,
+                trace_workflow="Otagai Ask",
             ),
         )
         if redis is not None and cache_key:

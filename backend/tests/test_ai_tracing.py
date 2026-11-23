@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from pydantic import BaseModel, SecretStr
 
 from app.services.ai import service
@@ -10,7 +11,8 @@ class DraftResult(BaseModel):
     text: str
 
 
-async def test_ask_traces_use_the_server_key_and_omit_sensitive_data(monkeypatch):
+@pytest.mark.parametrize("trace_workflow", ["Otagai Ask", None])
+async def test_only_opted_in_drafts_send_redacted_traces(monkeypatch, trace_workflow):
     settings = Settings(
         _env_file=None,
         openai_api_key=SecretStr("test-only"),
@@ -18,10 +20,13 @@ async def test_ask_traces_use_the_server_key_and_omit_sensitive_data(monkeypatch
     )
 
     async def run_agent(_agent, _input, *, run_config, **_kwargs):
-        assert not run_config.tracing_disabled
-        assert not run_config.trace_include_sensitive_data
-        assert run_config.workflow_name == "Otagai Ask"
-        assert run_config.tracing == {"api_key": "test-only"}
+        assert run_config.tracing_disabled is (trace_workflow is None)
+        if trace_workflow:
+            assert not run_config.trace_include_sensitive_data
+            assert run_config.workflow_name == trace_workflow
+            assert run_config.tracing == {"api_key": "test-only"}
+        else:
+            assert run_config.tracing is None
         return SimpleNamespace(
             final_output_as=lambda *_args, **_kwargs: DraftResult(text="Draft")
         )
@@ -32,5 +37,6 @@ async def test_ask_traces_use_the_server_key_and_omit_sensitive_data(monkeypatch
         instructions="Write a short draft.",
         user_input="Synthetic test input",
         output_type=DraftResult,
+        trace_workflow=trace_workflow,
     )
     assert result.text == "Draft"
