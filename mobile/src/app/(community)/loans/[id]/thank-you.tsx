@@ -89,6 +89,7 @@ function LoanThankYou({
     }, [api, authUserId, id, profileId]),
   );
   const [note, setNote] = useState("");
+  const [orei, setOrei] = useState<string | null>(null);
   const [review, setReview] = useState(false);
   const [suggested, setSuggested] = useState(false);
   const [busy, setBusy] = useState<"draft" | "send" | null>(null);
@@ -148,6 +149,7 @@ function LoanThankYou({
       );
       if (!result.note.trim()) throw new Error("Empty suggestion.");
       setNote(result.note.trim().slice(0, 1000));
+      setOrei(result.suggested_orei.trim().slice(0, 200) || null);
       setSuggested(true);
     } catch {
       setError("draft");
@@ -296,6 +298,12 @@ function LoanThankYou({
                     });
                   }}
                 />
+                {suggested && orei ? (
+                  <NeighbourNotice>
+                    <ActivityText strong>{copy.oreiIdea}</ActivityText>
+                    <ActivityText>{orei}</ActivityText>
+                  </NeighbourNotice>
+                ) : null}
               </>
             )}
             {error ? (

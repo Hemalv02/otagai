@@ -67,6 +67,17 @@ class Transcript(BaseModel):
     text: str
 
 
+async def enforce_feature_limit(redis, feature: AiFeature, user_id: uuid.UUID) -> None:
+    rate = RATE_LIMITS[feature]
+    await enforce(
+        redis,
+        scope=feature.value,
+        user_id=user_id,
+        limit=rate.limit,
+        window_seconds=rate.window_seconds,
+    )
+
+
 async def run_feature[Output: BaseModel](
     database: Database,
     redis,
@@ -77,15 +88,9 @@ async def run_feature[Output: BaseModel](
     input_payload: dict,
     produce: Callable[[], Awaitable[Output]],
     model: str | None = None,
+    rate_limit_user_id: uuid.UUID | None = None,
 ) -> Output:
-    rate = RATE_LIMITS[feature]
-    await enforce(
-        redis,
-        scope=feature.value,
-        user_id=user.id,
-        limit=rate.limit,
-        window_seconds=rate.window_seconds,
-    )
+    await enforce_feature_limit(redis, feature, rate_limit_user_id or user.id)
     model = model or settings.openai_model or "unconfigured"
     start = time.monotonic()
     with metered() as usage:

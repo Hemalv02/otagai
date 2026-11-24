@@ -96,6 +96,72 @@ async def test_reject_pending_member(client):
     assert rejected.json()["status"] == "rejected"
 
 
+async def test_leader_can_page_pending_members_with_display_names(client):
+    leader = await make_user(client)
+    member = await make_user(client)
+    first_applicant = await make_user(client, display_name="First applicant")
+    second_applicant = await make_user(client, display_name="Second applicant")
+    circle_id = await make_circle(client, leader)
+    path = f"/circles/{circle_id}/memberships"
+    await join_circle(client, leader, circle_id, member)
+    for applicant in (first_applicant, second_applicant):
+        joined = await client.post(
+            "/users/me/memberships",
+            headers=auth(applicant),
+            json={"circle_id": circle_id},
+        )
+        assert joined.status_code == 201, joined.text
+        assert joined.json()["status"] == "pending"
+
+    params = {"limit": 1, "status": "pending"}
+    first = await client.get(path, headers=auth(leader), params=params)
+    assert first.status_code == 200, first.text
+    first_page = first.json()
+    assert [item["display_name"] for item in first_page["items"]] == [
+        "Second applicant"
+    ]
+    assert first_page["next_cursor"]
+    second = await client.get(
+        path,
+        headers=auth(leader),
+        params={**params, "cursor": first_page["next_cursor"]},
+    )
+    assert second.status_code == 200, second.text
+    assert [item["display_name"] for item in second.json()["items"]] == [
+        "First applicant"
+    ]
+    assert second.json()["next_cursor"] is None
+
+    regular_roster = await client.get(path, headers=auth(member), params=params)
+    assert regular_roster.status_code == 200, regular_roster.text
+    assert all(item["status"] == "approved" for item in regular_roster.json()["items"])
+    assert all(
+        item.get("display_name") is None for item in regular_roster.json()["items"]
+    )
+
+
+async def test_membership_approval_retries_preserve_decision(client):
+    leader = await make_user(client)
+    applicant = await make_user(client)
+    circle_id = await make_circle(client, leader)
+    joined = await client.post(
+        "/users/me/memberships",
+        headers=auth(applicant),
+        json={"circle_id": circle_id},
+    )
+    assert joined.status_code == 201, joined.text
+    applicant_id = await _mid(client, applicant)
+    path = f"/circles/{circle_id}/memberships/{applicant_id}"
+
+    approved = await client.post(f"{path}/approve", headers=auth(leader))
+    retried = await client.post(f"{path}/approve", headers=auth(leader))
+    assert approved.status_code == retried.status_code == 200
+    assert retried.json() == approved.json()
+
+    stale = await client.post(f"{path}/reject", headers=auth(leader))
+    assert stale.status_code == 409, stale.text
+
+
 async def test_revoke_invite_and_leave_circle(client):
     leader = await make_user(client, display_name="Leader")
     member = await make_user(client, display_name="Member")

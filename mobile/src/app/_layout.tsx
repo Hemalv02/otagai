@@ -66,9 +66,18 @@ function RootNavigator() {
   const canUseCommunity =
     profile.status === "ready" && memberships.access === "approved";
 
+  const launchHref =
+    launchRoute === "index"
+      ? canUseCommunity
+        ? "/"
+        : "/account-status"
+      : (`/${launchRoute}` as const);
+
   return (
     <TextSizeContext.Provider
-      value={profile.status === "ready" ? profile.profile.text_scale_percent : 100}
+      value={
+        profile.status === "ready" ? profile.profile.text_scale_percent : 100
+      }
     >
       <Stack
         screenOptions={{
@@ -76,7 +85,10 @@ function RootNavigator() {
           contentStyle: { backgroundColor: colors.canvas },
         }}
       >
-        <Stack.Protected guard={launchRoute === "welcome"}>
+        <Stack.Protected
+          guard={launchRoute === "welcome"}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="welcome" />
           <Stack.Protected guard={state.step >= 2}>
             <Stack.Screen name="onboarding-story" />
@@ -85,25 +97,41 @@ function RootNavigator() {
             <Stack.Screen name="onboarding-features" />
           </Stack.Protected>
         </Stack.Protected>
-        <Stack.Protected guard={launchRoute === "sign-in"}>
+        <Stack.Protected
+          guard={launchRoute === "sign-in"}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="sign-in" />
         </Stack.Protected>
-        <Stack.Protected guard={!session}>
+        <Stack.Protected guard={!session} redirectTo={launchHref}>
           <Stack.Screen name="onboarding-preferences" />
         </Stack.Protected>
-        <Stack.Protected guard={launchRoute === "profile-setup"}>
+        <Stack.Protected
+          guard={launchRoute === "profile-setup"}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="profile-setup" />
         </Stack.Protected>
-        <Stack.Protected guard={launchRoute === "find-circle"}>
+        <Stack.Protected
+          guard={launchRoute === "find-circle"}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="find-circle" />
+          <Stack.Screen name="start-circle" />
         </Stack.Protected>
-        <Stack.Protected guard={launchRoute === "index" && !canUseCommunity}>
+        <Stack.Protected
+          guard={launchRoute === "index" && !canUseCommunity}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="account-status" />
         </Stack.Protected>
-        <Stack.Protected guard={canUseCommunity}>
+        <Stack.Protected guard={canUseCommunity} redirectTo={launchHref}>
           <Stack.Screen name="(community)" />
         </Stack.Protected>
-        <Stack.Protected guard={profile.status === "ready"}>
+        <Stack.Protected
+          guard={profile.status === "ready"}
+          redirectTo={launchHref}
+        >
           <Stack.Screen name="settings" />
         </Stack.Protected>
       </Stack>

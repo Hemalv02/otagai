@@ -17,6 +17,24 @@ async def test_create_profile_success(client):
     assert "auth_user_id" not in body and "phone" not in body
 
 
+async def test_create_profile_saves_edited_intro(client):
+    token = str(uuid.uuid4())
+    response = await client.post(
+        "/users",
+        headers=auth(token),
+        json={
+            "display_name": "Aki",
+            "preferred_language": "en",
+            "region": "jp",
+            "intro": "  I am happy to help with bike repairs.  ",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["intro"] == "I am happy to help with bike repairs."
+    saved = await client.get("/users/me", headers=auth(token))
+    assert saved.json()["intro"] == "I am happy to help with bike repairs."
+
+
 async def test_second_profile_conflicts(client):
     token = await make_user(client)
     again = await client.post(

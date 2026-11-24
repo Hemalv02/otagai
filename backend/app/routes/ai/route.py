@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.database.models.enums import AiFeature
 from app.routes.dependencies import (
+    AuthClaimsDep,
     CurrentUserDep,
     DatabaseDep,
     OptionalStorageDep,
@@ -33,10 +34,12 @@ from app.services.ai.helpers import (
 )
 from app.services.ai.runner import (
     Transcript,
+    enforce_feature_limit,
     run_feature,
     suggest_listing,
     transcribe_voice,
 )
+from app.services.users.service import ProfileNotFoundError, get_active_profile
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -50,11 +53,17 @@ class TranscriptionBody(BaseModel):
 @router.post("/intro-cards")
 async def intro_cards(
     body: IntroCardInput,
-    user: CurrentUserDep,
+    claims: AuthClaimsDep,
     database: DatabaseDep,
     settings: SettingsDep,
     redis: RedisDep,
 ) -> IntroCard:
+    try:
+        user = await get_active_profile(database, claims.auth_user_id)
+    except ProfileNotFoundError:
+        await enforce_feature_limit(redis, AiFeature.INTRO_CARD, claims.auth_user_id)
+        return await draft_intro_card(settings, body)
+
     return await run_feature(
         database,
         redis,
@@ -63,6 +72,7 @@ async def intro_cards(
         feature=AiFeature.INTRO_CARD,
         input_payload=body.model_dump(),
         produce=lambda: draft_intro_card(settings, body),
+        rate_limit_user_id=claims.auth_user_id,
     )
 
 

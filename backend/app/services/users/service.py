@@ -49,6 +49,7 @@ class NewProfile:
     languages: list[str]
     age_band: str | None
     happy_to_help_with: str | None
+    intro: str | None
 
 
 def ordered_languages(preferred: str, languages: list[str]) -> list[str]:
@@ -72,6 +73,7 @@ async def create_profile(
         **asdict(profile),
         "languages": ordered_languages(profile.preferred_language, profile.languages),
         "auth_user_id": auth_user_id,
+        "intro_lang": profile.preferred_language if profile.intro else None,
         "kind": UserKind.SELF.value,
         "timezone": REGION_TIMEZONES[Region(profile.region)],
     }

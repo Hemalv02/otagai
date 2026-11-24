@@ -71,6 +71,13 @@ function NeighbourProfile({
       return page?.items.find((item) => item.status === "active") ?? null;
     }, [api, authUserId, id, profileId]),
   );
+  const openRequests = useLiveResource(
+    useCallback(async () => {
+      if (!authUserId || !isUuid(id) || id === profileId) return [];
+      const page = await optionalVisible(api.openRequests(id));
+      return page?.items ?? [];
+    }, [api, authUserId, id, profileId]),
+  );
   const data = resource.data?.status === "ready" ? resource.data : null;
   const available = listing.data;
   const name = data?.person.display_name;
@@ -176,6 +183,37 @@ function NeighbourProfile({
               label={copy.receivedHelp(name)}
             />
           </View>
+          <NeighbourHeading>{copy.openRequests}</NeighbourHeading>
+          <ActivityText>{copy.openRequestsHint}</ActivityText>
+          {openRequests.data?.map((item) => (
+            <View key={item.id} style={styles.row}>
+              <View style={styles.text}>
+                <ActivityText strong>{item.polite_text}</ActivityText>
+              </View>
+              <Button
+                label={copy.offerHelp}
+                accessibilityLabel={`${copy.offerHelp}: ${item.polite_text}`}
+                variant="text"
+                labelStyle={localizedType("field-label", locale)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/requests/[id]",
+                    params: { id: item.id },
+                  })
+                }
+              />
+            </View>
+          ))}
+          {openRequests.data?.length === 0 &&
+          !openRequests.loading &&
+          !openRequests.error ? (
+            <ActivityText>{copy.noOpenRequests}</ActivityText>
+          ) : null}
+          <ActivityStatus
+            loading={openRequests.loading}
+            error={openRequests.error}
+            retry={openRequests.reload}
+          />
           <NeighbourHeading>{copy.history}</NeighbourHeading>
           <PairHistory
             authUserId={authUserId}

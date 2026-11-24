@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.database.models import User
 from app.database.models.enums import MediaVariantName
@@ -39,6 +39,10 @@ def _parse_request_statuses(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return ()
     return tuple(dict.fromkeys(part.strip() for part in raw.split(",") if part.strip()))
+
+
+class ActivityPageQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
 
 
 class PublicProfile(BaseModel):
@@ -133,13 +137,12 @@ async def read_user_listings(
 @router.get("/{user_id}/requests")
 async def read_user_requests(
     user_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ActivityPageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[RequestSummary]:
     result = await list_user_requests(
-        database, user, user_id, _parse_request_statuses(status_filter), query.page()
+        database, user, user_id, _parse_request_statuses(query.status), query.page()
     )
     return Page.build(result, RequestSummary)
 
@@ -147,13 +150,12 @@ async def read_user_requests(
 @router.get("/{user_id}/exchanges")
 async def read_user_exchanges(
     user_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ActivityPageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[ExchangeModel]:
     result = await list_user_exchanges(
-        database, user, user_id, _parse_request_statuses(status_filter), query.page()
+        database, user, user_id, _parse_request_statuses(query.status), query.page()
     )
     return Page.build(result, ExchangeModel)
 

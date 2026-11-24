@@ -8,11 +8,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.database.models import Circle, CircleInvite, CircleMembership
+from app.database.models import Circle, CircleInvite, CircleMembership, User
 from app.database.models.enums import (
     CircleStatus,
     MembershipRole,
     MembershipStatus,
+    UserStatus,
 )
 from app.repositories.errors import violates
 from app.repositories.pagination import (
@@ -90,6 +91,7 @@ class CircleRepository:
         other_id: uuid.UUID,
         *,
         prefer_eligible_leader: bool = False,
+        preferred_circle_id: uuid.UUID | None = None,
     ) -> uuid.UUID | None:
         mine = aliased(CircleMembership)
         theirs = aliased(CircleMembership)
@@ -116,6 +118,10 @@ class CircleRepository:
                 .exists()
             )
             statement = statement.order_by(has_eligible_leader.desc())
+        if preferred_circle_id is not None:
+            statement = statement.order_by(
+                (mine.circle_id == preferred_circle_id).desc()
+            )
         statement = statement.order_by(mine.created_at.desc(), mine.circle_id).limit(1)
         return await self._session.scalar(statement)
 
@@ -293,6 +299,16 @@ class MembershipRepository:
             CircleMembership.created_at,
             CircleMembership.user_id,
         )
+
+    async def display_names(self, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+        if not user_ids:
+            return {}
+        rows = await self._session.execute(
+            select(User.id, User.display_name).where(
+                User.id.in_(user_ids), User.status != UserStatus.DELETED.value
+            )
+        )
+        return {user_id: display_name for user_id, display_name in rows}
 
 
 class InviteRepository:

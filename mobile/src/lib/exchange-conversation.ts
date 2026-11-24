@@ -46,3 +46,33 @@ export async function loadExchangeConversation(
   }
   return { conversation, partnerName };
 }
+
+let loanMessageDraft: {
+  profileId: string;
+  exchangeId: string;
+  text: string;
+} | null = null;
+
+export function stageLoanMessageDraft(
+  profileId: string,
+  exchangeId: string,
+  text: string,
+) {
+  loanMessageDraft = { profileId, exchangeId, text };
+}
+
+export function peekLoanMessageDraft(profileId: string, exchangeId: string) {
+  if (
+    loanMessageDraft?.profileId !== profileId ||
+    loanMessageDraft.exchangeId !== exchangeId
+  ) {
+    return null;
+  }
+  return loanMessageDraft.text;
+}
+
+export function clearLoanMessageDraft(profileId: string, exchangeId: string) {
+  if (peekLoanMessageDraft(profileId, exchangeId) !== null) {
+    loanMessageDraft = null;
+  }
+}

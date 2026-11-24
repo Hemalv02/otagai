@@ -25,7 +25,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
+import { circleCopy } from "@/lib/circle-copy";
 import { neighbourCopy } from "@/lib/neighbour-copy";
+import { useMemberships } from "@/lib/memberships";
 import { useOnboarding } from "@/lib/onboarding";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -93,6 +95,8 @@ const settingsIcons = {
   },
   preferences: { ios: "slider.horizontal.3", android: "tune", web: "tune" },
   blocked: { ios: "hand.raised", android: "block", web: "block" },
+  reports: { ios: "flag", android: "flag", web: "flag" },
+  circle: { ios: "person.2", android: "group", web: "group" },
   language: { ios: "globe", android: "language", web: "language" },
   next: {
     ios: "chevron.right",
@@ -133,6 +137,13 @@ export function CommunityScreen({
   const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
+  const memberships = useMemberships();
+  const ledCircles =
+    memberships.state.status === "ready"
+      ? memberships.state.items.filter(
+          (item) => item.role === "leader" && item.status === "approved",
+        )
+      : [];
   const [options, setOptions] = useState<OptionsSheet | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const copy = text[locale];
@@ -358,6 +369,38 @@ export function CommunityScreen({
                         />
                       </View>
                     ))}
+                    {ledCircles.map((ledCircle) => (
+                      <View key={ledCircle.circle_id} style={styles.rule}>
+                        <SettingsRow
+                          icon="circle"
+                          label={circleCopy[locale].manageCircle}
+                          locale={locale}
+                          value={
+                            ledCircles.length > 1
+                              ? ledCircle.circle?.name
+                              : undefined
+                          }
+                          onPress={() => {
+                            setOptions(null);
+                            router.push({
+                              pathname: "/circles/[id]",
+                              params: { id: ledCircle.circle_id },
+                            });
+                          }}
+                        />
+                      </View>
+                    ))}
+                    <View style={styles.rule}>
+                      <SettingsRow
+                        icon="reports"
+                        label={circleCopy[locale].myReports}
+                        locale={locale}
+                        onPress={() => {
+                          setOptions(null);
+                          router.push("/my-reports");
+                        }}
+                      />
+                    </View>
                     <SettingsRow
                       icon="language"
                       label={copy.language}

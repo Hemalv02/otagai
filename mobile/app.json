@@ -47,7 +47,14 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Otagai to find neighbourhood circles near you."
+          "locationWhenInUsePermission": "Allow Otagai to find nearby circles or set your circle’s approximate location."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Otagai to scan a circle’s invite QR code.",
+          "recordAudioAndroid": false
         }
       ]
     ],

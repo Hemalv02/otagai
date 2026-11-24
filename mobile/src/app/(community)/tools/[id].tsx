@@ -21,6 +21,7 @@ import {
   photoUrls,
 } from "@/lib/listing-workflow";
 import { listingReadCopy, requestApiError } from "@/lib/listing-read";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { listingRequestState } from "@/lib/listing-request";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -247,6 +248,24 @@ export default function ToolListingScreen() {
             />
           ))
         : null}
+      {!own && listing.owner ? (
+        <Button
+          label={neighbourCopy[locale].reportListing}
+          variant="text"
+          labelStyle={localizedType("field-label", locale)}
+          onPress={() =>
+            router.push({
+              pathname: "/report-or-block",
+              params: {
+                targetType: "listing",
+                targetId: listing.id,
+                subjectId: listing.owner?.id ?? "",
+                title: listing.title,
+              },
+            })
+          }
+        />
+      ) : null}
     </CommunityScreen>
   );
 }

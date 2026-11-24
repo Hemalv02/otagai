@@ -1,13 +1,34 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import Report
+from app.database.models import Listing, Message, Report
 from app.database.models.enums import ReportTargetType
 from app.repositories.pagination import PageRequest, PageResult, paginate
+
+
+def _targets_user(user_id: uuid.UUID):
+    return or_(
+        and_(
+            Report.target_type == ReportTargetType.USER.value,
+            Report.target_id == user_id,
+        ),
+        and_(
+            Report.target_type == ReportTargetType.LISTING.value,
+            select(Listing.id)
+            .where(Listing.id == Report.target_id, Listing.owner_user_id == user_id)
+            .exists(),
+        ),
+        and_(
+            Report.target_type == ReportTargetType.MESSAGE.value,
+            select(Message.id)
+            .where(Message.id == Report.target_id, Message.sender_user_id == user_id)
+            .exists(),
+        ),
+    )
 
 
 class ReportRepository:
@@ -21,6 +42,12 @@ class ReportRepository:
         return await self._session.get(
             Report, report_id, with_for_update=True, populate_existing=True
         )
+
+    async def targets_user(self, report_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        statement = select(Report.id).where(
+            Report.id == report_id, _targets_user(user_id)
+        )
+        return await self._session.scalar(statement) is not None
 
     async def create_or_get(
         self, report_id: uuid.UUID, values: dict[str, Any]
@@ -63,10 +90,7 @@ class ReportRepository:
     ) -> PageResult[Report]:
         statement = select(Report).where(
             Report.circle_id == circle_id,
-            or_(
-                Report.target_type != ReportTargetType.USER.value,
-                Report.target_id != moderator_id,
-            ),
+            ~_targets_user(moderator_id),
         )
         if statuses:
             statement = statement.where(Report.status.in_(statuses))

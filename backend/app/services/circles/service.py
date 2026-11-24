@@ -219,6 +219,12 @@ class MembershipView:
     circle: Circle | None
 
 
+@dataclass(frozen=True)
+class RosterEntry:
+    membership: CircleMembership
+    display_name: str | None
+
+
 async def list_memberships(
     database: Database, user: User, page: PageRequest
 ) -> PageResult[MembershipView]:
@@ -285,7 +291,7 @@ async def list_circle_memberships(
     circle_id: uuid.UUID,
     statuses: tuple[str, ...],
     page: PageRequest,
-) -> PageResult[CircleMembership]:
+) -> PageResult[RosterEntry]:
     async with database.session() as session:
         memberships = MembershipRepository(session)
         is_leader = await memberships.is_leader(circle_id, user.id)
@@ -302,7 +308,16 @@ async def list_circle_memberships(
             )
         else:
             allowed = (MembershipStatus.APPROVED.value,)
-        return await memberships.list_for_circle(circle_id, list(allowed), page)
+        result = await memberships.list_for_circle(circle_id, list(allowed), page)
+        names = (
+            await memberships.display_names([item.user_id for item in result.items])
+            if is_leader
+            else {}
+        )
+        return PageResult(
+            items=[RosterEntry(item, names.get(item.user_id)) for item in result.items],
+            next_cursor=result.next_cursor,
+        )
 
 
 async def decide_membership(
@@ -319,6 +334,15 @@ async def decide_membership(
         membership = await memberships.get_for_update(circle_id, member_user_id)
         if membership is None:
             raise CircleNotFoundError
+        if membership.status == target_status:
+            return membership
+        expected_status = (
+            MembershipStatus.APPROVED.value
+            if target_status == MembershipStatus.REMOVED.value
+            else MembershipStatus.PENDING.value
+        )
+        if membership.status != expected_status:
+            raise ConflictError("This membership has already changed.")
         updated = await memberships.update(
             membership,
             {

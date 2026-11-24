@@ -1,4 +1,40 @@
+import uuid
+
+from app.routes.ai import route as ai_route
+from app.services.ai.helpers import IntroCard
 from tests.integration.conftest import auth, make_circle, make_user
+
+
+async def test_signed_in_user_can_draft_intro_before_creating_profile(
+    client, monkeypatch
+):
+    async def draft(settings, request):
+        return IntroCard(intro=f"I can help with {request.skills}.")
+
+    monkeypatch.setattr(ai_route, "draft_intro_card", draft)
+    token = str(uuid.uuid4())
+    payload = {"skills": "fixing bikes", "language": "en"}
+
+    anonymous = await client.post("/ai/intro-cards", json=payload)
+    assert anonymous.status_code == 401
+
+    response = await client.post("/ai/intro-cards", headers=auth(token), json=payload)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"intro": "I can help with fixing bikes."}
+
+    profile = await client.get("/users/me", headers=auth(token))
+    assert profile.status_code == 404
+
+
+async def test_inactive_user_cannot_draft_intro(client):
+    token = await make_user(client)
+    assert (await client.delete("/users/me", headers=auth(token))).status_code == 204
+    response = await client.post(
+        "/ai/intro-cards",
+        headers=auth(token),
+        json={"skills": "fixing bikes", "language": "en"},
+    )
+    assert response.status_code == 403
 
 
 async def test_ai_helper_without_openai_is_503(client):
