@@ -1,5 +1,10 @@
-import { router, useLocalSearchParams, usePreventRemove } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+  usePreventRemove,
+} from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -23,6 +28,8 @@ import {
   type SendFailure,
   validateActingDraft,
 } from "@/lib/family-consent";
+import { canManageFamilyCircles } from "@/lib/family-state";
+import { managedCircleCopy } from "@/lib/managed-circle-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -36,6 +43,7 @@ type Load =
       name: string;
       destinations: DestinationCircle[];
       canViewActivity: boolean;
+      canManageCircles: boolean;
     };
 
 type Step = "compose" | "review" | "sent";
@@ -66,6 +74,7 @@ async function loadComposer(
       name,
       destinations,
       canViewActivity: grant.can_view_activity,
+      canManageCircles: canManageFamilyCircles(grant),
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
@@ -104,7 +113,7 @@ function ActingRequestComposer({
   const localizedType = useLocalizedType();
   const copy = familyAskCopy[locale];
   const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [reload, setReload] = useState(0);
+  const loading = useRef<AbortController | null>(null);
   const [step, setStep] = useState<Step>("compose");
   const [need, setNeed] = useState("");
   const [when, setWhen] = useState("");
@@ -121,23 +130,27 @@ function ActingRequestComposer({
   const button = localizedType("button", locale);
   const supporting = localizedType("supporting", locale);
 
-  useEffect(() => {
+  const refreshComposer = useCallback(() => {
     if (!memberId) return;
+    loading.current?.abort();
     const controller = new AbortController();
-    let active = true;
+    loading.current = controller;
     loadComposer(memberId, authUserId, controller.signal).then(
       (next) => {
-        if (active) setLoad(next);
+        if (!controller.signal.aborted) setLoad(next);
       },
       () => {
-        if (active) setLoad({ status: "error" });
+        if (!controller.signal.aborted) setLoad({ status: "error" });
       },
     );
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [authUserId, memberId, reload]);
+  }, [authUserId, memberId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshComposer();
+      return () => loading.current?.abort();
+    }, [refreshComposer]),
+  );
 
   const sendBlocked = failure === "revoked" || failure === "unconfirmed";
   const allowLeave = usePreventRemove(step === "review", ({ repeat }) => {
@@ -165,7 +178,7 @@ function ActingRequestComposer({
 
   function retryLoad() {
     setLoad({ status: "loading" });
-    setReload((value) => value + 1);
+    refreshComposer();
   }
 
   const name =
@@ -428,6 +441,15 @@ function ActingRequestComposer({
         <FamilyNotice
           title={copy.noCircleTitle(name)}
           body={copy.noCircleBody}
+          actionLabel={
+            load.canManageCircles ? managedCircleCopy[locale].manage : undefined
+          }
+          onAction={() =>
+            router.push({
+              pathname: "/family/circles/[memberId]",
+              params: { memberId },
+            })
+          }
           locale={locale}
         />
       ) : null}

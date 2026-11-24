@@ -605,9 +605,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(profile),
     }),
-  previewCircleInvite: (code: string) =>
+  previewCircleInvite: (code: string, authUserId?: string) =>
     request<{ circle: Circle; auto_approve: boolean }>(
       `/circle-invites/${encodeURIComponent(code)}`,
+      { authUserId },
     ),
   findNearbyCircles: (latitude: number, longitude: number, cursor?: string) => {
     const query = new URLSearchParams({

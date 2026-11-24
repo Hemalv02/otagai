@@ -14,7 +14,10 @@ from app.database.models.enums import (
     Language,
     Region,
 )
+from app.routes.circles.route import InviteCode, MembershipItem, membership_item
 from app.routes.dependencies import CurrentUserDep, DatabaseDep
+from app.routes.pagination import Page, PageQuery
+from app.services.circles.service import join_managed_circle, list_managed_memberships
 from app.services.relationships.service import (
     GrantScopes,
     LinkView,
@@ -97,6 +100,16 @@ class UpdateManagedUserBody(BaseModel):
     preferred_language: Language | None = None
     languages: list[Language] | None = Field(default=None, max_length=3)
     age_band: AgeBand | None = None
+
+
+class JoinManagedCircleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    invite_code: InviteCode
+
+
+class ManagedMembershipPage(Page[MembershipItem]):
+    member: UserSummary
 
 
 class CreateFamilyLinkBody(BaseModel):
@@ -291,6 +304,35 @@ async def edit_managed(
     changes = body.model_dump(mode="json", exclude_unset=True)
     updated = await update_managed_user(database, user, user_id, changes)
     return ManagedUserModel.model_validate(updated)
+
+
+@managed_router.get("/{member_id}/memberships")
+async def managed_memberships(
+    member_id: uuid.UUID,
+    query: Annotated[PageQuery, Query()],
+    user: CurrentUserDep,
+    database: DatabaseDep,
+) -> ManagedMembershipPage:
+    member, result = await list_managed_memberships(
+        database, user, member_id, query.page()
+    )
+    return ManagedMembershipPage(
+        member=UserSummary.model_validate(member),
+        items=[membership_item(view) for view in result.items],
+        next_cursor=result.next_cursor,
+    )
+
+
+@managed_router.post("/{member_id}/memberships", status_code=status.HTTP_201_CREATED)
+async def join_managed_membership(
+    member_id: uuid.UUID,
+    body: JoinManagedCircleBody,
+    user: CurrentUserDep,
+    database: DatabaseDep,
+) -> MembershipItem:
+    return membership_item(
+        await join_managed_circle(database, user, member_id, body.invite_code)
+    )
 
 
 @my_family_router.get("")

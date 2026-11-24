@@ -2,6 +2,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import FamilyLink, PairStats, ProxyGrant, User
 from app.database.models.enums import (
@@ -99,11 +101,13 @@ class NewGrant:
     consent_witness_user_id: uuid.UUID | None
 
 
-async def _authority_over(
-    session, caller_id: uuid.UUID, member_id: uuid.UUID, *, for_update: bool = False
-) -> bool:
-    if caller_id == member_id:
-        return True
+async def get_managed_profile_for_creator(
+    session: AsyncSession,
+    caller_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+) -> User | None:
     member = await UserRepository(session).get(member_id)
     if (
         member is None
@@ -111,11 +115,28 @@ async def _authority_over(
         or member.status != UserStatus.ACTIVE.value
         or member.created_by_user_id != caller_id
     ):
-        return False
+        return None
     grant = await ProxyGrantRepository(session).get_active(
         member_user_id=member_id, caretaker_user_id=caller_id, for_update=for_update
     )
-    return grant is not None
+    return member if grant is not None else None
+
+
+async def _authority_over(
+    session: AsyncSession,
+    caller_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+) -> bool:
+    if caller_id == member_id:
+        return True
+    return (
+        await get_managed_profile_for_creator(
+            session, caller_id, member_id, for_update=for_update
+        )
+        is not None
+    )
 
 
 async def list_neighbours(database: Database, user: User) -> list[NeighbourView]:

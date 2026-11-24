@@ -12,6 +12,7 @@ export type FamilyAccount = {
   isSelf: boolean;
   canViewActivity: boolean;
   canPostRequests: boolean;
+  canManageCircles: boolean;
 };
 
 export type LinkStanding =
@@ -60,6 +61,10 @@ const dateLocales: Record<Language, string> = {
   bn: "bn-BD",
 };
 
+export function canManageFamilyCircles(grant: ProxyGrant) {
+  return grant.other?.kind === "managed" && grant.can_change_scopes === true;
+}
+
 export function buildFamilyOverview(
   self: ProfileSummary,
   links: readonly FamilyLink[],
@@ -84,6 +89,7 @@ export function buildFamilyOverview(
       isSelf: true,
       canViewActivity: true,
       canPostRequests: true,
+      canManageCircles: false,
     },
     ...Array.from(grantsByMember.values(), (grant) => ({
       id: grant.member_user_id,
@@ -91,6 +97,7 @@ export function buildFamilyOverview(
       isSelf: false,
       canViewActivity: grant.can_view_activity,
       canPostRequests: grant.can_post_requests,
+      canManageCircles: canManageFamilyCircles(grant),
     })),
   ];
 

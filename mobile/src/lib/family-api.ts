@@ -1,6 +1,8 @@
 import {
+  type CircleMembership,
   type FamilyLink,
   type Language,
+  type Page,
   type ProxyGrant,
   type Region,
   request,
@@ -41,6 +43,10 @@ export type ActingRequestBody = {
 
 type Write = { authUserId: string };
 
+export type ManagedMemberships = Page<CircleMembership> & {
+  member: { id: string; display_name: string };
+};
+
 function post<T>(path: string, body: unknown, { authUserId }: Write) {
   return request<T>(path, {
     method: "POST",
@@ -51,6 +57,10 @@ function post<T>(path: string, body: unknown, { authUserId }: Write) {
 
 function actingHeaders(memberId: string) {
   return { "X-Acting-For": memberId };
+}
+
+function managedMembershipPath(memberId: string) {
+  return `/managed-users/${encodeURIComponent(memberId)}/memberships`;
 }
 
 export const familyApi = {
@@ -75,6 +85,24 @@ export const familyApi = {
     post<{ user: { id: string; display_name: string }; grant: ProxyGrant }>(
       "/managed-users",
       body,
+      write,
+    ),
+  managedMemberships: (
+    memberId: string,
+    authUserId: string,
+    cursor?: string,
+  ) => {
+    const query = new URLSearchParams({ limit: "20" });
+    if (cursor) query.set("cursor", cursor);
+    return request<ManagedMemberships>(
+      `${managedMembershipPath(memberId)}?${query}`,
+      { authUserId },
+    );
+  },
+  joinManagedCircle: (memberId: string, inviteCode: string, write: Write) =>
+    post<CircleMembership>(
+      managedMembershipPath(memberId),
+      { invite_code: inviteCode },
       write,
     ),
   linkFamily: (

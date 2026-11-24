@@ -3,6 +3,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import Circle, CircleInvite, CircleMembership, User
 from app.database.models.enums import (
@@ -11,6 +13,7 @@ from app.database.models.enums import (
     MembershipRole,
     MembershipStatus,
     NotificationType,
+    UserKind,
 )
 from app.repositories.circles import (
     CircleRepository,
@@ -27,6 +30,10 @@ from app.services.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
+)
+from app.services.relationships.service import (
+    UserNotFoundError,
+    get_managed_profile_for_creator,
 )
 
 
@@ -149,6 +156,12 @@ async def preview_invite(database: Database, code: str) -> tuple[Circle, CircleI
         return circle, invite
 
 
+@dataclass(frozen=True)
+class MembershipView:
+    membership: CircleMembership
+    circle: Circle | None
+
+
 async def join_circle(
     database: Database,
     user: User,
@@ -156,67 +169,83 @@ async def join_circle(
     invite_code: str | None,
     circle_id: uuid.UUID | None,
 ) -> CircleMembership:
+    async with database.session() as session:
+        view = await _join_circle(
+            session, user, invite_code=invite_code, circle_id=circle_id
+        )
+        return view.membership
+
+
+async def join_managed_circle(
+    database: Database, creator: User, member_id: uuid.UUID, invite_code: str
+) -> MembershipView:
+    async with database.session() as session:
+        member = await get_managed_profile_for_creator(
+            session, creator.id, member_id, for_update=True
+        )
+        if member is None:
+            raise UserNotFoundError
+        return await _join_circle(session, member, invite_code=invite_code)
+
+
+async def _join_circle(
+    session: AsyncSession,
+    user: User,
+    *,
+    invite_code: str | None,
+    circle_id: uuid.UUID | None = None,
+) -> MembershipView:
     if (invite_code is None) == (circle_id is None):
         raise JoinTargetError
-    async with database.session() as session:
-        circles = CircleRepository(session)
-        memberships = MembershipRepository(session)
-        invite: CircleInvite | None = None
-        if invite_code is not None:
-            invite = await InviteRepository(session).get_for_update_by_code(invite_code)
-            if invite is None or not invite_is_usable(invite, datetime.now(UTC)):
-                raise InviteNotFoundError
-            target_circle_id = invite.circle_id
-        else:
-            target_circle_id = circle_id
-        circle = await circles.get(target_circle_id)
-        if circle is None or circle.status != CircleStatus.ACTIVE.value:
-            raise CircleNotFoundError
-        if invite is None and (
-            not circle.open_to_nearby or circle.region != user.region
-        ):
-            raise CircleNotFoundError
-        existing = await memberships.get_for_update(target_circle_id, user.id)
-        if existing is not None and existing.status in (
-            MembershipStatus.APPROVED.value,
-            MembershipStatus.PENDING.value,
-        ):
-            raise AlreadyMemberError
-        auto_approve = invite is not None and invite.auto_approve
-        values = {
-            "circle_id": target_circle_id,
-            "user_id": user.id,
-            "role": MembershipRole.MEMBER.value,
-            "status": (
-                MembershipStatus.APPROVED.value
-                if auto_approve
-                else MembershipStatus.PENDING.value
-            ),
-            "joined_via": (
-                JoinMethod.INVITE.value if invite else JoinMethod.SEARCH.value
-            ),
-            "invite_id": invite.id if invite else None,
-            "decided_by_user_id": None,
-            "decided_at": None,
-        }
-        if auto_approve:
-            values["decided_at"] = datetime.now(UTC)
-        if existing is not None:
-            membership = await memberships.update(existing, values)
-        else:
-            try:
-                membership = await memberships.create(values)
-            except DuplicateMembershipError as error:
-                raise AlreadyMemberError from error
-        if invite is not None:
-            invite.use_count += 1
-        return membership
 
-
-@dataclass(frozen=True)
-class MembershipView:
-    membership: CircleMembership
-    circle: Circle | None
+    circles = CircleRepository(session)
+    memberships = MembershipRepository(session)
+    invite: CircleInvite | None = None
+    if invite_code is not None:
+        invite = await InviteRepository(session).get_for_update_by_code(invite_code)
+        if invite is None or not invite_is_usable(invite, datetime.now(UTC)):
+            raise InviteNotFoundError
+        circle_id = invite.circle_id
+    circle = await circles.get(circle_id)
+    if circle is None or circle.status != CircleStatus.ACTIVE.value:
+        raise CircleNotFoundError
+    if invite is None and (not circle.open_to_nearby or circle.region != user.region):
+        raise CircleNotFoundError
+    existing = await memberships.get_for_update(circle.id, user.id)
+    if existing is not None and existing.status in (
+        MembershipStatus.APPROVED.value,
+        MembershipStatus.PENDING.value,
+    ):
+        raise AlreadyMemberError
+    auto_approve = (
+        invite is not None
+        and invite.auto_approve
+        and user.kind != UserKind.MANAGED.value
+    )
+    values = {
+        "circle_id": circle.id,
+        "user_id": user.id,
+        "role": MembershipRole.MEMBER.value,
+        "status": (
+            MembershipStatus.APPROVED.value
+            if auto_approve
+            else MembershipStatus.PENDING.value
+        ),
+        "joined_via": (JoinMethod.INVITE.value if invite else JoinMethod.SEARCH.value),
+        "invite_id": invite.id if invite else None,
+        "decided_by_user_id": None,
+        "decided_at": datetime.now(UTC) if auto_approve else None,
+    }
+    if existing is not None:
+        membership = await memberships.update(existing, values)
+    else:
+        try:
+            membership = await memberships.create(values)
+        except DuplicateMembershipError as error:
+            raise AlreadyMemberError from error
+    if invite is not None:
+        invite.use_count += 1
+    return MembershipView(membership=membership, circle=circle)
 
 
 @dataclass(frozen=True)
@@ -229,10 +258,26 @@ async def list_memberships(
     database: Database, user: User, page: PageRequest
 ) -> PageResult[MembershipView]:
     async with database.session() as session:
-        result = await MembershipRepository(session).list_for_user(user.id, page)
-        circles = await CircleRepository(session).get_many(
-            [membership.circle_id for membership in result.items]
-        )
+        return await _list_memberships(session, user.id, page)
+
+
+async def list_managed_memberships(
+    database: Database, creator: User, member_id: uuid.UUID, page: PageRequest
+) -> tuple[User, PageResult[MembershipView]]:
+    async with database.session() as session:
+        member = await get_managed_profile_for_creator(session, creator.id, member_id)
+        if member is None:
+            raise UserNotFoundError
+        return member, await _list_memberships(session, member.id, page)
+
+
+async def _list_memberships(
+    session: AsyncSession, user_id: uuid.UUID, page: PageRequest
+) -> PageResult[MembershipView]:
+    result = await MembershipRepository(session).list_for_user(user_id, page)
+    circles = await CircleRepository(session).get_many(
+        [membership.circle_id for membership in result.items]
+    )
     items = [
         MembershipView(membership=membership, circle=circles.get(membership.circle_id))
         for membership in result.items

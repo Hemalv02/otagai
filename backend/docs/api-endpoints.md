@@ -512,6 +512,8 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 | `GET /users/me/neighbours` | Everyone I've exchanged with, most recent activity first, with the pair balance | 200 | 31 | MVP |
 | `POST /managed-users` | Create a managed account with no phone, plus its proxy grant (consent method and witness) | 201 | 34 | MVP |
 | `PATCH /managed-users/{user_id}` | A caretaker edits a managed person's profile | 200 | 34 | MVP |
+| `GET /managed-users/{member_id}/memberships` | List a managed member's circle applications and memberships. Available to the creator while their grant is active. | 200 | 34 | MVP |
+| `POST /managed-users/{member_id}/memberships` | Use `invite_code` to request circle membership for a managed member. The creator needs an active grant and a leader must approve the application. | 201 | 34 | MVP |
 | `GET /users/me/family-links` | My family links, both pending and accepted. `other` includes `kind` (`self` or `managed`) | 200 | 33 | MVP |
 | `POST /family-links` | Link to an existing user by their member ID (`relative_user_id`) and relation. `invite_code` is accepted but not redeemed. Pending until they accept; accepting grants no access by itself | 201 | 34 | MVP |
 | `POST /family-links/{link_id}/accept` | The other person accepts | 200 | 34 | MVP |

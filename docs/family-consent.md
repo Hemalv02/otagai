@@ -11,7 +11,9 @@ Branch: `feature/family-consent-proxy`, from the latest `main`. Figma: "Family h
   - Collects the person's name, language, region, and how permission was given (In person, With a coordinator, On a call).
   - **Review permissions** shows the exact initial scopes before anything is saved.
   - Every scope is sent explicitly to `POST /managed-users`, so no server default can add access. `can_manage_listings` is always sent as `false`.
-  - The result screen explains that approval in a circle is a separate step before posting.
+  - The result screen offers circle enrollment. The creator can also open it from the managed member’s Family card.
+  - The creator enters an invite code and submits the application. It stays pending until the circle leader approves it, including when the invite auto-approves registered accounts.
+  - Circle enrollment shows the application status. Once approved, the circle appears as a request destination for caretakers who have permission to post.
 - **Link an existing account** (`/family/link`):
   - Shows your own member ID as selectable text, with **Share my ID**, which uses the system share sheet.
   - Takes the other person's member ID. The ID is trimmed and lower-cased, and must be a UUID.
@@ -128,7 +130,7 @@ The review used local Supabase Auth, the FastAPI application, and disposable Pos
 - The browser walkthrough covered managed account creation with explicit consent, family link acceptance without granting access, independent permission changes, posting for a member in a different region, and revocation between review and Send.
 - On the iPhone simulator, the caretaker created a managed account, saved a Chat permission change, reviewed and edited a request, and sent it to the member’s Bangladesh circle. A second attempt after revocation published nothing and kept the unsent wording.
 - The authorized recipient saw the request. Backend checks confirmed the request belonged to the member and recorded the caretaker.
-- Managed accounts still need a separate circle enrollment flow before they can post. Ending a managed creator’s own grant leaves separate delegated grants active.
+- Ending a managed creator’s own grant leaves separate delegated grants active.
 
 ## iPhone walkthrough checklist
 

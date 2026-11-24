@@ -18,6 +18,7 @@ import {
   type ScopeChoice,
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
+import { managedCircleCopy } from "@/lib/managed-circle-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
@@ -29,7 +30,7 @@ const languageOptions = [
   { value: "bn", label: "বাংলা" },
 ] as const;
 
-type Step = "details" | "review" | "done";
+type Step = "details" | "review";
 
 export default function AddFamilyMemberScreen() {
   const { locale } = useOnboardingText();
@@ -37,6 +38,10 @@ export default function AddFamilyMemberScreen() {
   const copy = familyConsentCopy[locale];
   const { session, profile } = useSession();
   const [step, setStep] = useState<Step>("details");
+  const [createdMember, setCreatedMember] = useState<{
+    id: string;
+    display_name: string;
+  } | null>(null);
   const [name, setName] = useState("");
   const [language, setLanguage] = useState<Language>(locale);
   const [region, setRegion] = useState<Region>(
@@ -68,7 +73,7 @@ export default function AddFamilyMemberScreen() {
     setBusy(true);
     setFailure(null);
     try {
-      await familyApi.createManagedMember(
+      const { user } = await familyApi.createManagedMember(
         {
           display_name: trimmed,
           preferred_language: language,
@@ -81,7 +86,7 @@ export default function AddFamilyMemberScreen() {
         },
         { authUserId },
       );
-      setStep("done");
+      setCreatedMember(user);
     } catch (caught) {
       setFailure(
         isUnconfirmedWrite(caught instanceof ApiError ? caught.status : 0)
@@ -94,15 +99,26 @@ export default function AddFamilyMemberScreen() {
     }
   }
 
-  if (step === "done") {
+  if (createdMember) {
     return (
       <CommunityScreen
-        title={copy.add.doneTitle(trimmed)}
-        subtitle={copy.add.doneBody(trimmed)}
+        title={copy.add.doneTitle(createdMember.display_name)}
+        subtitle={copy.add.doneBody(createdMember.display_name)}
       >
         <Button
-          label={copy.backToFamily}
+          label={managedCircleCopy[locale].joinFor(createdMember.display_name)}
           labelStyle={button}
+          onPress={() =>
+            router.replace({
+              pathname: "/family/circles/[memberId]",
+              params: { memberId: createdMember.id },
+            })
+          }
+        />
+        <Button
+          label={copy.backToFamily}
+          labelStyle={label}
+          variant="outline"
           onPress={() => router.dismissTo("/family")}
         />
       </CommunityScreen>

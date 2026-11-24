@@ -19,6 +19,7 @@ import type { Language } from "@/lib/api";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
 import { type FamilyAccount, statusLinks } from "@/lib/family-state";
+import { managedCircleCopy } from "@/lib/managed-circle-copy";
 import { useMemberships } from "@/lib/memberships";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -158,6 +159,19 @@ function ReadyContent({
         <FamilyNotice
           tone="alert"
           title={copy.lostAccess(lostAccess)}
+          locale={locale}
+        />
+      ) : null}
+      {selected.canManageCircles ? (
+        <FamilyNotice
+          title={managedCircleCopy[locale].titleFor(selected.name)}
+          actionLabel={managedCircleCopy[locale].manage}
+          onAction={() =>
+            router.push({
+              pathname: "/family/circles/[memberId]",
+              params: { memberId: selected.id },
+            })
+          }
           locale={locale}
         />
       ) : null}
