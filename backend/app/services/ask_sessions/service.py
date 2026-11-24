@@ -20,6 +20,8 @@ from app.services.ai.helpers import (
     identify_task,
 )
 from app.services.ai.request_writer import (
+    MAX_DRAFT_CLARIFICATION,
+    MAX_DRAFT_TEXT,
     RequestDraft,
     RequestDraftInput,
     write_request,
@@ -208,10 +210,22 @@ async def draft_ask_message(
         ask = await AskSessionRepository(session).get_for_update(session_id)
         if ask is None or ask.subject_user_id != actor.subject_id:
             raise AskSessionNotFoundError
-        text = ask.transcript or ask.input_text or ""
+        description = (ask.transcript or "").strip() or (ask.input_text or "").strip()
+        clarification = (ask.clarifying_answer or "").strip()
+        text = description or clarification
         if not text:
             raise BadRequestError("Describe your request before drafting it.")
         region = actor.subject.region
+        draft_input = RequestDraftInput(
+            text=text[:MAX_DRAFT_TEXT],
+            clarification=(
+                clarification[:MAX_DRAFT_CLARIFICATION]
+                if description and clarification
+                else None
+            ),
+            relationship=RELATIONSHIP_BY_AUDIENCE.get(audience, "neighbor"),
+            culture_pack=CULTURE_BY_REGION.get(region, "japan"),
+        )
         draft = await run_feature(
             database,
             redis,
@@ -219,14 +233,7 @@ async def draft_ask_message(
             actor.user,
             feature=AiFeature.POLITE_WRITER,
             input_payload={"audience": audience, "region": region},
-            produce=lambda: write_request(
-                settings,
-                RequestDraftInput(
-                    text=text[:1500],
-                    relationship=RELATIONSHIP_BY_AUDIENCE.get(audience, "neighbor"),
-                    culture_pack=CULTURE_BY_REGION.get(region, "japan"),
-                ),
-            ),
+            produce=lambda: write_request(settings, draft_input),
         )
         await AskSessionRepository(session).update(
             ask, {"status": AskStatus.DRAFTED.value}
