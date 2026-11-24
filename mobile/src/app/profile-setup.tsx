@@ -25,11 +25,38 @@ export default function ProfileSetup() {
   const [language, setLanguage] = useState<Language>(state.language);
   const [region, setRegion] = useState<Region>(state.region);
   const [helpWith, setHelpWith] = useState("");
+  const [intro, setIntro] = useState("");
+  const [suggested, setSuggested] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [draftFailed, setDraftFailed] = useState(false);
   const [failed, setFailed] = useState(false);
   const submitting = useRef(false);
+  const drafter = useRef(false);
   const body = localizedType("body", locale);
   const fieldLabel = localizedType("field-label", locale);
+  const skills = helpWith.trim();
+
+  async function suggestIntro() {
+    if (!skills || drafter.current) return;
+    drafter.current = true;
+    setDrafting(true);
+    setDraftFailed(false);
+    try {
+      const result = await api.draftIntroCard({ skills, language });
+      if (result.intro.trim()) {
+        setIntro(result.intro.trim().slice(0, 1000));
+        setSuggested(true);
+      } else {
+        setDraftFailed(true);
+      }
+    } catch {
+      setDraftFailed(true);
+    } finally {
+      drafter.current = false;
+      setDrafting(false);
+    }
+  }
 
   async function save() {
     if (!name.trim() || submitting.current) return;
@@ -37,12 +64,20 @@ export default function ProfileSetup() {
     setBusy(true);
     setFailed(false);
     try {
-      const profile = await api.createProfile({
+      const created = await api.createProfile({
         display_name: name.trim(),
         preferred_language: language,
         region,
-        happy_to_help_with: helpWith.trim() || undefined,
+        happy_to_help_with: skills || undefined,
       });
+      let profile = created;
+      if (intro.trim()) {
+        try {
+          profile = await api.updateMyProfile({ intro: intro.trim() });
+        } catch {
+          profile = created;
+        }
+      }
       setProfile(profile);
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
@@ -137,6 +172,31 @@ export default function ProfileSetup() {
         editable={!busy}
         placeholder={t("helpWithExample")}
       />
+      <View className="gap-related-gap">
+        <Field
+          label={t("introLabel")}
+          style={body}
+          labelStyle={fieldLabel}
+          value={intro}
+          onChangeText={setIntro}
+          maxLength={1000}
+          multiline
+          editable={!busy && !drafting}
+          placeholder={t("introPlaceholder")}
+        />
+        <Text className="text-secondary" style={localizedType("supporting", locale)}>
+          {skills ? t("introHint") : t("addSkillsFirst")}
+        </Text>
+        <Button
+          label={suggested ? t("suggestAnotherIntro") : t("suggestIntro")}
+          variant="text"
+          labelStyle={fieldLabel}
+          busy={drafting}
+          disabled={!skills || busy}
+          onPress={suggestIntro}
+        />
+        {draftFailed ? <ErrorText>{t("introDraftError")}</ErrorText> : null}
+      </View>
       {failed ? <ErrorText>{t("saveError")}</ErrorText> : null}
     </OnboardingScreen>
   );

@@ -296,6 +296,13 @@ export default function LoanDetailsScreen() {
               onSend={(request) => act({ request })}
               messageAction={messageAction}
             />
+          ) : lender && active ? (
+            <ReminderDraft
+              key={`${exchange.id}:reminder:${locale}`}
+              itemName={itemName}
+              busy={busy || loan.loading || loan.error}
+              messageAction={messageAction}
+            />
           ) : (
             messageAction
           )}
@@ -480,6 +487,8 @@ function ExtensionDraft({
   const [editedMessage, setEditedMessage] = useState<string | null>(null);
   const [messageHeight, setMessageHeight] = useState(112);
   const [invalid, setInvalid] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiFailed, setAiFailed] = useState(false);
   const reference = new Date(exchange.due_at ?? now);
   const selected = extensionDate(date, reference);
   const draft = selected
@@ -491,6 +500,38 @@ function ExtensionDraft({
       )
     : "";
   const message = editedMessage ?? draft;
+  const extraDays = selected
+    ? Math.min(
+        60,
+        Math.max(
+          1,
+          Math.round((selected.getTime() - reference.getTime()) / 86_400_000),
+        ),
+      )
+    : undefined;
+
+  async function suggestWithAi() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setAiFailed(false);
+    try {
+      const result = await api.draftExtension({
+        intent: "extend",
+        item: itemName.slice(0, 200),
+        days: extraDays,
+        language: locale,
+      });
+      if (result.message.trim()) {
+        setEditedMessage(result.message.trim().slice(0, 1000));
+      } else {
+        setAiFailed(true);
+      }
+    } catch {
+      setAiFailed(true);
+    } finally {
+      setAiBusy(false);
+    }
+  }
   return (
     <View style={styles.extension}>
       <Text
@@ -522,6 +563,15 @@ function ExtensionDraft({
           ]}
         />
       </View>
+      <Button
+        label={screen.suggestWithAi}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        busy={aiBusy}
+        disabled={busy}
+        onPress={suggestWithAi}
+      />
+      {aiFailed ? <ErrorText>{screen.aiDraftError}</ErrorText> : null}
       {expanded ? (
         <View style={styles.extension}>
           <Field
@@ -584,6 +634,80 @@ function ExtensionDraft({
         </View>
       )}
       {expanded ? messageAction : null}
+    </View>
+  );
+}
+
+function ReminderDraft({
+  itemName,
+  busy,
+  messageAction,
+}: {
+  itemName: string;
+  busy: boolean;
+  messageAction: ReactNode;
+}) {
+  const { locale } = useOnboardingText();
+  const screen = activityScreenCopy[locale];
+  const [text, setText] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiFailed, setAiFailed] = useState(false);
+
+  async function draft() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setAiFailed(false);
+    try {
+      const result = await api.draftExtension({
+        intent: "remind",
+        item: itemName.slice(0, 200),
+        language: locale,
+      });
+      if (result.message.trim()) setText(result.message.trim().slice(0, 1000));
+      else setAiFailed(true);
+    } catch {
+      setAiFailed(true);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.extension}>
+      <Text
+        accessibilityRole="header"
+        style={[localizedType("section-heading", locale), styles.ink]}
+      >
+        {screen.reminderTitle}
+      </Text>
+      {text !== null ? (
+        <View style={styles.draft}>
+          <Text style={[localizedType("field-label", locale), styles.ink]}>
+            {screen.reminderSuggested}
+          </Text>
+          <TextInput
+            accessibilityLabel={screen.reminderSuggested}
+            value={text}
+            onChangeText={setText}
+            multiline
+            maxLength={1000}
+            editable={!busy}
+            underlineColorAndroid="transparent"
+            scrollEnabled={false}
+            style={[localizedType("body", locale), styles.draftInput]}
+          />
+        </View>
+      ) : null}
+      <Button
+        label={screen.draftReminder}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        busy={aiBusy}
+        disabled={busy}
+        onPress={draft}
+      />
+      {aiFailed ? <ErrorText>{screen.aiDraftError}</ErrorText> : null}
+      {messageAction}
     </View>
   );
 }
