@@ -311,3 +311,16 @@ export function extensionDate(value: string, reference: Date): Date | null {
   result.setFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return localDateInput(result) === value ? result : null;
 }
+
+export function extensionDraftDays(
+  selected: Date | null,
+  currentDue: Date,
+  now: number,
+): number | undefined {
+  if (!selected) return undefined;
+  const reference = new Date(Math.max(currentDue.getTime(), now));
+  const days =
+    (Date.parse(localDateInput(selected)) - Date.parse(localDateInput(reference))) /
+    86_400_000;
+  return days >= 1 && days <= 60 ? days : undefined;
+}

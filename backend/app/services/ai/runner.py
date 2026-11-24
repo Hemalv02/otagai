@@ -2,8 +2,10 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from openai import APIError, AsyncOpenAI
+from openai.types.audio.transcription import UsageTokens
 from pydantic import BaseModel
 
 from app.database.connection import Database
@@ -22,7 +24,13 @@ from app.repositories.media import MediaRepository
 from app.services.ai import helpers
 from app.services.ai.helpers import ListingDraft, ListingDraftInput, ListingDraftPart
 from app.services.ai.sanitize import clean_text
-from app.services.ai.service import AIDraftError
+from app.services.ai.service import (
+    OPENAI_MAX_RETRIES,
+    AIDraftError,
+    UsageMeter,
+    metered,
+    record_usage,
+)
 from app.services.errors import NotFoundError, ServiceConfigurationError, ServiceError
 from app.services.media.service import MediaNotFoundError, ready_image_data_url
 from app.services.ratelimit import enforce
@@ -45,6 +53,8 @@ RATE_LIMITS = {
     AiFeature.TRANSCRIBE: RateLimit(30, 3600),
     AiFeature.TASK_TO_TOOLS: RateLimit(60, 3600),
     AiFeature.POLITE_WRITER: RateLimit(60, 3600),
+    AiFeature.HANDOVER_CHECKLIST: RateLimit(20, 3600),
+    AiFeature.TOOL_GUIDE: RateLimit(40, 3600),
 }
 
 
@@ -57,6 +67,17 @@ class Transcript(BaseModel):
     text: str
 
 
+async def enforce_feature_limit(redis, feature: AiFeature, user_id: uuid.UUID) -> None:
+    rate = RATE_LIMITS[feature]
+    await enforce(
+        redis,
+        scope=feature.value,
+        user_id=user_id,
+        limit=rate.limit,
+        window_seconds=rate.window_seconds,
+    )
+
+
 async def run_feature[Output: BaseModel](
     database: Database,
     redis,
@@ -66,32 +87,29 @@ async def run_feature[Output: BaseModel](
     feature: AiFeature,
     input_payload: dict,
     produce: Callable[[], Awaitable[Output]],
+    model: str | None = None,
+    rate_limit_user_id: uuid.UUID | None = None,
 ) -> Output:
-    rate = RATE_LIMITS[feature]
-    await enforce(
-        redis,
-        scope=feature.value,
-        user_id=user.id,
-        limit=rate.limit,
-        window_seconds=rate.window_seconds,
-    )
-    model = settings.openai_model or "unconfigured"
+    await enforce_feature_limit(redis, feature, rate_limit_user_id or user.id)
+    model = model or settings.openai_model or "unconfigured"
     start = time.monotonic()
-    try:
-        output = await produce()
-    except ServiceError as error:
-        await _log(
-            database,
-            user,
-            feature,
-            model,
-            input_payload,
-            None,
-            AiRunStatus.FAILED.value,
-            type(error).__name__,
-            _latency(start),
-        )
-        raise
+    with metered() as usage:
+        try:
+            output = await produce()
+        except ServiceError as error:
+            await _log(
+                database,
+                user,
+                feature,
+                model,
+                input_payload,
+                None,
+                AiRunStatus.FAILED.value,
+                type(error).__name__,
+                _latency(start),
+                usage,
+            )
+            raise
     await _log(
         database,
         user,
@@ -102,6 +120,7 @@ async def run_feature[Output: BaseModel](
         AiRunStatus.SUCCEEDED.value,
         None,
         _latency(start),
+        usage,
     )
     return output
 
@@ -120,6 +139,7 @@ async def _log(
     status: str,
     error: str | None,
     latency_ms: int,
+    usage: UsageMeter,
 ) -> None:
     async with database.session() as session:
         await AiRunRepository(session).create(
@@ -132,6 +152,8 @@ async def _log(
                 "status": status,
                 "error": error,
                 "latency_ms": latency_ms,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
             }
         )
 
@@ -174,7 +196,7 @@ async def transcribe_voice(
             async with AsyncOpenAI(
                 api_key=settings.openai_api_key.get_secret_value(),
                 timeout=60,
-                max_retries=1,
+                max_retries=OPENAI_MAX_RETRIES,
             ) as client:
                 result = await client.audio.transcriptions.create(
                     model=settings.openai_transcribe_model,
@@ -182,6 +204,9 @@ async def transcribe_voice(
                 )
         except APIError as error:
             raise AIDraftError("The transcription service failed.") from error
+        usage = getattr(result, "usage", None)
+        if isinstance(usage, UsageTokens):
+            record_usage(usage.input_tokens, usage.output_tokens)
         return Transcript(text=result.text)
 
     return await run_feature(
@@ -192,6 +217,7 @@ async def transcribe_voice(
         feature=AiFeature.TRANSCRIBE,
         input_payload={"media_id": str(media_id)},
         produce=produce,
+        model=settings.openai_transcribe_model,
     )
 
 
@@ -303,3 +329,11 @@ def _checked_parts(parts: list[ListingDraftPart]) -> list[ListingDraftPart]:
         elif len(cleaned) < 30:
             cleaned[key] = ListingDraftPart(label=label, quantity=part.quantity)
     return list(cleaned.values())
+
+
+async def purge_old_runs(
+    database: Database, settings: Settings, *, now: datetime | None = None
+) -> int:
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=settings.ai_run_retention_days)
+    async with database.session() as session:
+        return await AiRunRepository(session).delete_created_before(cutoff)

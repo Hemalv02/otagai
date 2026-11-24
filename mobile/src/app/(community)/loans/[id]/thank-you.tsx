@@ -24,7 +24,7 @@ import {
   type ThankYou,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -54,6 +54,7 @@ function LoanThankYou({
   profileId: string;
   culturePack: "japan" | "bangladesh";
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -192,7 +193,6 @@ function LoanThankYou({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard

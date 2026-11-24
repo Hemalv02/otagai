@@ -13,7 +13,7 @@ import type { Language } from "@/lib/api";
 import { familyCopy } from "@/lib/family-copy";
 import { type FamilyAccount, statusLinks } from "@/lib/family-state";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { type FamilyState, useFamily } from "@/lib/use-family";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -41,7 +41,6 @@ export default function FamilyScreen() {
       title={copy.title}
       subtitle={copy.subtitle}
       back
-      showDemoPreview={false}
       refreshControl={
         <RefreshControl
           refreshing={family.refreshing}
@@ -96,6 +95,7 @@ function ReadyContent({
   onRefresh: () => void;
   onRetryRequests: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = familyCopy[locale];
   const hasFamily = state.accounts.length > 1 || state.links.length > 0;
 
@@ -168,6 +168,7 @@ function RequestsBody({
   onRefresh: () => void;
   onRetry: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = familyCopy[locale];
 
   switch (requests.status) {

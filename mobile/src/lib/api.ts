@@ -29,6 +29,7 @@ export type UserProfile = {
   id: string;
   kind: "self" | "managed";
   display_name: string;
+  avatar_media_id: string | null;
   preferred_language: Language;
   languages: Language[];
   region: Region;
@@ -36,6 +37,7 @@ export type UserProfile = {
   age_band: string | null;
   intro: string | null;
   happy_to_help_with: string | null;
+  profile_details_visible: boolean;
   accepts_money_orei: boolean;
   simple_mode: boolean;
   text_scale_percent: number;
@@ -46,6 +48,18 @@ export type UserProfile = {
   created_at: string;
 };
 
+export type UpdateMyProfile = Partial<
+  Pick<
+    UserProfile,
+    | "display_name"
+    | "intro"
+    | "happy_to_help_with"
+    | "avatar_media_id"
+    | "profile_details_visible"
+    | "text_scale_percent"
+  >
+>;
+
 export type NewProfile = {
   display_name: string;
   preferred_language: Language;
@@ -53,6 +67,7 @@ export type NewProfile = {
   languages?: Language[];
   age_band?: string;
   happy_to_help_with?: string;
+  intro?: string;
 };
 
 export type Circle = {
@@ -95,6 +110,8 @@ export type NewCircle = {
   unit_type: CircleUnitType;
   region?: Region;
   open_to_nearby?: boolean;
+  approx_lat?: number;
+  approx_lng?: number;
 };
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
@@ -389,6 +406,12 @@ export const api = {
     request<{ items: CategoryNode[] }>(`/categories?kind=${kind}`, options),
   uploadListingPhoto: (body: FormData, options?: ListingRequestOptions) =>
     request<Media>("/media", { ...options, method: "POST", body }),
+  uploadAvatar: (file: Blob, options?: ListingRequestOptions) => {
+    const body = new FormData();
+    body.append("purpose", "avatar");
+    body.append("file", file);
+    return request<Media>("/media", { ...options, method: "POST", body });
+  },
   getMedia: (id: string, options?: ListingRequestOptions) =>
     request<Media>(`/media/${encodeURIComponent(id)}`, options),
   createListing: (body: CreateListingBody, options?: ListingRequestOptions) =>
@@ -457,23 +480,18 @@ export const api = {
       method: "DELETE",
     }),
   getMyProfile: () => request<UserProfile>("/users/me"),
+  updateMyProfile: (fields: UpdateMyProfile, options: ListingRequestOptions) =>
+    request<UserProfile>("/users/me", {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  deleteMyProfile: (options: ListingRequestOptions) =>
+    request<void>("/users/me", { ...options, method: "DELETE" }),
   updateNotificationPreferences: (preferences: NotificationPreferences) =>
     request<UserProfile>("/users/me", {
       method: "PATCH",
       body: JSON.stringify(preferences),
-    }),
-  updateMyProfile: (
-    body: {
-      intro?: string | null;
-      happy_to_help_with?: string | null;
-      languages?: Language[];
-    },
-    options?: ListingRequestOptions,
-  ) =>
-    request<UserProfile>("/users/me", {
-      ...options,
-      method: "PATCH",
-      body: JSON.stringify(body),
     }),
   draftIntroCard: (
     body: { skills: string; happy_to_help_with?: string; language: Language },

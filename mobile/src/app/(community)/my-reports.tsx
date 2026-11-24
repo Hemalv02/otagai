@@ -3,10 +3,11 @@ import { StyleSheet, View } from "react-native";
 
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
 import { CommunityScreen } from "@/components/community-screen";
+import { Button } from "@/components/ui";
 import { formatActivityDate } from "@/lib/activity-copy";
 import { circleApi } from "@/lib/circle-api";
 import { circleCopy } from "@/lib/circle-copy";
-import { useLiveResource } from "@/lib/live-resource";
+import { usePagedResource } from "@/lib/live-resource";
 import type { ReportReason } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useOnboardingText } from "@/lib/onboarding-i18n";
@@ -15,7 +16,9 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function MyReportsScreen() {
   const { session } = useSession();
-  return <MyReports key={session?.user.id} authUserId={session?.user.id ?? ""} />;
+  return (
+    <MyReports key={session?.user.id} authUserId={session?.user.id ?? ""} />
+  );
 }
 
 function MyReports({ authUserId }: { authUserId: string }) {
@@ -23,11 +26,15 @@ function MyReports({ authUserId }: { authUserId: string }) {
   const copy = circleCopy[locale];
   const nb = neighbourCopy[locale];
   const api = useMemo(() => circleApi(authUserId), [authUserId]);
-  const data = useLiveResource(
-    useCallback(async () => {
-      if (!authUserId) return [];
-      return (await api.myReports()).items;
-    }, [api, authUserId]),
+  const data = usePagedResource(
+    useCallback(
+      (cursor?: string | null) => {
+        if (!authUserId)
+          return Promise.resolve({ items: [], next_cursor: null });
+        return api.myReports(cursor);
+      },
+      [api, authUserId],
+    ),
   );
   const reasonLabels: Record<ReportReason, string> = {
     harassment: nb.unwanted,
@@ -39,7 +46,6 @@ function MyReports({ authUserId }: { authUserId: string }) {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={copy.myReports}
@@ -48,12 +54,12 @@ function MyReports({ authUserId }: { authUserId: string }) {
       <ActivityStatus
         loading={data.loading}
         error={data.error}
-        retry={data.reload}
+        retry={data.retry}
       />
-      {data.data?.length === 0 && !data.loading ? (
+      {data.items.length === 0 && !data.loading ? (
         <ActivityText>{copy.myReportsEmpty}</ActivityText>
       ) : null}
-      {data.data?.map((report) => (
+      {data.items.map((report) => (
         <View key={report.id} style={styles.card}>
           <ActivityText strong>
             {copy.reportAbout(copy.targets[report.target_type])}
@@ -70,6 +76,14 @@ function MyReports({ authUserId }: { authUserId: string }) {
           </ActivityText>
         </View>
       ))}
+      {data.cursor ? (
+        <Button
+          variant="secondary"
+          label={copy.loadMore}
+          disabled={data.loading}
+          onPress={data.loadMore}
+        />
+      ) : null}
     </CommunityScreen>
   );
 }

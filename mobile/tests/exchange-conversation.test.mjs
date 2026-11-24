@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { loadExchangeConversation } from "../src/lib/exchange-conversation.ts";
+import {
+  clearLoanMessageDraft,
+  loadExchangeConversation,
+  peekLoanMessageDraft,
+  stageLoanMessageDraft,
+} from "../src/lib/exchange-conversation.ts";
 import { mergeRefreshedPage } from "../src/lib/page-refresh.ts";
 
 const exchange = {
@@ -86,4 +91,14 @@ test("background chat refresh keeps loaded history and its older cursor", () => 
   });
   const disjoint = { items: [{ id: "z" }], next_cursor: "from-z" };
   assert.deepEqual(mergeRefreshedPage(previous, disjoint), disjoint);
+});
+
+test("an edited reminder is handed to its participant and loan chat only once", () => {
+  const draft = "Could you return the trowel by six? Thanks!";
+  stageLoanMessageDraft("helper", "loan-a", draft);
+  assert.equal(peekLoanMessageDraft("requester", "loan-a"), null);
+  assert.equal(peekLoanMessageDraft("helper", "loan-b"), null);
+  assert.equal(peekLoanMessageDraft("helper", "loan-a"), draft);
+  clearLoanMessageDraft("helper", "loan-a");
+  assert.equal(peekLoanMessageDraft("helper", "loan-a"), null);
 });

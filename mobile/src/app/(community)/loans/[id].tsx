@@ -9,6 +9,7 @@ import { ApiError, api, type Exchange, type LoanExtension } from "@/lib/api";
 import {
   activityCopy,
   extensionDate,
+  extensionDraftDays,
   formatActivityDate,
   localDateInput,
 } from "@/lib/activity-copy";
@@ -21,10 +22,11 @@ import {
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
 import { partnerFor } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
+import { stageLoanMessageDraft } from "@/lib/exchange-conversation";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
 import { livePickupCopy } from "@/lib/live-pickup";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -78,6 +80,7 @@ type LoanAction =
   | { advance: ExchangeAction };
 
 export default function LoanDetailsScreen() {
+  const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
   const { profile } = useSession();
@@ -108,7 +111,7 @@ export default function LoanDetailsScreen() {
   const next =
     stage === "return" || stage === "confirm" ? progression[stage] : null;
   const itemName = title || copy.unnamedLoan;
-  const messageAction = (
+  const messageAction = (draft?: string | null) => (
     <Button
       label={exchangeMessageCopy[locale].messagePartner(
         partnerName || exchangeMessageCopy[locale].neighbour,
@@ -116,9 +119,12 @@ export default function LoanDetailsScreen() {
       variant="text"
       labelStyle={localizedType("field-label", locale)}
       disabled={busy || loan.loading || loan.error}
-      onPress={() =>
-        router.push({ pathname: "/loans/[id]/messages", params: { id } })
-      }
+      onPress={() => {
+        if (profileId && draft?.trim()) {
+          stageLoanMessageDraft(profileId, id, draft);
+        }
+        router.push({ pathname: "/loans/[id]/messages", params: { id } });
+      }}
     />
   );
   const heading =
@@ -171,7 +177,6 @@ export default function LoanDetailsScreen() {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
@@ -294,7 +299,7 @@ export default function LoanDetailsScreen() {
               busy={busy}
               disabled={loan.loading || loan.error}
               onSend={(request) => act({ request })}
-              messageAction={messageAction}
+              messageAction={messageAction()}
             />
           ) : lender && active ? (
             <ReminderDraft
@@ -304,7 +309,7 @@ export default function LoanDetailsScreen() {
               messageAction={messageAction}
             />
           ) : (
-            messageAction
+            messageAction()
           )}
           {history.length ? (
             <View style={styles.history}>
@@ -473,6 +478,7 @@ function ExtensionDraft({
   onSend: (request: ExtensionRequest) => void;
   messageAction: ReactNode;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];
@@ -500,15 +506,6 @@ function ExtensionDraft({
       )
     : "";
   const message = editedMessage ?? draft;
-  const extraDays = selected
-    ? Math.min(
-        60,
-        Math.max(
-          1,
-          Math.round((selected.getTime() - reference.getTime()) / 86_400_000),
-        ),
-      )
-    : undefined;
 
   async function suggestWithAi() {
     if (aiBusy) return;
@@ -518,7 +515,7 @@ function ExtensionDraft({
       const result = await api.draftExtension({
         intent: "extend",
         item: itemName.slice(0, 200),
-        days: extraDays,
+        days: extensionDraftDays(selected, reference, now),
         language: locale,
       });
       if (result.message.trim()) {
@@ -645,8 +642,9 @@ function ReminderDraft({
 }: {
   itemName: string;
   busy: boolean;
-  messageAction: ReactNode;
+  messageAction: (draft: string | null) => ReactNode;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const screen = activityScreenCopy[locale];
   const [text, setText] = useState<string | null>(null);
@@ -707,7 +705,7 @@ function ReminderDraft({
         onPress={draft}
       />
       {aiFailed ? <ErrorText>{screen.aiDraftError}</ErrorText> : null}
-      {messageAction}
+      {messageAction(text)}
     </View>
   );
 }

@@ -12,10 +12,12 @@ from app.database.models.enums import (
     MediaStatus,
     MediaVariantName,
     StoredMimeType,
+    UserStatus,
 )
 from app.repositories.blocks import BlockRepository
 from app.repositories.circles import CircleRepository
 from app.repositories.media import MediaRepository
+from app.repositories.users import UserRepository
 from app.services.actors.service import Actor, ProxyScope
 from app.services.errors import (
     ConflictError,
@@ -25,6 +27,7 @@ from app.services.errors import (
 )
 from app.services.media.processing import ImageDecodeError, process_image
 from app.services.storage.service import ObjectNotFoundError, Storage, StorageError
+from app.services.users.profiles import can_view_profile, may_see_profile_details
 from app.settings import Settings
 
 AUDIO_PURPOSES = frozenset({MediaPurpose.VOICE.value})
@@ -151,9 +154,24 @@ async def _can_view_request_photo(session, actor: Actor, media: MediaFile) -> bo
     )
 
 
+async def _can_view_avatar(session, viewer_id: uuid.UUID, media: MediaFile) -> bool:
+    if viewer_id == media.owner_user_id:
+        return True
+    owner = await UserRepository(session).get(media.owner_user_id)
+    return bool(
+        owner
+        and owner.status != UserStatus.DELETED
+        and owner.avatar_media_id == media.id
+        and may_see_profile_details(viewer_id, owner)
+        and await can_view_profile(session, viewer_id, owner.id)
+    )
+
+
 async def _can_view(session, actor: Actor, media: MediaFile) -> bool:
     if media.purpose == MediaPurpose.REQUEST.value:
         return await _can_view_request_photo(session, actor, media)
+    if media.purpose == MediaPurpose.AVATAR.value:
+        return await _can_view_avatar(session, actor.user.id, media)
     viewer_id = actor.subject_id
     if viewer_id in (media.owner_user_id, media.uploaded_by_user_id):
         return True

@@ -98,7 +98,8 @@ async def test_ripple_begins_with_accepted_family_and_protects_later_audiences(c
     ).status_code == 404
     owner_profile = await client.get("/users/me", headers=auth(owner))
     history = await client.get(
-        f"/users/{owner_profile.json()['id']}/requests", headers=auth(neighbour)
+        f"/users/{owner_profile.json()['id']}/requests?status=open&limit=10",
+        headers=auth(neighbour),
     )
     assert history.status_code == 200, history.text
     assert history.json()["items"] == []

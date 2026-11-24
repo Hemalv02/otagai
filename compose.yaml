@@ -29,6 +29,8 @@ services:
       SMTP_TLS: "${SMTP_TLS:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENAI_TRANSCRIBE_MODEL: "${OPENAI_TRANSCRIBE_MODEL:-whisper-1}"
+      AI_RUN_RETENTION_DAYS: "${AI_RUN_RETENTION_DAYS:-30}"
       EXPO_ACCESS_TOKEN: "${EXPO_ACCESS_TOKEN:-}"
     depends_on:
       pgbouncer:

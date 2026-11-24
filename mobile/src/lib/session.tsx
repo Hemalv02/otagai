@@ -6,12 +6,16 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { ApiError, api, type UserProfile } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
-import { removeDeviceRegistration } from "@/lib/device-push";
+import {
+  clearDeviceRegistration,
+  removeDeviceRegistration,
+} from "@/lib/device-push";
 
 type ProfileState =
   | { status: "loading" }
@@ -28,6 +32,7 @@ type SessionContextValue = {
   setProfile: (profile: UserProfile) => void;
   reloadProfile: () => Promise<void>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -57,9 +62,11 @@ export function SessionProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [entry, setEntry] = useState<ProfileEntry | null>(null);
+  const activeUserId = useRef<string | null>(null);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((_event, next) => {
+      activeUserId.current = next?.user.id ?? null;
       setSession(next);
       setIsLoading(false);
     });
@@ -110,6 +117,30 @@ export function SessionProvider({ children }: PropsWithChildren) {
     }
   }, [userId]);
 
+  const deleteAccount = useCallback(async () => {
+    if (!userId) throw new ApiError(401, "Sign in again to continue.");
+    await api.deleteMyProfile({ authUserId: userId });
+    void clearDeviceRegistration(userId).catch((error: unknown) => {
+      console.warn("Could not clear this device's push registration.", error);
+    });
+    if (activeUserId.current !== userId) return;
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "local" });
+      if (error) console.warn("Could not revoke the session.", error.message);
+    } catch (error) {
+      console.warn(
+        "Could not finish signing out after account deletion.",
+        error,
+      );
+    } finally {
+      setEntry((current) => (current?.userId === userId ? null : current));
+      if (activeUserId.current === userId) {
+        activeUserId.current = null;
+        setSession(null);
+      }
+    }
+  }, [userId]);
+
   const value = useMemo<SessionContextValue>(
     () => ({
       session,
@@ -118,8 +149,17 @@ export function SessionProvider({ children }: PropsWithChildren) {
       setProfile,
       reloadProfile,
       signOut,
+      deleteAccount,
     }),
-    [session, isLoading, profile, setProfile, reloadProfile, signOut],
+    [
+      session,
+      isLoading,
+      profile,
+      setProfile,
+      reloadProfile,
+      signOut,
+      deleteAccount,
+    ],
   );
 
   return (

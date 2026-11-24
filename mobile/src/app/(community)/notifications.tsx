@@ -19,11 +19,12 @@ import { requestNotificationId } from "@/lib/request-ripple";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
 import { isUuid } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function NotificationsScreen() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -64,7 +65,6 @@ export default function NotificationsScreen() {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={copy.notifications}

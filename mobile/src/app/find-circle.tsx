@@ -12,18 +12,12 @@ import {
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Circle, type CircleJoin } from "@/lib/api";
 import { circleCopy } from "@/lib/circle-copy";
+import { inviteCodeFromQr } from "@/lib/circle-invite";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { settingsCopy } from "@/lib/settings-copy";
 import { colors, spacing } from "@/theme/tokens.json";
-
-function codeFromScan(raw: string) {
-  const trimmed = raw.trim();
-  const segment = trimmed.includes("/")
-    ? (trimmed.split(/[/?#]/).filter(Boolean).pop() ?? trimmed)
-    : trimmed.split(/[?#]/)[0];
-  return segment.length >= 8 && segment.length <= 32 ? segment : null;
-}
 
 type Method = "invite" | "nearby";
 type Match = { circle: Circle; target: CircleJoin };
@@ -36,6 +30,7 @@ type ErrorKey =
   | "joinFailed";
 
 export default function FindCircle() {
+  const localizedType = useLocalizedType();
   const { signOut } = useSession();
   const { access, state, record, refresh, refreshing } = useMemberships();
   const { t, locale } = useOnboardingText();
@@ -53,6 +48,7 @@ export default function FindCircle() {
   const [permission, requestPermission] = useCameraPermissions();
   const working = useRef(false);
   const scanLock = useRef(false);
+  const requestingCamera = useRef(false);
   const circleText = circleCopy[locale];
 
   const waiting = access === "pending";
@@ -82,24 +78,37 @@ export default function FindCircle() {
   }
 
   async function startScan() {
+    if (working.current || requestingCamera.current) return;
+    requestingCamera.current = true;
     setCameraDenied(false);
     setError(null);
-    if (!permission?.granted) {
-      const result = await requestPermission();
-      if (!result.granted) {
+    try {
+      const access = permission?.granted
+        ? permission
+        : await requestPermission();
+      if (!access.granted) {
         setCameraDenied(true);
         return;
       }
+      scanLock.current = false;
+      setScanning(true);
+    } catch {
+      setCameraDenied(true);
+    } finally {
+      requestingCamera.current = false;
     }
-    scanLock.current = false;
-    setScanning(true);
+  }
+
+  function closeScanner() {
+    scanLock.current = true;
+    setScanning(false);
   }
 
   function onScanned(data: string) {
     if (scanLock.current) return;
     scanLock.current = true;
-    const scanned = codeFromScan(data);
-    setScanning(false);
+    const scanned = inviteCodeFromQr(data);
+    closeScanner();
     if (!scanned) {
       setError("invalidInvite");
       return;
@@ -397,28 +406,39 @@ export default function FindCircle() {
       <Modal
         visible={scanning}
         animationType="slide"
-        onRequestClose={() => setScanning(false)}
+        onRequestClose={closeScanner}
       >
         <SafeAreaView style={styles.scanner}>
           <CameraView
             style={styles.camera}
             facing="back"
+            onMountError={() => {
+              closeScanner();
+              setCameraDenied(true);
+            }}
             barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
             onBarcodeScanned={
               scanning ? ({ data }) => onScanned(data) : undefined
             }
           />
           <View style={styles.scannerBar}>
-            <Text style={[body, styles.scannerText]}>{circleText.scanHint}</Text>
+            <Text style={[body, styles.scannerText]}>
+              {circleText.scanHint}
+            </Text>
             <Button
               label={circleText.closeScanner}
               variant="secondary"
               labelStyle={button}
-              onPress={() => setScanning(false)}
+              onPress={closeScanner}
             />
           </View>
         </SafeAreaView>
       </Modal>
+      <OnboardingLink
+        label={settingsCopy[locale].title}
+        disabled={busy !== null}
+        onPress={() => router.push("/settings")}
+      />
     </OnboardingScreen>
   );
 }

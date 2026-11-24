@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "Otagai",
+    "slug": "otagai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -11,6 +11,8 @@
       "icon": "./assets/expo.icon"
     },
     "android": {
+      "package": "com.hemalv02.otagai",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -45,19 +47,26 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Otagai to find neighbourhood circles near you."
+          "locationWhenInUsePermission": "Allow Otagai to find nearby circles or set your circle’s approximate location."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Otagai to scan a circle’s invite QR code."
+          "cameraPermission": "Allow Otagai to scan a circle’s invite QR code.",
+          "recordAudioAndroid": false
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "709ce9e4-58b1-408d-8838-a6108e872930"
+      }
+    },
+    "owner": "hemalllll"
   }
 }

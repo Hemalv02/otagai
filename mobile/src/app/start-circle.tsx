@@ -1,3 +1,4 @@
+import * as Location from "expo-location";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
 import { Text, View } from "react-native";
@@ -16,7 +17,7 @@ import {
 } from "@/lib/api";
 import { circleCopy } from "@/lib/circle-copy";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 
 const unitsByRegion: Record<"jp" | "bd", CircleUnitType[]> = {
@@ -25,7 +26,8 @@ const unitsByRegion: Record<"jp" | "bd", CircleUnitType[]> = {
 };
 
 export default function StartCircle() {
-  const { profile, signOut } = useSession();
+  const { profile } = useSession();
+  const localizedType = useLocalizedType();
   const { record } = useMemberships();
   const { t, locale } = useOnboardingText();
   const copy = circleCopy[locale];
@@ -33,9 +35,9 @@ export default function StartCircle() {
   const units = unitsByRegion[region];
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState<CircleUnitType>(units[0]);
-  const [openToNearby, setOpenToNearby] = useState(true);
+  const [openToNearby, setOpenToNearby] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [error, setError] = useState<"createError" | "nearbyLocationError">();
   const submitting = useRef(false);
   const body = localizedType("body", locale);
   const fieldLabel = localizedType("field-label", locale);
@@ -44,12 +46,20 @@ export default function StartCircle() {
     if (!name.trim() || submitting.current) return;
     submitting.current = true;
     setBusy(true);
-    setFailed(false);
+    setError(undefined);
     try {
+      const position = openToNearby
+        ? await getApproximatePosition()
+        : undefined;
+      if (openToNearby && !position) {
+        setError("nearbyLocationError");
+        return;
+      }
       const detail = await api.createCircle({
         name: name.trim(),
         unit_type: unitType,
         open_to_nearby: openToNearby,
+        ...position,
       });
       record(detail, {
         circle_id: detail.id,
@@ -59,7 +69,7 @@ export default function StartCircle() {
         circle: detail,
       });
     } catch {
-      setFailed(true);
+      setError("createError");
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -73,7 +83,9 @@ export default function StartCircle() {
         <OnboardingLink
           label={t("back")}
           disabled={busy}
-          onPress={() => (router.canGoBack() ? router.back() : signOut())}
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/find-circle")
+          }
         />
       }
       footer={
@@ -129,6 +141,9 @@ export default function StartCircle() {
           <Text className="text-ink" style={fieldLabel}>
             {copy.openToNearby}
           </Text>
+          <Text className="text-secondary" style={body}>
+            {copy.nearbyLocationHint}
+          </Text>
         </View>
         <ActivityToggle
           label={copy.openToNearby}
@@ -137,7 +152,23 @@ export default function StartCircle() {
           onChange={setOpenToNearby}
         />
       </View>
-      {failed ? <ErrorText>{copy.createError}</ErrorText> : null}
+      {error ? <ErrorText>{copy[error]}</ErrorText> : null}
     </OnboardingScreen>
   );
+}
+
+async function getApproximatePosition() {
+  try {
+    const permission = await Location.requestForegroundPermissionsAsync();
+    if (!permission.granted) return;
+    const { coords } = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+    return {
+      approx_lat: Math.round(coords.latitude * 1000) / 1000,
+      approx_lng: Math.round(coords.longitude * 1000) / 1000,
+    };
+  } catch {
+    return;
+  }
 }

@@ -24,12 +24,15 @@ import { ActivityStatus, ActivityText } from "@/components/activity-ui";
 import { Button, ErrorText } from "@/components/ui";
 import { api, ApiError, type Conversation } from "@/lib/api";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
-import { loadExchangeConversation } from "@/lib/exchange-conversation";
-import { exchangeCopy } from "@/lib/exchange-copy";
+import {
+  clearLoanMessageDraft,
+  loadExchangeConversation,
+  peekLoanMessageDraft,
+} from "@/lib/exchange-conversation";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -64,6 +67,7 @@ export function ExchangeMessagesScreen({ mode }: { mode: "loan" | "help" }) {
         onBack={back}
         conversation={conversation}
         profileId={profileId}
+        loanId={mode === "loan" ? id : undefined}
         partnerName={partnerName}
       />
     );
@@ -116,6 +120,7 @@ function ChatFrame({
   refreshing: boolean;
   refresh: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   return (
     <SafeAreaView style={styles.screen}>
@@ -172,16 +177,18 @@ function ExchangeChat({
   onBack,
   conversation,
   profileId,
+  loanId,
   partnerName,
 }: {
   onBack: () => void;
   conversation: Conversation;
   profileId: string;
+  loanId?: string;
   partnerName: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = exchangeMessageCopy[locale];
-  const chat = exchangeCopy[locale];
   const activity = activityCopy[locale];
   const [closed, setClosed] = useState(conversation.status !== "open");
   const newestRead = useRef<string | null>(null);
@@ -204,7 +211,14 @@ function ExchangeChat({
     ),
     5000,
   );
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() =>
+    loanId && conversation.status === "open"
+      ? (peekLoanMessageDraft(profileId, loanId) ?? "")
+      : "",
+  );
+  useEffect(() => {
+    if (loanId) clearLoanMessageDraft(profileId, loanId);
+  }, [loanId, profileId]);
   const [inputHeight, setInputHeight] = useState(48);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
@@ -283,8 +297,8 @@ function ExchangeChat({
         ListEmptyComponent={
           !messages.loading && !messages.error ? (
             <View style={styles.section}>
-              <ActivityText strong>{chat.emptyChat}</ActivityText>
-              <ActivityText>{chat.emptyChatDetail}</ActivityText>
+              <ActivityText strong>{copy.emptyChat}</ActivityText>
+              <ActivityText>{copy.emptyChatDetail}</ActivityText>
             </View>
           ) : undefined
         }
@@ -318,7 +332,7 @@ function ExchangeChat({
           return (
             <Pressable
               accessible
-              accessibilityLabel={`${own ? chat.you : partnerName}. ${body} ${stamp}`}
+              accessibilityLabel={`${own ? copy.you : partnerName}. ${body} ${stamp}`}
               accessibilityHint={canReport ? reportLabel : undefined}
               accessibilityActions={
                 canReport ? [{ name: "report", label: reportLabel }] : undefined
@@ -354,7 +368,7 @@ function ExchangeChat({
         ) : (
           <View style={styles.composeRow}>
             <TextInput
-              accessibilityLabel={chat.message}
+              accessibilityLabel={copy.message}
               style={[
                 localizedType("body", locale),
                 styles.input,
@@ -365,7 +379,7 @@ function ExchangeChat({
                 setDraft(value);
                 setSendError(false);
               }}
-              placeholder={chat.writeMessage}
+              placeholder={copy.writeMessage}
               placeholderTextColor={colors.control}
               onContentSizeChange={(event) => {
                 setInputHeight(
@@ -381,7 +395,7 @@ function ExchangeChat({
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={chat.sendMessage}
+              accessibilityLabel={copy.sendMessage}
               accessibilityState={{ disabled: !canSend, busy: sending }}
               disabled={!canSend}
               onPress={() => void send()}

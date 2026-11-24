@@ -18,7 +18,7 @@ import {
   partnerFor,
 } from "@/lib/neighbour-api";
 import { neighbourCopy, shortExchangeDate } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, fonts, spacing } from "@/theme/tokens.json";
 
@@ -44,6 +44,7 @@ function NeighbourProfile({
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -86,7 +87,6 @@ function NeighbourProfile({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={name ?? copy.profile}
@@ -106,6 +106,14 @@ function NeighbourProfile({
       ) : null}
       {data && name && !resource.error ? (
         <>
+          {data.person.avatar_url ? (
+            <Image
+              source={data.person.avatar_url}
+              style={styles.avatar}
+              cachePolicy="none"
+              accessible={false}
+            />
+          ) : null}
           {data.person.intro ? (
             <View>
               <ActivityText strong>{copy.intro}</ActivityText>
@@ -114,13 +122,15 @@ function NeighbourProfile({
           ) : null}
           {data.person.happy_to_help_with ? (
             <View style={styles.row}>
-              <View style={styles.avatar} accessible={false} aria-hidden>
-                <Text
-                  style={[localizedType("field-label", locale), styles.green]}
-                >
-                  {Array.from(name.trim())[0]?.toLocaleUpperCase(locale)}
-                </Text>
-              </View>
+              {!data.person.avatar_url ? (
+                <View style={styles.avatar} accessible={false} aria-hidden>
+                  <Text
+                    style={[localizedType("field-label", locale), styles.green]}
+                  >
+                    {Array.from(name.trim())[0]?.toLocaleUpperCase(locale)}
+                  </Text>
+                </View>
+              ) : null}
               <View style={styles.text}>
                 <ActivityText strong>{copy.happyToHelp}</ActivityText>
                 <ActivityText>{data.person.happy_to_help_with}</ActivityText>
@@ -230,6 +240,7 @@ function NeighbourProfile({
 }
 
 function Count({ value, label }: { value: number; label: string }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <View style={styles.count}>
@@ -254,6 +265,7 @@ function PairHistory({
   partnerName: string;
   lastExchangeAt: string | null;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const history = usePagedResource(

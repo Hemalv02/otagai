@@ -8,7 +8,7 @@ import {
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Language, type Region } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 
 const languages = [
@@ -18,6 +18,7 @@ const languages = [
 ] as const;
 
 export default function ProfileSetup() {
+  const localizedType = useLocalizedType();
   const { state } = useOnboarding();
   const { t, locale } = useOnboardingText();
   const { setProfile, reloadProfile, signOut } = useSession();
@@ -59,25 +60,18 @@ export default function ProfileSetup() {
   }
 
   async function save() {
-    if (!name.trim() || submitting.current) return;
+    if (!name.trim() || submitting.current || drafter.current) return;
     submitting.current = true;
     setBusy(true);
     setFailed(false);
     try {
-      const created = await api.createProfile({
+      const profile = await api.createProfile({
         display_name: name.trim(),
         preferred_language: language,
         region,
         happy_to_help_with: skills || undefined,
+        intro: intro.trim() || undefined,
       });
-      let profile = created;
-      if (intro.trim()) {
-        try {
-          profile = await api.updateMyProfile({ intro: intro.trim() });
-        } catch {
-          profile = created;
-        }
-      }
       setProfile(profile);
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
@@ -106,7 +100,7 @@ export default function ProfileSetup() {
           label={t("continue")}
           labelStyle={localizedType("button", locale)}
           busy={busy}
-          disabled={!name.trim()}
+          disabled={!name.trim() || drafting}
           onPress={save}
         />
       }
@@ -143,7 +137,7 @@ export default function ProfileSetup() {
           labelStyle={(selected) => localizedType("body", selected)}
           value={language}
           onChange={setLanguage}
-          disabled={busy}
+          disabled={busy || drafting}
         />
       </View>
       <View className="gap-related-gap">
@@ -169,7 +163,7 @@ export default function ProfileSetup() {
         onChangeText={setHelpWith}
         maxLength={500}
         multiline
-        editable={!busy}
+        editable={!busy && !drafting}
         placeholder={t("helpWithExample")}
       />
       <View className="gap-related-gap">

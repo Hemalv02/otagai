@@ -24,6 +24,7 @@ class AiRun(UUIDPrimaryKey, CreatedAt, Base):
         ),
         Index("ix_ai_runs_feature_created_at", "feature", "created_at"),
         Index("ix_ai_runs_user_id", "user_id"),
+        Index("ix_ai_runs_created_at", "created_at"),
     )
 
     user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))

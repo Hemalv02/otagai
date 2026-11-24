@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "480407920006",
+    "project_id": "otagai-ec3af",
+    "storage_bucket": "otagai-ec3af.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:480407920006:android:611fb809ce91440139e007",
+        "android_client_info": {
+          "package_name": "com.hemalv02.otagai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDGW4Ss6jfn-1zOIK472X5mMCBWOJqECVU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

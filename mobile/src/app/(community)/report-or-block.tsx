@@ -26,7 +26,7 @@ import {
   type ReportTarget,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { spacing } from "@/theme/tokens.json";
 
@@ -82,6 +82,7 @@ function ReportOrBlock({
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -131,7 +132,7 @@ function ReportOrBlock({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const submissionId = useRef<string | null>(null);
-  const reportDetails = reason === "other" ? details.trim() : "";
+  const reportDetails = details.trim();
   const ready = target.data?.name !== undefined;
   const headline =
     target.data?.name ??
@@ -148,7 +149,8 @@ function ReportOrBlock({
         : null;
   const canBlock = Boolean(blockId);
   const blockLabel = kind === "user" ? copy.block : copy.blockPerson;
-  const alsoBlockLabel = kind === "user" ? copy.alsoBlock : copy.alsoBlockPerson;
+  const alsoBlockLabel =
+    kind === "user" ? copy.alsoBlock : copy.alsoBlockPerson;
   const reasonOptions: [ReportReason, string, string][] =
     kind === "listing"
       ? [
@@ -224,7 +226,6 @@ function ReportOrBlock({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
@@ -326,7 +327,6 @@ function ReportOrBlock({
                         disabled={busy}
                         onPress={() => {
                           setReason(value);
-                          if (value !== "other") setDetails("");
                         }}
                       >
                         <SelectionCopy
@@ -337,7 +337,7 @@ function ReportOrBlock({
                       </Pressable>
                     ))}
                   </View>
-                  {reason === "other" ? (
+                  {reason ? (
                     <Field
                       label={copy.details}
                       labelStyle={localizedType("field-label", locale)}

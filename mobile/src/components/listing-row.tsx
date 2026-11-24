@@ -1,7 +1,7 @@
 import { Image, type ImageSource } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function ListingRow({
@@ -23,6 +23,7 @@ export function ListingRow({
   accessibilityRole?: "button" | "link";
   onPress: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const supporting = localizedType("supporting", locale);
 

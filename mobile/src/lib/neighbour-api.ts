@@ -7,8 +7,11 @@ import {
   type RequestSummary,
 } from "@/lib/api";
 
+export { isUuid } from "@/lib/uuid";
+
 type Person = { id: string; display_name: string };
 export type PublicNeighbour = Person & {
+  avatar_url: string | null;
   languages: Language[];
   intro: string | null;
   happy_to_help_with: string | null;
@@ -43,13 +46,6 @@ type NeighbourListing = {
 
 export function isUnavailable(error: unknown) {
   return error instanceof ApiError && [403, 404].includes(error.status);
-}
-
-export function isUuid(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
-  );
 }
 
 export function partnerFor(exchange: Exchange, profileId: string) {

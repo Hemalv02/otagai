@@ -6,7 +6,7 @@ import { Button, ErrorText, Field } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { type DraftPart, encodeParts, parseParts } from "@/lib/listing-draft";
 import { draftCopy } from "@/lib/listing-draft-copy";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export function ListingPartsEditor({
@@ -20,6 +20,7 @@ export function ListingPartsEditor({
   locale: Language;
   onChange: (value: string) => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = draftCopy[locale];
   const parts = parseParts(value);
   const labelStyle = localizedType("field-label", locale);
@@ -108,6 +109,7 @@ function PartSheet({
   save: (part: DraftPart) => void;
   remove?: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = draftCopy[locale];
   const [label, setLabel] = useState(initial?.label ?? "");
   const [quantity, setQuantity] = useState(

@@ -36,7 +36,7 @@ import {
 } from "@/lib/listing-workflow";
 import { categoryName, flattenCategories } from "@/lib/listing-read";
 import { lendingCopy } from "@/lib/lending-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -64,6 +64,7 @@ const pickerOptions: ImagePicker.ImagePickerOptions = {
 };
 
 export default function AddListingScreen() {
+  const localizedType = useLocalizedType();
   const navigation = useNavigation();
   const { session } = useSession();
   const account = session?.user.id;
@@ -460,7 +461,6 @@ export default function AddListingScreen() {
   return (
     <CommunityScreen
       title={copy.addListing}
-      showDemoPreview={false}
       back
       keyboard
       footer={

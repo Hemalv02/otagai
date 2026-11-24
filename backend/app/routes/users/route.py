@@ -47,6 +47,7 @@ class CreateProfileBody(BaseModel):
     languages: list[Language] = Field(default_factory=list, max_length=3)
     age_band: AgeBand | None = None
     happy_to_help_with: HelpText | None = None
+    intro: IntroText | None = None
 
 
 class UpdateProfileBody(BaseModel):
@@ -59,6 +60,7 @@ class UpdateProfileBody(BaseModel):
     age_band: AgeBand | None = None
     intro: IntroText | None = None
     happy_to_help_with: HelpText | None = None
+    profile_details_visible: bool | None = None
     accepts_money_orei: bool | None = None
     simple_mode: bool | None = None
     text_scale_percent: int | None = Field(default=None, ge=80, le=200)
@@ -88,6 +90,7 @@ class UserProfile(BaseModel):
     id: uuid.UUID
     kind: str
     display_name: str
+    avatar_media_id: uuid.UUID | None
     preferred_language: str
     languages: list[str]
     region: str
@@ -95,6 +98,7 @@ class UserProfile(BaseModel):
     age_band: str | None
     intro: str | None
     happy_to_help_with: str | None
+    profile_details_visible: bool
     accepts_money_orei: bool
     simple_mode: bool
     text_scale_percent: int
@@ -132,6 +136,7 @@ async def create_me(
         languages=[language.value for language in body.languages],
         age_band=body.age_band.value if body.age_band else None,
         happy_to_help_with=body.happy_to_help_with,
+        intro=body.intro,
     )
     user = await create_profile(database, claims.auth_user_id, new_profile)
     response.headers["Location"] = "/users/me"
@@ -146,7 +151,13 @@ async def update_me(
     for field in ("quiet_hours_start", "quiet_hours_end"):
         if field in changes:
             changes[field] = getattr(body, field)
-    for required in ("display_name", "preferred_language", "languages"):
+    for required in (
+        "display_name",
+        "preferred_language",
+        "languages",
+        "profile_details_visible",
+        "text_scale_percent",
+    ):
         if required in changes and changes[required] is None:
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_CONTENT, f"{required} cannot be empty."
@@ -157,8 +168,8 @@ async def update_me(
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_me(user: CurrentUserDep, database: DatabaseDep) -> None:
-    await delete_account(database, user)
+async def delete_me(claims: AuthClaimsDep, database: DatabaseDep) -> None:
+    await delete_account(database, claims.auth_user_id)
 
 
 @router.post("/me/push-tokens", status_code=status.HTTP_201_CREATED)

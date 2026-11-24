@@ -3,13 +3,15 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.database.models import User
+from app.database.models.enums import MediaVariantName
 from app.repositories.listings import ListingFilters
 from app.routes.dependencies import (
     CurrentUserDep,
     DatabaseDep,
+    OptionalStorageDep,
     SettingsDep,
     StorageDep,
 )
@@ -20,12 +22,14 @@ from app.routes.requests.route import RequestSummary
 from app.routes.thanks.route import ThankYouModel
 from app.services.actors.service import Actor
 from app.services.listings.service import list_user_listings
+from app.services.media.service import MediaNotFoundError, read_media
 from app.services.users.profiles import (
     get_pair,
     get_public_profile,
     list_user_exchanges,
     list_user_requests,
     list_user_thank_yous,
+    may_see_profile_details,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -35,6 +39,10 @@ def _parse_request_statuses(raw: str | None) -> tuple[str, ...]:
     if not raw:
         return ()
     return tuple(dict.fromkeys(part.strip() for part in raw.split(",") if part.strip()))
+
+
+class ActivityPageQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
 
 
 class PublicProfile(BaseModel):
@@ -48,6 +56,7 @@ class PublicProfile(BaseModel):
     age_band: str | None
     intro: str | None
     happy_to_help_with: str | None
+    avatar_url: str | None = None
     accepts_money_orei: bool
     created_at: datetime
 
@@ -65,11 +74,27 @@ def _self_actor(user: User) -> Actor:
 
 @router.get("/{user_id}")
 async def read_user(
-    user_id: uuid.UUID, user: CurrentUserDep, database: DatabaseDep
+    user_id: uuid.UUID,
+    user: CurrentUserDep,
+    database: DatabaseDep,
+    storage: OptionalStorageDep,
+    settings: SettingsDep,
 ) -> PublicProfile:
-    return PublicProfile.model_validate(
-        await get_public_profile(database, user, user_id)
-    )
+    target = await get_public_profile(database, user, user_id)
+    response = PublicProfile.model_validate(target)
+    if not may_see_profile_details(user.id, target):
+        return response.model_copy(
+            update={"age_band": None, "intro": None, "happy_to_help_with": None}
+        )
+    if storage is not None and target.avatar_media_id is not None:
+        try:
+            media = await read_media(
+                database, storage, settings, _self_actor(user), target.avatar_media_id
+            )
+        except MediaNotFoundError:
+            return response
+        response.avatar_url = media.urls.get(MediaVariantName.THUMB)
+    return response
 
 
 @router.get("/{user_id}/pair")
@@ -112,13 +137,12 @@ async def read_user_listings(
 @router.get("/{user_id}/requests")
 async def read_user_requests(
     user_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ActivityPageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[RequestSummary]:
     result = await list_user_requests(
-        database, user, user_id, _parse_request_statuses(status_filter), query.page()
+        database, user, user_id, _parse_request_statuses(query.status), query.page()
     )
     return Page.build(result, RequestSummary)
 
@@ -126,13 +150,12 @@ async def read_user_requests(
 @router.get("/{user_id}/exchanges")
 async def read_user_exchanges(
     user_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[ActivityPageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[ExchangeModel]:
     result = await list_user_exchanges(
-        database, user, user_id, _parse_request_statuses(status_filter), query.page()
+        database, user, user_id, _parse_request_statuses(query.status), query.page()
     )
     return Page.build(result, ExchangeModel)
 

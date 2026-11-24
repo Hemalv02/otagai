@@ -23,6 +23,10 @@ export type MembershipDetail = {
   decided_at: string | null;
 };
 
+export type RosterMembership = MembershipDetail & {
+  display_name: string | null;
+};
+
 export type CircleInvite = {
   id: string;
   code: string;
@@ -78,8 +82,10 @@ export function circleApi(authUserId: string) {
       get<{ id: string; display_name: string }>(
         `/users/${encodeURIComponent(id)}`,
       ),
+    listing: (id: string) =>
+      get<{ title: string }>(`/listings/${encodeURIComponent(id)}`),
     members: (id: string, status?: MembershipStatus, cursor?: string | null) =>
-      get<Page<MembershipDetail>>(
+      get<Page<RosterMembership>>(
         pagePath(
           `/circles/${circleId(id)}/memberships`,
           status ? { status } : {},
@@ -104,11 +110,11 @@ export function circleApi(authUserId: string) {
           inviteId,
         )}/revoke`,
       ),
-    reports: (id: string, status?: ReportStatus, cursor?: string | null) =>
+    reports: (id: string, statuses: ReportStatus[], cursor?: string | null) =>
       get<Page<CircleReport>>(
         pagePath(
           `/circles/${circleId(id)}/reports`,
-          status ? { status } : {},
+          statuses.length ? { status: statuses.join(",") } : {},
           cursor,
         ),
       ),

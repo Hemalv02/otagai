@@ -14,7 +14,7 @@ import {
   optionalVisible,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 
 export default function ThankYouReceiptScreen() {
@@ -39,6 +39,7 @@ function Receipt({
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const receipt = useLiveResource(
@@ -68,7 +69,6 @@ function Receipt({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={received === false ? copy.sent : copy.received}

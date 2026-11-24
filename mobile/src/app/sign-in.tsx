@@ -7,7 +7,7 @@ import {
   OnboardingScreen,
 } from "@/components/onboarding-screen";
 import { Button, ErrorText, Field } from "@/components/ui";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { supabase } from "@/lib/supabase";
 
 function errorKey(code: string | undefined) {
@@ -32,6 +32,7 @@ function errorKey(code: string | undefined) {
 }
 
 export default function SignIn() {
+  const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const [register, setRegister] = useState(false);
   const [email, setEmail] = useState("");
