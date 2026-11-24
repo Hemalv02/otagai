@@ -116,6 +116,7 @@ function ReviewListing({
         active.current = false;
         reads.cancel();
         sends.cancel();
+        setSending(false);
       };
     }, [account, id, kind, reads, sends, tick, copy]),
   );
@@ -148,7 +149,7 @@ function ReviewListing({
       if (active.current && send.isCurrent())
         setError(listingRequestError(cause));
     } finally {
-      if (active.current) setSending(false);
+      if (active.current && send.isCurrent()) setSending(false);
     }
   }, [account, kind, locale, listing, profileId, text, sends]);
 
