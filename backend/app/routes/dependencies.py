@@ -40,8 +40,12 @@ def get_database(request: Request) -> Database:
     return database
 
 
+def get_optional_storage(request: Request) -> Storage | None:
+    return getattr(request.app.state, "storage", None)
+
+
 def get_storage(request: Request) -> Storage:
-    storage = getattr(request.app.state, "storage", None)
+    storage = get_optional_storage(request)
     if storage is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, "Media storage is not configured."
@@ -107,6 +111,7 @@ async def get_actor(
 
 DatabaseDep = Annotated[Database, Depends(get_database)]
 StorageDep = Annotated[Storage, Depends(get_storage)]
+OptionalStorageDep = Annotated[Storage | None, Depends(get_optional_storage)]
 SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 RedisDep = Annotated[Redis | None, Depends(get_redis)]
 AuthClaimsDep = Annotated[AuthClaims, Depends(get_auth_claims)]

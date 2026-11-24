@@ -7,6 +7,7 @@ from app.database.models.enums import AiFeature
 from app.routes.dependencies import (
     CurrentUserDep,
     DatabaseDep,
+    OptionalStorageDep,
     RedisDep,
     SettingsDep,
     StorageDep,
@@ -26,12 +27,16 @@ from app.services.ai.helpers import (
     TranslationInput,
     draft_extension,
     draft_intro_card,
-    draft_listing,
     draft_thank_you,
     draft_tool_guide,
     draft_translation,
 )
-from app.services.ai.runner import Transcript, run_feature, transcribe_voice
+from app.services.ai.runner import (
+    Transcript,
+    run_feature,
+    suggest_listing,
+    transcribe_voice,
+)
 from app.services.ratelimit import enforce
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -68,17 +73,10 @@ async def listing_drafts(
     user: CurrentUserDep,
     database: DatabaseDep,
     settings: SettingsDep,
+    storage: OptionalStorageDep,
     redis: RedisDep,
 ) -> ListingDraft:
-    return await run_feature(
-        database,
-        redis,
-        settings,
-        user,
-        feature=AiFeature.PHOTO_LISTING,
-        input_payload=body.model_dump(),
-        produce=lambda: draft_listing(settings, body),
-    )
+    return await suggest_listing(database, redis, storage, settings, user, body)
 
 
 @router.post("/translations")

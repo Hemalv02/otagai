@@ -107,6 +107,8 @@ class Storage:
                     content.extend(chunk)
                     if len(content) > max_bytes:
                         raise StorageError("The object exceeds the allowed size.")
+                if len(content) != response["ContentLength"]:
+                    raise StorageError("The object download was incomplete.")
                 return bytes(content)
         except ClientError as error:
             if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
