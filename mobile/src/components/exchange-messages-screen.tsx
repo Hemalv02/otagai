@@ -28,6 +28,7 @@ import { loadExchangeConversation } from "@/lib/exchange-conversation";
 import { exchangeCopy } from "@/lib/exchange-copy";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -243,6 +244,18 @@ function ExchangeChat({
   }
 
   const canSend = !!draft.trim() && !sending && !messages.error;
+  const reportLabel = neighbourCopy[locale].reportMessage;
+  function openReport(messageId: string, senderId: string, body: string) {
+    router.push({
+      pathname: "/report-or-block",
+      params: {
+        targetType: "message",
+        targetId: messageId,
+        subjectId: senderId,
+        title: body.slice(0, 140),
+      },
+    });
+  }
   return (
     <ChatFrame
       onBack={onBack}
@@ -300,10 +313,30 @@ function ExchangeChat({
           }
           const own = item.sender_user_id === profileId;
           const stamp = formatActivityDate(item.created_at, locale);
+          const sender = item.sender_user_id;
+          const canReport = !own && !item.deleted && !!sender;
           return (
-            <View
+            <Pressable
               accessible
               accessibilityLabel={`${own ? chat.you : partnerName}. ${body} ${stamp}`}
+              accessibilityHint={canReport ? reportLabel : undefined}
+              accessibilityActions={
+                canReport ? [{ name: "report", label: reportLabel }] : undefined
+              }
+              onAccessibilityAction={
+                canReport
+                  ? (event) => {
+                      if (event.nativeEvent.actionName === "report" && sender)
+                        openReport(item.id, sender, body);
+                    }
+                  : undefined
+              }
+              onLongPress={
+                canReport && sender
+                  ? () => openReport(item.id, sender, body)
+                  : undefined
+              }
+              disabled={!canReport}
               style={[styles.message, own && styles.own]}
             >
               <Text style={[localizedType("body", locale), styles.ink]}>
@@ -312,7 +345,7 @@ function ExchangeChat({
               <Text style={[localizedType("supporting", locale), styles.stamp]}>
                 {stamp}
               </Text>
-            </View>
+            </Pressable>
           );
         }}
       />
