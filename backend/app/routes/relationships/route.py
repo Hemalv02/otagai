@@ -53,6 +53,10 @@ class UserSummary(BaseModel):
     display_name: str
 
 
+class FamilyPersonSummary(UserSummary):
+    kind: str
+
+
 class ScopesBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -154,7 +158,7 @@ class FamilyLinkModel(BaseModel):
     relative_user_id: uuid.UUID
     relation: str
     status: str
-    other: UserSummary | None
+    other: FamilyPersonSummary | None
     created_at: datetime
     decided_at: datetime | None
 
@@ -181,7 +185,8 @@ class GrantModel(BaseModel):
 
 
 class GrantWithUser(GrantModel):
-    other: UserSummary | None
+    other: FamilyPersonSummary | None
+    can_change_scopes: bool
 
 
 class GrantList(BaseModel):
@@ -219,7 +224,7 @@ def _link_model(view: LinkView) -> FamilyLinkModel:
         relative_user_id=view.link.relative_user_id,
         relation=view.link.relation,
         status=view.link.status,
-        other=UserSummary.model_validate(view.other) if view.other else None,
+        other=FamilyPersonSummary.model_validate(view.other) if view.other else None,
         created_at=view.link.created_at,
         decided_at=view.link.decided_at,
     )
@@ -335,9 +340,10 @@ async def my_proxy_grants(
         items=[
             GrantWithUser(
                 **_grant_model(grant).model_dump(),
-                other=UserSummary.model_validate(other) if other else None,
+                other=FamilyPersonSummary.model_validate(other) if other else None,
+                can_change_scopes=can_change,
             )
-            for grant, other in pairs
+            for grant, other, can_change in pairs
         ]
     )
 

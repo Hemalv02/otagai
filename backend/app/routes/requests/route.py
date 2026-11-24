@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
 from pydantic import (
@@ -24,6 +24,7 @@ from app.database.models.enums import (
 from app.routes.dependencies import ActorDep, DatabaseDep
 from app.routes.pagination import Page, PageQuery
 from app.services.actors.service import ProxyScope
+from app.services.requests.destinations import list_request_destinations
 from app.services.requests.ripple import RippleReceipt, RippleStartStage
 from app.services.requests.service import (
     NewRequest,
@@ -48,6 +49,9 @@ from app.services.requests.service import (
 router = APIRouter(prefix="/requests", tags=["requests"])
 me_requests_router = APIRouter(prefix="/users/me/requests", tags=["requests"])
 received_router = APIRouter(prefix="/users/me/received-requests", tags=["requests"])
+destinations_router = APIRouter(
+    prefix="/users/me/request-destinations", tags=["requests"]
+)
 
 RawText = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
@@ -465,3 +469,27 @@ async def patch_received(
         database, actor, request_id, seen=body.seen, hidden=body.hidden
     )
     return received_item(view)
+
+
+class DestinationCircle(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    name_translations: dict[str, Any]
+    region: str
+    unit_type: str
+
+
+class DestinationList(BaseModel):
+    items: list[DestinationCircle]
+
+
+@destinations_router.get("")
+async def request_destinations(
+    actor: ActorDep, database: DatabaseDep
+) -> DestinationList:
+    circles = await list_request_destinations(database, actor)
+    return DestinationList(
+        items=[DestinationCircle.model_validate(circle) for circle in circles]
+    )

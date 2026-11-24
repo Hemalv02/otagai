@@ -102,6 +102,14 @@ class NewGrant:
 async def _authority_over(session, caller_id: uuid.UUID, member_id: uuid.UUID) -> bool:
     if caller_id == member_id:
         return True
+    member = await UserRepository(session).get(member_id)
+    if (
+        member is None
+        or member.kind != UserKind.MANAGED.value
+        or member.status != UserStatus.ACTIVE.value
+        or member.created_by_user_id != caller_id
+    ):
+        return False
     grant = await ProxyGrantRepository(session).get_active(
         member_user_id=member_id, caretaker_user_id=caller_id
     )
@@ -276,7 +284,7 @@ async def revoke_family_link(
 
 async def list_proxy_grants(
     database: Database, user: User, *, as_caretaker: bool
-) -> list[tuple[ProxyGrant, User | None]]:
+) -> list[tuple[ProxyGrant, User | None, bool]]:
     async with database.session() as session:
         repository = ProxyGrantRepository(session)
         grants = (
@@ -288,7 +296,10 @@ async def list_proxy_grants(
         pairs = []
         for grant in grants:
             other_id = grant.member_user_id if as_caretaker else grant.caretaker_user_id
-            pairs.append((grant, await users.get(other_id)))
+            can_change = not as_caretaker or await _authority_over(
+                session, user.id, grant.member_user_id
+            )
+            pairs.append((grant, await users.get(other_id), can_change))
     return pairs
 
 
@@ -337,13 +348,11 @@ async def _load_manageable_grant(
     grant = await ProxyGrantRepository(session).get_for_update(grant_id)
     if grant is None or grant.revoked_at is not None:
         raise GrantNotFoundError
-    allowed = user.id in (
-        grant.member_user_id,
-        grant.caretaker_user_id,
-    ) or await _authority_over(session, user.id, grant.member_user_id)
-    if not allowed:
-        raise GrantNotFoundError
-    return grant
+    if await _authority_over(session, user.id, grant.member_user_id):
+        return grant
+    if user.id == grant.caretaker_user_id:
+        raise NotAllowedError("Only the person who gave access can change it.")
+    raise GrantNotFoundError
 
 
 async def update_proxy_grant(

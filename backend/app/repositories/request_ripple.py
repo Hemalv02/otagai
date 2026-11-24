@@ -29,6 +29,21 @@ class RippleRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    async def home_circles(self, owner_id: uuid.UUID) -> list[Circle]:
+        statement = (
+            select(Circle)
+            .join(CircleMembership, CircleMembership.circle_id == Circle.id)
+            .join(User, User.id == CircleMembership.user_id)
+            .where(
+                Circle.status == CircleStatus.ACTIVE.value,
+                CircleMembership.user_id == owner_id,
+                CircleMembership.status == MembershipStatus.APPROVED.value,
+                User.status == UserStatus.ACTIVE.value,
+            )
+            .order_by(CircleMembership.created_at, Circle.id)
+        )
+        return list(await self._session.scalars(statement))
+
     async def home_lineage(
         self, owner_id: uuid.UUID, home_id: uuid.UUID
     ) -> list[Circle]:

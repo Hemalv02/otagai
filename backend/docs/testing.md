@@ -54,6 +54,17 @@ Coverage spans every major route group (`tests/integration/`):
   is removed, after the grant is revoked, with only a family link, as an
   unrelated user and for a deleted member (`403`), and for managed accounts;
   an unknown `status` or query parameter returns `422`.
+  Family consent and proxy (screens 34–36): a link stays pending on both sides
+  until the receiver accepts, and accepting grants no access (`403`); a managed
+  member gets exactly the reviewed scopes; only the member (or the caretaker
+  who created a managed member) changes scopes or passes access on (`403`
+  otherwise, including a delegated caretaker), and grant lists report
+  `can_change_scopes`;
+  posting and activity scopes are independent; a caretaker in Japan posts for a
+  member in a Bangladesh circle through `GET /users/me/request-destinations` and
+  `POST /requests` with `X-Acting-For` (owned by the member, `acted_by` is the
+  caretaker, it reaches the member's circle, a foreign destination is `400`, a
+  revoked grant is `403`, and the next personal request uses the caretaker).
 - **payments** — idempotency (same key/body returns the first result, different
   body `409`/`404`), missing `Idempotency-Key` `422`, bKash-mock
   simulate-success → thank-you `paid`, cancel, payee-cannot-pay `404`.

@@ -1,6 +1,16 @@
 import uuid
 
 from tests.integration.conftest import auth, join_circle, make_circle, make_user
+from tests.integration.family_fixtures import (
+    acted_by,
+    acting,
+    circle_in,
+    give_grant,
+    me_id,
+    pair,
+    post_help,
+    scopes,
+)
 
 
 def _grant_body():
@@ -449,7 +459,11 @@ async def test_family_sources_return_profile_summaries(client):
     )
     assert grants.status_code == 200, grants.text
     [grant] = grants.json()["items"]
-    assert grant["other"] == {"id": ctx["member_id"], "display_name": "Mum"}
+    assert grant["other"] == {
+        "id": ctx["member_id"],
+        "display_name": "Mum",
+        "kind": "self",
+    }
     assert grant["member_user_id"] == ctx["member_id"]
     assert grant["can_view_activity"] is True
 
@@ -472,3 +486,336 @@ async def test_family_request_status_filter_is_validated(client):
         "/users/me/requests?stat=open", headers=auth(ctx["member"])
     )
     assert stray.status_code == 422, stray.text
+
+
+async def test_link_is_pending_on_both_sides_until_accepted(client):
+    ctx = await pair(client)
+    sent = await client.post(
+        "/family-links",
+        headers=auth(ctx["caretaker"]),
+        json={"relative_user_id": ctx["member_id"], "relation": "parent"},
+    )
+    assert sent.status_code == 201, sent.text
+    link_id = sent.json()["id"]
+    for token, other in ((ctx["caretaker"], "Amina"), (ctx["member"], "Rahim")):
+        [row] = (
+            await client.get("/users/me/family-links", headers=auth(token))
+        ).json()["items"]
+        assert (row["status"], row["other"]["display_name"]) == ("pending", other)
+
+    own_accept = await client.post(
+        f"/family-links/{link_id}/accept", headers=auth(ctx["caretaker"])
+    )
+    assert own_accept.status_code == 404, own_accept.text
+    accepted = await client.post(
+        f"/family-links/{link_id}/accept", headers=auth(ctx["member"])
+    )
+    assert accepted.status_code == 200, accepted.text
+    for token in (ctx["caretaker"], ctx["member"]):
+        [row] = (
+            await client.get("/users/me/family-links", headers=auth(token))
+        ).json()["items"]
+        assert row["status"] == "accepted"
+
+    await circle_in(client, ctx["member"], "jp")
+    as_member = acting(ctx["caretaker"], ctx["member_id"])
+    listed = await client.get("/users/me/requests?status=open", headers=as_member)
+    assert listed.status_code == 403, listed.text
+    assert (await post_help(client, as_member)).status_code == 403
+    destinations = await client.get("/users/me/request-destinations", headers=as_member)
+    assert destinations.status_code == 403, destinations.text
+
+
+async def test_managed_member_gets_exactly_the_reviewed_scopes(client):
+    caretaker = await make_user(client, display_name="Rahim")
+    created = await client.post(
+        "/managed-users",
+        headers=auth(caretaker),
+        json={
+            "display_name": "Amina",
+            "preferred_language": "bn",
+            "region": "bd",
+            "grant": {
+                "caretaker_role": "family",
+                "consent_method": "phone_call",
+                "scopes": scopes("can_post_requests", "can_view_activity"),
+            },
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert {name: body["grant"][name] for name in scopes()} == scopes(
+        "can_post_requests", "can_view_activity"
+    )
+    assert body["grant"]["consent_method"] == "phone_call"
+    assert (body["user"]["region"], body["user"]["kind"]) == ("bd", "managed")
+
+    [listed] = (
+        await client.get("/users/me/proxy-grants?as=caretaker", headers=auth(caretaker))
+    ).json()["items"]
+    assert listed["other"]["kind"] == "managed"
+
+    as_member = acting(caretaker, body["user"]["id"])
+    destinations = await client.get("/users/me/request-destinations", headers=as_member)
+    assert destinations.status_code == 200, destinations.text
+    assert destinations.json()["items"] == []
+    no_circle = await post_help(client, as_member)
+    assert no_circle.status_code == 400, no_circle.text
+
+
+async def test_only_the_member_changes_a_registered_members_scopes(client):
+    ctx = await pair(client)
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_view_activity",
+    )
+    escalated = await client.patch(
+        f"/proxy-grants/{grant_id}",
+        headers=auth(ctx["caretaker"]),
+        json={"can_post_requests": True, "can_thank_and_pay": True},
+    )
+    assert escalated.status_code == 403, escalated.text
+    [grant] = (
+        await client.get(
+            "/users/me/proxy-grants?as=caretaker", headers=auth(ctx["caretaker"])
+        )
+    ).json()["items"]
+    assert (grant["can_post_requests"], grant["can_thank_and_pay"]) == (False, False)
+    assert grant["other"]["kind"] == "self"
+
+    delegated = await client.post(
+        "/proxy-grants",
+        headers=auth(ctx["caretaker"]),
+        json={
+            "member_user_id": ctx["member_id"],
+            "caretaker_user_id": await me_id(client, await make_user(client)),
+            "caretaker_role": "family",
+            "consent_method": "in_person",
+            "scopes": scopes("can_post_requests"),
+        },
+    )
+    assert delegated.status_code == 403, delegated.text
+
+    granted = await client.patch(
+        f"/proxy-grants/{grant_id}",
+        headers=auth(ctx["member"]),
+        json={"can_post_requests": True},
+    )
+    assert granted.status_code == 200, granted.text
+    ended = await client.post(
+        f"/proxy-grants/{grant_id}/revoke", headers=auth(ctx["caretaker"])
+    )
+    assert ended.status_code == 200, ended.text
+
+
+async def test_caretaker_manages_and_shares_a_managed_member(client):
+    caretaker = await make_user(client, display_name="Rahim")
+    created = await client.post(
+        "/managed-users",
+        headers=auth(caretaker),
+        json={
+            "display_name": "Amina",
+            "preferred_language": "ja",
+            "region": "jp",
+            "grant": {**_grant_body(), "scopes": scopes("can_view_activity")},
+        },
+    )
+    managed_id = created.json()["user"]["id"]
+    patched = await client.patch(
+        f"/proxy-grants/{created.json()['grant']['id']}",
+        headers=auth(caretaker),
+        json={"can_post_requests": True},
+    )
+    assert patched.status_code == 200, patched.text
+    sibling_id = await me_id(client, await make_user(client, display_name="Sibling"))
+    shared = await client.post(
+        "/proxy-grants",
+        headers=auth(caretaker),
+        json={
+            "member_user_id": managed_id,
+            "caretaker_user_id": sibling_id,
+            "caretaker_role": "family",
+            "consent_method": "via_coordinator",
+            "scopes": scopes("can_view_activity"),
+        },
+    )
+    assert shared.status_code == 201, shared.text
+
+
+async def test_post_and_activity_scopes_are_independent(client):
+    ctx = await pair(client)
+    await circle_in(client, ctx["member"], "jp")
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_view_activity",
+    )
+    as_member = acting(ctx["caretaker"], ctx["member_id"])
+    listed = await client.get("/users/me/requests?status=open", headers=as_member)
+    assert listed.status_code == 200, listed.text
+    assert (await post_help(client, as_member)).status_code == 403
+    destinations = await client.get("/users/me/request-destinations", headers=as_member)
+    assert destinations.status_code == 403, destinations.text
+
+    swapped = await client.patch(
+        f"/proxy-grants/{grant_id}",
+        headers=auth(ctx["member"]),
+        json={"can_post_requests": True, "can_view_activity": False},
+    )
+    assert swapped.status_code == 200, swapped.text
+    listed = await client.get("/users/me/requests?status=open", headers=as_member)
+    assert listed.status_code == 403, listed.text
+    posted = await post_help(client, as_member)
+    assert posted.status_code == 201, posted.text
+    for token, role in ((ctx["member"], "member"), (ctx["caretaker"], "caretaker")):
+        [grant] = (
+            await client.get(f"/users/me/proxy-grants?as={role}", headers=auth(token))
+        ).json()["items"]
+        assert (grant["can_post_requests"], grant["can_view_activity"]) == (True, False)
+
+    revoked = await client.post(
+        f"/proxy-grants/{grant_id}/revoke", headers=auth(ctx["member"])
+    )
+    assert revoked.status_code == 200, revoked.text
+    assert (await post_help(client, as_member)).status_code == 403
+    listed = await client.get("/users/me/requests?status=open", headers=as_member)
+    assert listed.status_code == 403, listed.text
+    for token, role in ((ctx["member"], "member"), (ctx["caretaker"], "caretaker")):
+        remaining = await client.get(
+            f"/users/me/proxy-grants?as={role}", headers=auth(token)
+        )
+        assert remaining.json()["items"] == []
+
+
+async def test_caretaker_in_japan_posts_for_member_in_bangladesh(client):
+    ctx = await pair(client, member_region="bd", caretaker_region="jp")
+    neighbour = await make_user(client, display_name="Karim", region="bd")
+    member_circle = await circle_in(client, ctx["member"], "bd", neighbour)
+    own_circle = await circle_in(client, ctx["caretaker"], "jp")
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_post_requests",
+    )
+    as_member = acting(ctx["caretaker"], ctx["member_id"])
+
+    destinations = await client.get("/users/me/request-destinations", headers=as_member)
+    assert destinations.status_code == 200, destinations.text
+    [destination] = destinations.json()["items"]
+    assert (destination["id"], destination["region"]) == (member_circle, "bd")
+    mine = await client.get(
+        "/users/me/request-destinations", headers=auth(ctx["caretaker"])
+    )
+    assert [item["id"] for item in mine.json()["items"]] == [own_circle]
+
+    denied = await post_help(client, as_member, home_circle_id=own_circle)
+    assert denied.status_code == 400, denied.text
+    posted = await post_help(client, as_member, home_circle_id=member_circle)
+    assert posted.status_code == 201, posted.text
+    request_id = posted.json()["id"]
+    assert posted.json()["requester_user_id"] == ctx["member_id"]
+    assert str(await acted_by(request_id)) == ctx["caretaker_id"]
+    received = await client.get("/users/me/received-requests", headers=auth(neighbour))
+    assert request_id in [item["request"]["id"] for item in received.json()["items"]]
+
+    await client.post(f"/proxy-grants/{grant_id}/revoke", headers=auth(ctx["member"]))
+    late = await post_help(client, as_member, home_circle_id=member_circle)
+    assert late.status_code == 403, late.text
+    member_requests = await client.get(
+        "/users/me/requests", headers=auth(ctx["member"])
+    )
+    assert [item["id"] for item in member_requests.json()["items"]] == [request_id]
+
+    own = await post_help(client, auth(ctx["caretaker"]))
+    assert own.status_code == 201, own.text
+    assert own.json()["requester_user_id"] == ctx["caretaker_id"]
+    assert str(await acted_by(own.json()["id"])) == ctx["caretaker_id"]
+
+
+async def test_only_the_creator_manages_a_managed_member(client):
+    caretaker = await make_user(client, display_name="Rahim")
+    created = await client.post(
+        "/managed-users",
+        headers=auth(caretaker),
+        json={
+            "display_name": "Amina",
+            "preferred_language": "ja",
+            "region": "jp",
+            "grant": {**_grant_body(), "scopes": scopes("can_view_activity")},
+        },
+    )
+    managed_id = created.json()["user"]["id"]
+    sibling = await make_user(client, display_name="Sibling")
+    sibling_id = await me_id(client, sibling)
+    shared = await client.post(
+        "/proxy-grants",
+        headers=auth(caretaker),
+        json={
+            "member_user_id": managed_id,
+            "caretaker_user_id": sibling_id,
+            "caretaker_role": "family",
+            "consent_method": "in_person",
+            "scopes": scopes("can_view_activity"),
+        },
+    )
+    assert shared.status_code == 201, shared.text
+
+    widened = await client.patch(
+        f"/proxy-grants/{shared.json()['id']}",
+        headers=auth(sibling),
+        json={"can_post_requests": True},
+    )
+    assert widened.status_code == 403, widened.text
+    passed_on = await client.post(
+        "/proxy-grants",
+        headers=auth(sibling),
+        json={
+            "member_user_id": managed_id,
+            "caretaker_user_id": await me_id(client, await make_user(client)),
+            "caretaker_role": "family",
+            "consent_method": "in_person",
+            "scopes": scopes("can_view_activity"),
+        },
+    )
+    assert passed_on.status_code == 403, passed_on.text
+
+    [creator_view] = (
+        await client.get("/users/me/proxy-grants?as=caretaker", headers=auth(caretaker))
+    ).json()["items"]
+    [sibling_view] = (
+        await client.get("/users/me/proxy-grants?as=caretaker", headers=auth(sibling))
+    ).json()["items"]
+    assert (creator_view["can_change_scopes"], sibling_view["can_change_scopes"]) == (
+        True,
+        False,
+    )
+
+
+async def test_grant_lists_say_who_can_change_scopes(client):
+    ctx = await pair(client)
+    await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_view_activity",
+    )
+    [as_member] = (
+        await client.get(
+            "/users/me/proxy-grants?as=member", headers=auth(ctx["member"])
+        )
+    ).json()["items"]
+    [as_caretaker] = (
+        await client.get(
+            "/users/me/proxy-grants?as=caretaker", headers=auth(ctx["caretaker"])
+        )
+    ).json()["items"]
+    assert as_member["can_change_scopes"] is True
+    assert as_caretaker["can_change_scopes"] is False
