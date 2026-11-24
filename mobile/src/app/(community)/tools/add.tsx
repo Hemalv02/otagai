@@ -19,6 +19,7 @@ import {
   type ExtraKey,
   isRiskyCategory,
   listingLendMode,
+  listingPhotoContext,
   MAX_LISTING_DESCRIPTION,
   mergeSuggestion,
   parseParts,
@@ -301,11 +302,16 @@ export default function AddListingScreen() {
       const id = await readyMediaId(request, options);
       if (!stillCurrent() || !id) return;
       preparingPhoto = false;
+      const context = listingPhotoContext(
+        name,
+        description,
+        lastSuggested.title,
+      );
       const result = await api.draftListing(
         {
           image_media_id: id,
           language: locale,
-          ...(name.trim() ? { description: name.trim() } : {}),
+          ...(context ? { description: context } : {}),
         },
         options,
       );

@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -45,16 +45,16 @@ export default function ToolListingScreen() {
     id,
     status: "loading",
   });
-  const [tick, setTick] = useState(0);
   const [requests] = useState(createLatestRequest);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!account || !isListingId(id)) {
       requests.cancel();
       return;
     }
     const context: DetailContext = { account, id };
     const request = requests.start();
+    setState({ ...context, status: "loading" });
     api
       .getListing(id, request.signal, account)
       .then((listing) => {
@@ -69,8 +69,14 @@ export default function ToolListingScreen() {
           errorKind: requestApiError(error),
         });
       });
-    return () => requests.cancel();
-  }, [account, id, tick, requests]);
+  }, [account, id, requests]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      return () => requests.cancel();
+    }, [load, requests]),
+  );
 
   const view = account ? detailView(state, current) : "auth";
   const listing =
@@ -101,10 +107,7 @@ export default function ToolListingScreen() {
             {view === "retryable" ? (
               <Button
                 label={copy.retry}
-                onPress={() => {
-                  setState({ ...current, status: "loading" });
-                  setTick((value) => value + 1);
-                }}
+                onPress={load}
                 labelStyle={localizedType("button", locale)}
               />
             ) : null}
@@ -219,7 +222,7 @@ export default function ToolListingScreen() {
           onPress={() => router.push("/my-listings")}
         />
       ) : null}
-      {requestState.mode === "actions"
+      {profileId && requestState.mode === "actions"
         ? requestState.actions.map((kind) => (
             <Button
               key={kind}
