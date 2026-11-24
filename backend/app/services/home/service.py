@@ -46,6 +46,7 @@ async def home(database: Database, user: User) -> HomeView:
             direct_only=False,
             page=PageRequest(limit=HOME_LIMIT),
             statuses=(RequestStatus.OPEN.value,),
+            expires_after=now,
         )
         received_requests = await requests_repo.get_many(
             [recipient.request_id for recipient in recipients.items]
@@ -55,23 +56,21 @@ async def home(database: Database, user: User) -> HomeView:
             for recipient in recipients.items
             if recipient.request_id in received_requests
         ]
-        exchanges = await ExchangeRepository(session).list_for_user(
-            user.id,
-            (ExchangeStatus.SCHEDULED.value, ExchangeStatus.ACTIVE.value),
-            PageRequest(limit=50),
+        exchange_repo = ExchangeRepository(session)
+        open_statuses = (ExchangeStatus.SCHEDULED.value, ExchangeStatus.ACTIVE.value)
+        exchanges = await exchange_repo.list_for_user(
+            user.id, open_statuses, PageRequest(limit=50)
+        )
+        due_soon = await exchange_repo.list_for_user(
+            user.id, open_statuses, PageRequest(limit=HOME_LIMIT), due_by=now + DUE_SOON
         )
     active = [
         exchange
         for exchange in exchanges.items
         if exchange.status == ExchangeStatus.ACTIVE.value
     ][:HOME_LIMIT]
-    due_soon = [
-        exchange
-        for exchange in exchanges.items
-        if exchange.due_at is not None and exchange.due_at <= now + DUE_SOON
-    ][:HOME_LIMIT]
     return HomeView(
         received_requests=received_items,
         active_exchanges=active,
-        due_soon=due_soon,
+        due_soon=due_soon.items,
     )
