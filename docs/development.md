@@ -69,6 +69,8 @@ Physical devices need reachable API and media addresses. Production uses a publi
 
 ## Run checks
 
+GitHub Actions runs mobile and backend checks against the proposed merge commit when a pull request opens or changes. The workflow reads the Alembic revision graph and requires exactly one head. [Pull request CI](../.github/workflows/ci.yml)
+
 ```bash
 # From backend/
 uv run --frozen pytest -m 'not integration'
