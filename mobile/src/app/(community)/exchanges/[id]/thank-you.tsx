@@ -1,5 +1,5 @@
-import { LegacyExchangeRedirect } from "@/components/legacy-exchange-redirect";
+import { ThankYouComposer } from "@/components/thank-you-composer";
 
-export default function LegacyExchangeScreen() {
-  return <LegacyExchangeRedirect screen="thank-you" />;
+export default function HelpThankYouScreen() {
+  return <ThankYouComposer mode="help" />;
 }

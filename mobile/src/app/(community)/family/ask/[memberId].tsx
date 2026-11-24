@@ -1,5 +1,10 @@
-import { router, useLocalSearchParams, usePreventRemove } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import {
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+  usePreventRemove,
+} from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -11,6 +16,7 @@ import {
   ListRow,
   Thumbnail,
 } from "@/components/family-ui";
+import { RequestWordingReview } from "@/components/request-wording-review";
 import { Button, ErrorText, Field } from "@/components/ui";
 import { ApiError, type Language } from "@/lib/api";
 import { familyApi, type DestinationCircle } from "@/lib/family-api";
@@ -23,7 +29,11 @@ import {
   type SendFailure,
   validateActingDraft,
 } from "@/lib/family-consent";
+import { canManageFamilyCircles } from "@/lib/family-state";
+import { managedCircleCopy } from "@/lib/managed-circle-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import type { RequestWording } from "@/lib/request-wording";
+import { draftLanguageNames, wordingCopy } from "@/lib/request-wording-copy";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -36,6 +46,7 @@ type Load =
       name: string;
       destinations: DestinationCircle[];
       canViewActivity: boolean;
+      canManageCircles: boolean;
     };
 
 type Step = "compose" | "review" | "sent";
@@ -66,6 +77,7 @@ async function loadComposer(
       name,
       destinations,
       canViewActivity: grant.can_view_activity,
+      canManageCircles: canManageFamilyCircles(grant),
     };
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
@@ -104,11 +116,12 @@ function ActingRequestComposer({
   const localizedType = useLocalizedType();
   const copy = familyAskCopy[locale];
   const [load, setLoad] = useState<Load>({ status: "loading" });
-  const [reload, setReload] = useState(0);
+  const loading = useRef<AbortController | null>(null);
   const [step, setStep] = useState<Step>("compose");
   const [need, setNeed] = useState("");
   const [when, setWhen] = useState("");
   const [details, setDetails] = useState("");
+  const [rewritten, setRewritten] = useState<RequestWording | null>(null);
   const [chosenCircle, setChosenCircle] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
@@ -121,23 +134,27 @@ function ActingRequestComposer({
   const button = localizedType("button", locale);
   const supporting = localizedType("supporting", locale);
 
-  useEffect(() => {
+  const refreshComposer = useCallback(() => {
     if (!memberId) return;
+    loading.current?.abort();
     const controller = new AbortController();
-    let active = true;
+    loading.current = controller;
     loadComposer(memberId, authUserId, controller.signal).then(
       (next) => {
-        if (active) setLoad(next);
+        if (!controller.signal.aborted) setLoad(next);
       },
       () => {
-        if (active) setLoad({ status: "error" });
+        if (!controller.signal.aborted) setLoad({ status: "error" });
       },
     );
-    return () => {
-      active = false;
-      controller.abort();
-    };
-  }, [authUserId, memberId, reload]);
+  }, [authUserId, memberId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshComposer();
+      return () => loading.current?.abort();
+    }, [refreshComposer]),
+  );
 
   const sendBlocked = failure === "revoked" || failure === "unconfirmed";
   const allowLeave = usePreventRemove(step === "review", ({ repeat }) => {
@@ -165,7 +182,7 @@ function ActingRequestComposer({
 
   function retryLoad() {
     setLoad({ status: "loading" });
-    setReload((value) => value + 1);
+    refreshComposer();
   }
 
   const name =
@@ -176,7 +193,18 @@ function ActingRequestComposer({
     (failure === "destination" ? undefined : destinations[0]);
   const draft = { need, when, details, circleId: circle?.id ?? null };
   const problems = validateActingDraft(draft);
-  const body = actingRequestBody(draft, locale, copy.whenPrefix);
+  const original = actingRequestBody(draft, locale, copy.whenPrefix);
+  const body = rewritten
+    ? {
+        ...original,
+        raw_text: rewritten.message.trim(),
+        lang: rewritten.language,
+        tone: rewritten.tone,
+      }
+    : original;
+  const invalidWording =
+    !body.raw_text.trim() || Array.from(body.raw_text).length > 2000;
+  const wording = wordingCopy[locale];
   const hasDraft = Boolean(need.trim() || when.trim() || details.trim());
   const banner = name ? (
     <ActingBanner
@@ -190,7 +218,13 @@ function ActingRequestComposer({
   ) : null;
 
   async function send() {
-    if (!memberId || sendBlocked || submitting.current || problems.length > 0)
+    if (
+      !memberId ||
+      sendBlocked ||
+      submitting.current ||
+      problems.length ||
+      invalidWording
+    )
       return;
     submitting.current = true;
     setSending(true);
@@ -236,7 +270,7 @@ function ActingRequestComposer({
 
   const keepWording = hasDraft ? (
     <View style={styles.card}>
-      <Text selectable style={[localizedType("body", locale), styles.ink]}>
+      <Text selectable style={[localizedType("body", body.lang), styles.ink]}>
         {body.raw_text}
       </Text>
       <Button
@@ -308,7 +342,11 @@ function ActingRequestComposer({
   }
 
   const failureMessage =
-    failure === "session" ? copy.session : failure === "failed" ? copy.failed : null;
+    failure === "session"
+      ? copy.session
+      : failure === "failed"
+        ? copy.failed
+        : null;
   const failureNotice =
     failure === "revoked" ? (
       <FamilyNotice
@@ -369,7 +407,7 @@ function ActingRequestComposer({
                 label={copy.send}
                 labelStyle={button}
                 busy={sending}
-                disabled={problems.length > 0}
+                disabled={problems.length > 0 || invalidWording}
                 onPress={() => void send()}
               />
               <Button
@@ -386,12 +424,21 @@ function ActingRequestComposer({
         {failureNotice}
         {shareFailed ? <ErrorText>{copy.shareFailed}</ErrorText> : null}
         <View style={styles.card}>
-          <Text selectable style={[localizedType("body", locale), styles.ink]}>
+          <Text
+            selectable
+            style={[localizedType("body", body.lang), styles.ink]}
+          >
             {body.raw_text}
           </Text>
           <Text style={[supporting, styles.secondary]}>
             {`${copy.shareWith}: ${circle ? circleName(circle, locale) : ""}`}
           </Text>
+          {rewritten ? (
+            <Text style={[supporting, styles.secondary]}>
+              {wording.relationships[rewritten.relationship]} ·{" "}
+              {draftLanguageNames[rewritten.language]}
+            </Text>
+          ) : null}
         </View>
         <Text style={[supporting, styles.secondary]}>
           {copy.reviewNote(name)}
@@ -414,7 +461,7 @@ function ActingRequestComposer({
           disabled={!circle}
           onPress={() => {
             setShowProblems(true);
-            if (problems.length === 0) {
+            if (problems.length === 0 && !invalidWording) {
               setFailure(null);
               setStep("review");
             }
@@ -428,41 +475,80 @@ function ActingRequestComposer({
         <FamilyNotice
           title={copy.noCircleTitle(name)}
           body={copy.noCircleBody}
+          actionLabel={
+            load.canManageCircles ? managedCircleCopy[locale].manage : undefined
+          }
+          onAction={() =>
+            router.push({
+              pathname: "/family/circles/[memberId]",
+              params: { memberId },
+            })
+          }
           locale={locale}
         />
       ) : null}
-      <View style={styles.field}>
-        <Field
-          label={copy.need(name)}
-          labelStyle={label}
-          style={localizedType("body", locale)}
-          value={need}
-          onChangeText={setNeed}
-          maxLength={LIMITS.need}
-        />
-        {showProblems && problems.includes("need") ? (
-          <ErrorText>
-            {need.trim() ? copy.tooLong : copy.needRequired}
-          </ErrorText>
-        ) : null}
-      </View>
-      <Field
-        label={copy.when}
-        labelStyle={label}
-        style={localizedType("body", locale)}
-        value={when}
-        onChangeText={setWhen}
-        maxLength={LIMITS.when}
-      />
-      <Field
-        label={copy.details}
-        labelStyle={label}
-        style={[localizedType("body", locale), styles.multiline]}
-        value={details}
-        onChangeText={setDetails}
-        maxLength={LIMITS.details}
-        multiline
-      />
+      {rewritten ? (
+        <>
+          <Field
+            label={wording.edited}
+            labelStyle={label}
+            style={[
+              localizedType("body", rewritten.language),
+              styles.multiline,
+            ]}
+            value={rewritten.message}
+            onChangeText={(message) => setRewritten({ ...rewritten, message })}
+            maxLength={2000}
+            multiline
+          />
+          {showProblems && invalidWording ? (
+            <ErrorText>
+              {body.raw_text ? copy.tooLong : copy.needRequired}
+            </ErrorText>
+          ) : null}
+          <Button
+            label={wording.restore}
+            labelStyle={label}
+            variant="text"
+            onPress={() => setRewritten(null)}
+          />
+        </>
+      ) : (
+        <>
+          <View style={styles.field}>
+            <Field
+              label={copy.need(name)}
+              labelStyle={label}
+              style={localizedType("body", locale)}
+              value={need}
+              onChangeText={setNeed}
+              maxLength={LIMITS.need}
+            />
+            {showProblems && problems.includes("need") ? (
+              <ErrorText>
+                {need.trim() ? copy.tooLong : copy.needRequired}
+              </ErrorText>
+            ) : null}
+          </View>
+          <Field
+            label={copy.when}
+            labelStyle={label}
+            style={localizedType("body", locale)}
+            value={when}
+            onChangeText={setWhen}
+            maxLength={LIMITS.when}
+          />
+          <Field
+            label={copy.details}
+            labelStyle={label}
+            style={[localizedType("body", locale), styles.multiline]}
+            value={details}
+            onChangeText={setDetails}
+            maxLength={LIMITS.details}
+            multiline
+          />
+        </>
+      )}
       {circle ? (
         <Pressable
           accessibilityRole="button"
@@ -501,6 +587,25 @@ function ActingRequestComposer({
             />
           ))}
         </View>
+      ) : null}
+      {circle ? (
+        <RequestWordingReview
+          key={circle.id}
+          locale={locale}
+          defaultLanguage={rewritten?.language ?? "member"}
+          initialRelationship={rewritten?.relationship}
+          source={{ text: body.raw_text }}
+          generate={(input, signal) =>
+            familyApi.draftFor(
+              memberId,
+              { ...input, home_circle_id: circle.id },
+              { authUserId },
+              signal,
+            )
+          }
+          disabled={problems.length > 0 || invalidWording}
+          onApply={setRewritten}
+        />
       ) : null}
     </CommunityScreen>
   );

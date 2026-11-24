@@ -3,10 +3,13 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.database.connection import Database
+from app.database.models import RequestRecipient
 from app.repositories.assistant import AssistantRepository
+from app.repositories.pair_stats import PairStatsRepository
+from app.services.notifications import dispatch
 from app.services.requests.ripple import process_due_requests
 from tests.integration.conftest import (
     _settings,
@@ -17,6 +20,7 @@ from tests.integration.conftest import (
 )
 from tests.integration.test_media import _png
 from tests.integration.test_relationships import _family_with_open_request
+from tests.integration.test_request_push import _register
 
 
 async def _accepted_family(client, requester, relative):
@@ -134,15 +138,17 @@ async def test_due_workers_deliver_distinct_approved_geographic_audiences(client
         association,
         sibling,
         nearby,
+        closer_nearby,
         distant,
         private,
         pending,
         blocked,
-    ) = [await make_user(client) for _ in range(10)]
+    ) = [await make_user(client) for _ in range(11)]
     home = await _circle(client, owner, "han", 32.75)
     association_id = await _circle(client, association, "association", 32.75)
     sibling_id = await _circle(client, sibling, "han", 32.755)
     nearby_id = await _circle(client, nearby, "han", 32.76)
+    await _circle(client, closer_nearby, "han", 32.753)
     await _circle(client, distant, "han", 33)
     await _circle(client, private, "han", 32.76, open_to_nearby=False)
     await join_circle(client, owner, home, han)
@@ -158,23 +164,23 @@ async def test_due_workers_deliver_distinct_approved_geographic_audiences(client
         "/users/me/blocks", headers=auth(blocked), json={"user_id": owner_id}
     )
     assert blocked_response.status_code == 201, blocked_response.text
-    database = Database(_settings())
-    try:
-        async with database.session() as session:
-            await session.execute(
-                text(
-                    "UPDATE circles SET parent_id = :parent WHERE id IN (:home, :sibling)"
-                ),
-                {
-                    "parent": uuid.UUID(association_id),
-                    "home": uuid.UUID(home),
-                    "sibling": uuid.UUID(sibling_id),
-                },
-            )
-    finally:
-        await database.close()
+    for leader, circle_id in ((association, association_id), (sibling, sibling_id)):
+        await join_circle(client, leader, circle_id, owner)
+        promoted = await client.patch(
+            f"/circles/{circle_id}/memberships/{owner_id}",
+            headers=auth(leader),
+            json={"role": "leader"},
+        )
+        assert promoted.status_code == 200, promoted.text
+    for child_id in (home, sibling_id):
+        linked = await client.patch(
+            f"/circles/{child_id}",
+            headers=auth(owner),
+            json={"parent_id": association_id},
+        )
+        assert linked.status_code == 200, linked.text
 
-    request = await _post(client, owner, ripple_max_stage="nearby")
+    request = await _post(client, owner, home_circle_id=home, ripple_max_stage="nearby")
     request_id = request["id"]
     path = f"/requests/{request_id}"
     receipt = await _receipt(client, owner, request_id)
@@ -201,13 +207,31 @@ async def test_due_workers_deliver_distinct_approved_geographic_audiences(client
         assert (await _receipt(client, owner, request_id))["current_stage"] == stage
 
     final = await _receipt(client, owner, request_id)
-    assert [stage["recipient_count"] for stage in final["stages"]] == [1, 1, 2, 1]
+    assert [stage["recipient_count"] for stage in final["stages"]] == [1, 1, 2, 2]
     assert final["next_widen_at"] is None
     assert await _tick(request_id, deadline + timedelta(days=1)) == 0
-    for token in (family, han, association, sibling, nearby):
+    for token in (family, han, association, sibling, nearby, closer_nearby):
         assert (await client.get(path, headers=auth(token))).status_code == 200
     for token in (distant, private, pending, blocked):
         assert (await client.get(path, headers=auth(token))).status_code == 404
+
+    nearest_ids = [
+        (await client.get("/users/me", headers=auth(token))).json()["id"]
+        for token in (closer_nearby, nearby)
+    ]
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            rows = await session.scalars(
+                select(RequestRecipient).where(
+                    RequestRecipient.request_id == uuid.UUID(request_id),
+                    RequestRecipient.stage == "nearby",
+                )
+            )
+            rank = {str(row.user_id): row.match_reasons["rank"] for row in rows}
+        assert [rank[user_id] for user_id in nearest_ids] == [1, 2]
+    finally:
+        await database.close()
 
 
 @pytest.mark.parametrize("terminal", ["matched", "cancelled", "expired"])
@@ -518,3 +542,131 @@ async def test_reopening_a_match_restores_widening_before_expiry(
     final = await _receipt(client, owner, request_id)
     assert final["request_status"] == ("expired" if expired else "open")
     assert final["next_widen_at"] == (None if expired else initial["next_widen_at"])
+
+
+async def test_smart_ripple_delivers_available_equivalent_tools_and_reciprocity_first(
+    client, monkeypatch
+):
+    owner, available, paused, owing, owed, tied1, tied2 = [
+        await make_user(client) for _ in range(7)
+    ]
+    home = await make_circle(client, owner)
+    candidates = {
+        available: "equivalent",
+        paused: "paused",
+        owing: "owes-requester",
+        owed: "requester-owes",
+        tied1: "first-tie",
+        tied2: "second-tie",
+    }
+    ids = {}
+    for member in (owner, *candidates):
+        profile = await client.get("/users/me", headers=auth(member))
+        ids[member] = uuid.UUID(profile.json()["id"])
+        if member != owner:
+            await join_circle(client, owner, home, member)
+            await _register(client, member, candidates[member])
+
+    categories = await client.get("/categories?kind=tool", headers=auth(owner))
+    category_id = categories.json()["items"][0]["id"]
+    for member, title in (
+        (available, "Power washer"),
+        (paused, "Pressure washer"),
+        (tied2, "Karcher wet vacuum and flat washers"),
+    ):
+        listing = await client.post(
+            "/listings",
+            headers=auth(member),
+            json={
+                "kind": "tool",
+                "title": title,
+                "category_id": category_id,
+                "lang": "en",
+            },
+        )
+        assert listing.status_code == 201, listing.text
+        if member == paused:
+            stopped = await client.post(
+                f"/listings/{listing.json()['id']}/pause", headers=auth(member)
+            )
+            assert stopped.status_code == 200, stopped.text
+
+    database = Database(_settings())
+    sent = []
+
+    async def send(_settings, message):
+        sent.append(message.to)
+        return "accepted"
+
+    monkeypatch.setattr(dispatch, "send_push", send)
+    try:
+        async with database.session() as session:
+            pairs = PairStatsRepository(session)
+            await pairs.record_exchange(ids[owner], ids[owing], datetime.now(UTC))
+            await pairs.record_exchange(ids[owed], ids[owner], datetime.now(UTC))
+
+        request = await _post(
+            client,
+            owner,
+            kind="borrow",
+            raw_text="Can I borrow a Karcher pressure washer?",
+        )
+        expected = [
+            available,
+            owing,
+            *sorted([tied1, tied2], key=ids.get),
+            owed,
+            paused,
+        ]
+        for _ in expected:
+            assert await dispatch.dispatch_next(database, _settings())
+        assert sent == [f"ExpoPushToken[{candidates[member]}]" for member in expected]
+        async with database.session() as session:
+            rows = await session.scalars(
+                select(RequestRecipient).where(
+                    RequestRecipient.request_id == uuid.UUID(request["id"])
+                )
+            )
+            ranks = {row.user_id: row.match_reasons.get("rank") for row in rows}
+        assert [ranks[ids[member]] for member in expected] == list(range(1, 7))
+        assert (await _receipt(client, owner, request["id"]))["stages"][0][
+            "recipient_count"
+        ] == 6
+    finally:
+        await database.close()
+
+
+async def test_ripple_prefers_relevant_visible_help_skills(client):
+    owner, skilled, private, unrelated = [await make_user(client) for _ in range(4)]
+    home = await make_circle(client, owner)
+    ids = {}
+    for member, skill, visible in (
+        (skilled, "Lifting and moving household items", True),
+        (private, "Carrying boxes up stairs", False),
+        (unrelated, "Sewing and mending clothes", True),
+    ):
+        await join_circle(client, owner, home, member)
+        profile = await client.patch(
+            "/users/me",
+            headers=auth(member),
+            json={"happy_to_help_with": skill, "profile_details_visible": visible},
+        )
+        assert profile.status_code == 200, profile.text
+        ids[member] = uuid.UUID(profile.json()["id"])
+
+    request = await _post(client, owner, raw_text="Can you help carry a bag?")
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            rows = await session.scalars(
+                select(RequestRecipient).where(
+                    RequestRecipient.request_id == uuid.UUID(request["id"])
+                )
+            )
+            reasons = {row.user_id: row.match_reasons for row in rows}
+        assert reasons[ids[skilled]]["rank"] == 1
+        assert reasons[ids[skilled]]["profile_skill_match"]
+        assert not reasons[ids[private]]["profile_skill_match"]
+        assert not reasons[ids[unrelated]]["profile_skill_match"]
+    finally:
+        await database.close()

@@ -54,8 +54,9 @@ class User(UUIDPrimaryKey, Timestamps, Base):
     age_band: Mapped[str | None]
     intro: Mapped[str | None]
     intro_lang: Mapped[str | None]
+    hobbies: Mapped[str | None]
     happy_to_help_with: Mapped[str | None]
-    profile_details_visible: Mapped[bool] = mapped_column(server_default=text("true"))
+    profile_details_visible: Mapped[bool] = mapped_column(server_default=text("false"))
     accepts_money_orei: Mapped[bool] = mapped_column(server_default=text("true"))
     simple_mode: Mapped[bool] = mapped_column(server_default=text("false"))
     text_scale_percent: Mapped[int] = mapped_column(

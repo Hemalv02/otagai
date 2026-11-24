@@ -1,13 +1,14 @@
-import { request, type Language, type RippleStage } from "@/lib/api";
+import {
+  actingForHeaders,
+  request,
+  type Language,
+  type RippleStage,
+} from "@/lib/api";
 import type { RequestStatus } from "@/lib/requests-api";
 
 export type RippleScope = Exclude<RippleStage, "direct">;
 type DeliveryStatus =
-  | "sent"
-  | "no_recipients"
-  | "scheduled"
-  | "pending"
-  | "stopped";
+  "sent" | "no_recipients" | "scheduled" | "pending" | "stopped";
 export type DeliveryReceipt = {
   request_id: string;
   request_status: RequestStatus;
@@ -37,8 +38,10 @@ export function requestNotificationId(type: unknown, id: unknown) {
     : null;
 }
 
-export const getDeliveryReceipt = (id: string) =>
-  request<DeliveryReceipt>(`/requests/${id}/receipt`);
+export const getDeliveryReceipt = (id: string, actingFor?: string) =>
+  request<DeliveryReceipt>(`/requests/${id}/receipt`, {
+    headers: actingForHeaders(actingFor),
+  });
 
 type RippleCopy = {
   delivery: string;

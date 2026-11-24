@@ -19,6 +19,7 @@ import {
 import { useLiveResource } from "@/lib/live-resource";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { colors, spacing } from "@/theme/tokens.json";
 
 const photoOptions: ImagePicker.ImagePickerOptions = {
@@ -29,15 +30,22 @@ const photoOptions: ImagePicker.ImagePickerOptions = {
 };
 
 export default function PickupScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, actingFor: member } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
+  const actingFor = isUuid(member) ? member : undefined;
   const { session, profile } = useSession();
   const { locale } = useOnboardingText();
   return (
     <LivePickup
-      key={`${session?.user.id ?? ""}:${id}`}
+      key={`${session?.user.id ?? ""}:${id}:${actingFor ?? "self"}`}
       id={id}
       authId={session?.user.id ?? ""}
-      profileId={profile.status === "ready" ? profile.profile.id : null}
+      profileId={
+        actingFor ?? (profile.status === "ready" ? profile.profile.id : null)
+      }
+      actingFor={actingFor}
       locale={locale}
     />
   );
@@ -47,16 +55,21 @@ function LivePickup({
   id,
   authId,
   profileId,
+  actingFor,
   locale,
 }: {
   id: string;
   authId: string;
   profileId: string | null;
+  actingFor?: string;
   locale: Language;
 }) {
   const localizedType = useLocalizedType();
   const copy = livePickupCopy[locale];
-  const client = useMemo(() => pickupApi(authId), [authId]);
+  const client = useMemo(
+    () => pickupApi(authId, actingFor),
+    [authId, actingFor],
+  );
   const load = useCallback(async () => {
     const exchange = await client.exchange(id);
     if (exchange.mode !== "loan") throw new ApiError(404, copy.failure);
@@ -64,7 +77,7 @@ function LivePickup({
       client.find(id),
       exchange.listing_id
         ? api
-            .getListing(exchange.listing_id, undefined, authId)
+            .getListing(exchange.listing_id, undefined, authId, actingFor)
             .catch(() => null)
         : null,
     ]);
@@ -77,7 +90,7 @@ function LivePickup({
       }),
     );
     return { exchange, check, photos, title: listing?.title };
-  }, [authId, client, copy.failure, id]);
+  }, [authId, actingFor, client, copy.failure, id]);
   const resource = useLiveResource(load);
   const { exchange, check, photos, title } = resource.data ?? {};
   const [busy, setBusy] = useState<string | null>(null);
@@ -88,7 +101,10 @@ function LivePickup({
   const locked = useRef(false);
   const lender = profileId === exchange?.helper_user_id;
   const borrower = profileId === exchange?.requester_user_id;
-  const editable = (lender || borrower) && exchange?.status === "scheduled";
+  const editable =
+    (!actingFor || exchange?.can_manage_pickup === true) &&
+    (lender || borrower) &&
+    exchange?.status === "scheduled";
   const yourConfirmation = lender
     ? check?.lender_confirmed_at
     : check?.borrower_confirmed_at;
@@ -99,7 +115,7 @@ function LivePickup({
   const mutable = editable && !bothConfirmed;
   const ready = Boolean(
     check?.items.length &&
-      check.items.every((item) => item.present && !item.disputed_by_user_id),
+    check.items.every((item) => item.present && !item.disputed_by_user_id),
   );
   const disabled = Boolean(busy || resource.loading || resource.error);
   const labelStyle = localizedType("field-label", locale);
@@ -536,6 +552,7 @@ function ItemEditor({
   locale: Language;
   item?: PickupItem;
   profileId: string | null;
+  actingFor?: string;
   labelStyle: ReturnType<ReturnType<typeof useLocalizedType>>;
   bodyStyle: ReturnType<ReturnType<typeof useLocalizedType>>;
   busy: boolean;

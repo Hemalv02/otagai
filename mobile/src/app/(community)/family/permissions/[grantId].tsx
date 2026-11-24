@@ -46,6 +46,12 @@ function findGrant(
   return helping ? { grant: helping, viewerIsMember: false } : null;
 }
 
+const managedRevocation = {
+  en: "Anyone you gave access to will also lose access to this managed profile.",
+  ja: "あなたがアクセスを許可した人も、この代理プロフィールを利用できなくなります。",
+  bn: "যাঁদের অনুমতি দিয়েছেন, তাঁরাও এই পরিচালিত প্রোফাইলে প্রবেশাধিকার হারাবেন।",
+};
+
 export default function GrantPermissionsScreen() {
   const { grantId } = useLocalSearchParams<{ grantId: string }>();
   const { locale } = useOnboardingText();
@@ -296,6 +302,11 @@ export default function GrantPermissionsScreen() {
             ? copy.grant.endMemberBody(caretakerName)
             : copy.grant.endCaretakerBody(memberName)}
         </SheetLine>
+        {!viewerIsMember &&
+        grant.can_change_scopes &&
+        grant.other?.kind === "managed" ? (
+          <SheetLine locale={locale}>{managedRevocation[locale]}</SheetLine>
+        ) : null}
         {problem ? <ErrorText>{problem}</ErrorText> : null}
       </ConfirmSheet>
     </CommunityScreen>

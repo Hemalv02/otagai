@@ -9,6 +9,7 @@ from app.database.models import User
 from app.database.models.enums import MediaVariantName
 from app.repositories.listings import ListingFilters
 from app.routes.dependencies import (
+    ActorDep,
     CurrentUserDep,
     DatabaseDep,
     OptionalStorageDep,
@@ -19,8 +20,8 @@ from app.routes.exchanges.route import ExchangeModel
 from app.routes.listings.route import ListingSummary, listing_summary
 from app.routes.pagination import Page, PageQuery
 from app.routes.requests.route import RequestSummary
-from app.routes.thanks.route import ThankYouModel
-from app.services.actors.service import Actor
+from app.routes.thanks.route import ThankYouModel, WallThankYouModel
+from app.services.actors.service import Actor, ProxyScope
 from app.services.listings.service import list_user_listings
 from app.services.media.service import MediaNotFoundError, read_media
 from app.services.users.profiles import (
@@ -56,6 +57,7 @@ class PublicProfile(BaseModel):
     age_band: str | None
     intro: str | None
     happy_to_help_with: str | None
+    hobbies: str | None
     avatar_url: str | None = None
     accepts_money_orei: bool
     created_at: datetime
@@ -75,21 +77,27 @@ def _self_actor(user: User) -> Actor:
 @router.get("/{user_id}")
 async def read_user(
     user_id: uuid.UUID,
-    user: CurrentUserDep,
+    actor: ActorDep,
     database: DatabaseDep,
     storage: OptionalStorageDep,
     settings: SettingsDep,
 ) -> PublicProfile:
-    target = await get_public_profile(database, user, user_id)
+    actor.require(ProxyScope.VIEW_ACTIVITY)
+    target = await get_public_profile(database, actor.subject, user_id)
     response = PublicProfile.model_validate(target)
-    if not may_see_profile_details(user.id, target):
+    if not may_see_profile_details(actor.subject_id, target):
         return response.model_copy(
-            update={"age_band": None, "intro": None, "happy_to_help_with": None}
+            update={
+                "age_band": None,
+                "intro": None,
+                "happy_to_help_with": None,
+                "hobbies": None,
+            }
         )
     if storage is not None and target.avatar_media_id is not None:
         try:
             media = await read_media(
-                database, storage, settings, _self_actor(user), target.avatar_media_id
+                database, storage, settings, actor, target.avatar_media_id
             )
         except MediaNotFoundError:
             return response
@@ -166,6 +174,8 @@ async def read_user_thank_yous(
     query: Annotated[PageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-) -> Page[ThankYouModel]:
+) -> Page[ThankYouModel] | Page[WallThankYouModel]:
     result = await list_user_thank_yous(database, user, user_id, query.page())
-    return Page.build(result, ThankYouModel)
+    if user_id == user.id:
+        return Page.build(result, ThankYouModel)
+    return Page.build(result, WallThankYouModel)

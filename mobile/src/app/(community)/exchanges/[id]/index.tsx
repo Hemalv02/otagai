@@ -21,6 +21,7 @@ import {
   requestsApi,
 } from "@/lib/requests-api";
 import { useSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type Summary = {
@@ -31,9 +32,14 @@ type Summary = {
 
 export default function LiveExchangeScreen() {
   const localizedType = useLocalizedType();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, actingFor: param } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
+  const actingFor = isUuid(param) ? param : undefined;
   const { profile } = useSession();
-  const viewer = profile.status === "ready" ? profile.profile.id : null;
+  const viewer =
+    actingFor ?? (profile.status === "ready" ? profile.profile.id : null);
   const { locale, t } = useOnboardingText();
   const live = liveRequestCopy[locale];
   const words = assistantCopy[locale];
@@ -48,14 +54,14 @@ export default function LiveExchangeScreen() {
       if (!keepSummary) setSummary(undefined);
       setError(undefined);
       try {
-        const exchange = await requestsApi.exchange(id);
+        const exchange = await requestsApi.exchange(id, actingFor);
         const other =
           exchange.requester_user_id === viewer
             ? exchange.helper_user_id
             : exchange.requester_user_id;
         const [request, person] = await Promise.all([
-          requestsApi.detail(exchange.request_id),
-          requestsApi.person(other).catch(() => null),
+          requestsApi.detail(exchange.request_id, actingFor),
+          requestsApi.person(other, actingFor).catch(() => null),
         ]);
         if (current === version.current)
           setSummary({ exchange, request, name: person?.display_name });
@@ -64,7 +70,7 @@ export default function LiveExchangeScreen() {
           setError(assistantError(cause, locale));
       }
     },
-    [id, locale, viewer],
+    [id, locale, viewer, actingFor],
   );
 
   useFocusEffect(
@@ -80,7 +86,14 @@ export default function LiveExchangeScreen() {
   const body = localizedType("body", locale);
   const supporting = localizedType("supporting", locale);
   if (summary?.exchange.mode === "loan") {
-    return <Redirect href={{ pathname: "/loans/[id]", params: { id } }} />;
+    return (
+      <Redirect
+        href={{
+          pathname: "/loans/[id]",
+          params: { id, ...(actingFor ? { actingFor } : {}) },
+        }}
+      />
+    );
   }
   return (
     <CommunityScreen
@@ -120,20 +133,25 @@ export default function LiveExchangeScreen() {
               </Text>
             ) : null}
           </View>
-          <Button
-            label={chat.messagePartner(summary.name ?? chat.neighbour)}
-            labelStyle={label}
-            onPress={() =>
-              router.push({
-                pathname: "/exchanges/[id]/messages",
-                params: { id },
-              })
-            }
-          />
+          {summary.request.can_chat ? (
+            <Button
+              label={chat.messagePartner(summary.name ?? chat.neighbour)}
+              labelStyle={label}
+              onPress={() =>
+                router.push({
+                  pathname: "/exchanges/[id]/messages",
+                  params: { id, ...(actingFor ? { actingFor } : {}) },
+                })
+              }
+            />
+          ) : null}
           {viewer ? (
             <HelpExchangeActions
               exchange={summary.exchange}
               viewerId={viewer}
+              actingFor={actingFor}
+              canManage={!actingFor || summary.exchange.can_manage === true}
+              canThank={summary.request.can_thank}
               onReload={() => load(true)}
             />
           ) : null}
@@ -154,7 +172,10 @@ export default function LiveExchangeScreen() {
             onPress={() =>
               router.dismissTo({
                 pathname: "/requests/[id]",
-                params: { id: summary.request.id },
+                params: {
+                  id: summary.request.id,
+                  ...(actingFor ? { actingFor } : {}),
+                },
               })
             }
           />

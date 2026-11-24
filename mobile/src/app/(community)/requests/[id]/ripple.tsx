@@ -10,15 +10,22 @@ import { liveRequestCopy } from "@/lib/live-request-copy";
 import { useLiveResource } from "@/lib/live-resource";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { getDeliveryReceipt, rippleCopy } from "@/lib/request-ripple";
+import { isUuid } from "@/lib/uuid";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export default function RequestDeliveryScreen() {
   const localizedType = useLocalizedType();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, actingFor } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
   const { locale } = useOnboardingText();
   const copy = rippleCopy[locale];
   const receipt = useLiveResource(
-    useCallback(() => getDeliveryReceipt(id), [id]),
+    useCallback(
+      () => getDeliveryReceipt(id, isUuid(actingFor) ? actingFor : undefined),
+      [id, actingFor],
+    ),
   );
   const data = receipt.data;
   const labelStyle = localizedType("field-label", locale);

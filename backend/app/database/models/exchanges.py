@@ -26,6 +26,10 @@ class Exchange(UUIDPrimaryKey, Timestamps, Base):
         check_in("mode", ExchangeMode),
         check_in("status", ExchangeStatus),
         CheckConstraint("requester_user_id <> helper_user_id", name="distinct_people"),
+        CheckConstraint(
+            "requester_confirmed_by_user_id <> helper_confirmed_by_user_id",
+            name="distinct_completion_signers",
+        ),
         CheckConstraint("mode = 'loan' OR due_at IS NULL", name="due_only_for_loan"),
         CheckConstraint(
             "meet_place_note IS NULL OR char_length(meet_place_note) <= 200",
@@ -64,6 +68,12 @@ class Exchange(UUIDPrimaryKey, Timestamps, Base):
     returned_at: Mapped[datetime | None]
     requester_confirmed_at: Mapped[datetime | None]
     helper_confirmed_at: Mapped[datetime | None]
+    requester_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id")
+    )
+    helper_confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id")
+    )
     completed_at: Mapped[datetime | None]
     cancelled_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id")

@@ -1,18 +1,42 @@
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database.models import CircleMembership, PointsEntry, ThankYou
-from app.database.models.enums import MembershipStatus
+from app.database.models import (
+    Block,
+    Circle,
+    CircleMembership,
+    Exchange,
+    HelpRequest,
+    PointsEntry,
+    ThankYou,
+    User,
+)
+from app.database.models.enums import CircleStatus, MembershipStatus, UserStatus
+from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
 
 class DuplicateThankYouError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class WallThankYou:
+    id: uuid.UUID
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    from_name: str
+    to_name: str
+    note: str
+    lang: str | None
+    created_at: datetime
 
 
 class ThankYouRepository:
@@ -58,33 +82,99 @@ class ThankYouRepository:
             self._session, statement, page, ThankYou.created_at, ThankYou.id
         )
 
-    async def list_for_recipient(
-        self, to_user_id: uuid.UUID, page: PageRequest, *, wall_only: bool
-    ) -> PageResult[ThankYou]:
-        statement = select(ThankYou).where(ThankYou.to_user_id == to_user_id)
-        if wall_only:
-            statement = statement.where(ThankYou.show_on_wall.is_(True))
-        return await paginate(
-            self._session, statement, page, ThankYou.created_at, ThankYou.id
-        )
+    async def list_public(
+        self,
+        viewer_id: uuid.UUID,
+        page: PageRequest,
+        *,
+        circle_id: uuid.UUID | None = None,
+        recipient_id: uuid.UUID | None = None,
+    ) -> PageResult[WallThankYou]:
+        def approved(user_id):
+            return (
+                select(CircleMembership.user_id)
+                .where(
+                    CircleMembership.circle_id == HelpRequest.home_circle_id,
+                    CircleMembership.user_id == user_id,
+                    CircleMembership.status == MembershipStatus.APPROVED.value,
+                )
+                .exists()
+            )
 
-    async def list_circle_wall(
-        self, circle_id: uuid.UUID, page: PageRequest
-    ) -> PageResult[ThankYou]:
+        active_users = select(User.id).where(User.status == UserStatus.ACTIVE.value)
+        blocked = blocked_user_ids(viewer_id)
+        pair_blocked = (
+            select(Block.blocker_user_id)
+            .where(
+                or_(
+                    and_(
+                        Block.blocker_user_id == ThankYou.from_user_id,
+                        Block.blocked_user_id == ThankYou.to_user_id,
+                    ),
+                    and_(
+                        Block.blocker_user_id == ThankYou.to_user_id,
+                        Block.blocked_user_id == ThankYou.from_user_id,
+                    ),
+                )
+            )
+            .exists()
+        )
         statement = (
             select(ThankYou)
-            .join(
-                CircleMembership,
-                CircleMembership.user_id == ThankYou.to_user_id,
-            )
+            .join(Exchange, Exchange.id == ThankYou.exchange_id)
+            .join(HelpRequest, HelpRequest.id == Exchange.request_id)
+            .join(Circle, Circle.id == HelpRequest.home_circle_id)
             .where(
+                Circle.status == CircleStatus.ACTIVE.value,
+                ThankYou.allow_wall_sharing.is_(True),
                 ThankYou.show_on_wall.is_(True),
-                CircleMembership.circle_id == circle_id,
-                CircleMembership.status == MembershipStatus.APPROVED.value,
+                ThankYou.note.is_not(None),
+                ThankYou.from_user_id.in_(active_users),
+                ThankYou.to_user_id.in_(active_users),
+                ThankYou.from_user_id.not_in(blocked),
+                ThankYou.to_user_id.not_in(blocked),
+                ~pair_blocked,
+                approved(viewer_id),
+                approved(ThankYou.from_user_id),
+                approved(ThankYou.to_user_id),
             )
         )
-        return await paginate(
+        if circle_id is not None:
+            statement = statement.where(HelpRequest.home_circle_id == circle_id)
+        if recipient_id is not None:
+            statement = statement.where(ThankYou.to_user_id == recipient_id)
+        result = await paginate(
             self._session, statement, page, ThankYou.created_at, ThankYou.id
+        )
+        user_ids = {
+            user_id
+            for item in result.items
+            for user_id in (item.from_user_id, item.to_user_id)
+        }
+        if not user_ids:
+            return PageResult([], result.next_cursor)
+        names = dict(
+            (
+                await self._session.execute(
+                    select(User.id, User.display_name).where(User.id.in_(user_ids))
+                )
+            ).all()
+        )
+        return PageResult(
+            [
+                WallThankYou(
+                    id=item.id,
+                    from_user_id=item.from_user_id,
+                    to_user_id=item.to_user_id,
+                    from_name=names[item.from_user_id],
+                    to_name=names[item.to_user_id],
+                    note=item.note,
+                    lang=item.lang,
+                    created_at=item.created_at,
+                )
+                for item in result.items
+            ],
+            result.next_cursor,
         )
 
 

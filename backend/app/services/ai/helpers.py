@@ -16,7 +16,7 @@ from pydantic import (
 from app.services.ai.service import AIDraftError, draft
 from app.settings import Settings
 
-Language = Literal["ja", "en", "bn"]
+Language = Literal["ja", "en", "bn", "vi"]
 CulturePack = Literal["japan", "bangladesh"]
 
 
@@ -224,13 +224,13 @@ async def draft_listing(
 class TranslationInput(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    text: str = Field(min_length=1, max_length=2000)
+    text: str = Field(min_length=1, max_length=4000)
     target_language: Language
     source_language: Language | None = None
 
 
 class Translation(BaseModel):
-    translated: str
+    translated: str = Field(min_length=1, max_length=8000)
 
 
 async def draft_translation(

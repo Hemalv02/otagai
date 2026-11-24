@@ -27,6 +27,7 @@ async def test_thank_you_patch_wall_and_user_reads(client):
             "exchange_id": ctx["exchange_id"],
             "gift_type": "note",
             "note": "Arigato",
+            "allow_wall_sharing": True,
         },
     )
     assert created.status_code == 201

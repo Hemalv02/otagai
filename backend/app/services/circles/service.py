@@ -3,14 +3,18 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import Circle, CircleInvite, CircleMembership, User
 from app.database.models.enums import (
     CircleStatus,
+    CircleUnitType,
     JoinMethod,
     MembershipRole,
     MembershipStatus,
     NotificationType,
+    UserKind,
 )
 from app.repositories.circles import (
     CircleRepository,
@@ -28,6 +32,20 @@ from app.services.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.services.relationships.service import (
+    UserNotFoundError,
+    get_managed_profile_for_creator,
+)
+
+PARENT_TYPES = {
+    CircleUnitType.ASSOCIATION: frozenset({CircleUnitType.CITY}),
+    CircleUnitType.MOHOLLA: frozenset({CircleUnitType.CITY}),
+    CircleUnitType.HAN: frozenset({CircleUnitType.ASSOCIATION}),
+    CircleUnitType.PARA: frozenset({CircleUnitType.MOHOLLA}),
+    CircleUnitType.BUILDING: frozenset(
+        {CircleUnitType.ASSOCIATION, CircleUnitType.MOHOLLA}
+    ),
+}
 
 
 class CircleNotFoundError(NotFoundError):
@@ -50,6 +68,11 @@ class NotCircleLeaderError(PermissionDeniedError):
         super().__init__("Only a circle leader can do this.")
 
 
+class NotParentCircleLeaderError(PermissionDeniedError):
+    def __init__(self) -> None:
+        super().__init__("An approved leader of the parent circle must link it.")
+
+
 class JoinTargetError(BadRequestError):
     def __init__(self) -> None:
         super().__init__("Provide either an invite code or a circle id.")
@@ -63,6 +86,7 @@ class NewCircle:
     approx_lat: float | None
     approx_lng: float | None
     open_to_nearby: bool
+    parent_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -113,9 +137,14 @@ async def create_circle(
     database: Database, user: User, new_circle: NewCircle
 ) -> CircleView:
     async with database.session() as session:
-        circle = await CircleRepository(session).create(
+        circles = CircleRepository(session)
+        if new_circle.parent_id is not None:
+            await circles.lock_hierarchy(new_circle.region)
+            await _validate_parent(session, user.id, new_circle, new_circle.parent_id)
+        circle = await circles.create(
             {
                 "name": new_circle.name,
+                "parent_id": new_circle.parent_id,
                 "region": new_circle.region,
                 "unit_type": new_circle.unit_type,
                 "approx_lat": new_circle.approx_lat,
@@ -149,6 +178,12 @@ async def preview_invite(database: Database, code: str) -> tuple[Circle, CircleI
         return circle, invite
 
 
+@dataclass(frozen=True)
+class MembershipView:
+    membership: CircleMembership
+    circle: Circle | None
+
+
 async def join_circle(
     database: Database,
     user: User,
@@ -156,67 +191,83 @@ async def join_circle(
     invite_code: str | None,
     circle_id: uuid.UUID | None,
 ) -> CircleMembership:
+    async with database.session() as session:
+        view = await _join_circle(
+            session, user, invite_code=invite_code, circle_id=circle_id
+        )
+        return view.membership
+
+
+async def join_managed_circle(
+    database: Database, creator: User, member_id: uuid.UUID, invite_code: str
+) -> MembershipView:
+    async with database.session() as session:
+        member = await get_managed_profile_for_creator(
+            session, creator.id, member_id, for_update=True
+        )
+        if member is None:
+            raise UserNotFoundError
+        return await _join_circle(session, member, invite_code=invite_code)
+
+
+async def _join_circle(
+    session: AsyncSession,
+    user: User,
+    *,
+    invite_code: str | None,
+    circle_id: uuid.UUID | None = None,
+) -> MembershipView:
     if (invite_code is None) == (circle_id is None):
         raise JoinTargetError
-    async with database.session() as session:
-        circles = CircleRepository(session)
-        memberships = MembershipRepository(session)
-        invite: CircleInvite | None = None
-        if invite_code is not None:
-            invite = await InviteRepository(session).get_for_update_by_code(invite_code)
-            if invite is None or not invite_is_usable(invite, datetime.now(UTC)):
-                raise InviteNotFoundError
-            target_circle_id = invite.circle_id
-        else:
-            target_circle_id = circle_id
-        circle = await circles.get(target_circle_id)
-        if circle is None or circle.status != CircleStatus.ACTIVE.value:
-            raise CircleNotFoundError
-        if invite is None and (
-            not circle.open_to_nearby or circle.region != user.region
-        ):
-            raise CircleNotFoundError
-        existing = await memberships.get_for_update(target_circle_id, user.id)
-        if existing is not None and existing.status in (
-            MembershipStatus.APPROVED.value,
-            MembershipStatus.PENDING.value,
-        ):
-            raise AlreadyMemberError
-        auto_approve = invite is not None and invite.auto_approve
-        values = {
-            "circle_id": target_circle_id,
-            "user_id": user.id,
-            "role": MembershipRole.MEMBER.value,
-            "status": (
-                MembershipStatus.APPROVED.value
-                if auto_approve
-                else MembershipStatus.PENDING.value
-            ),
-            "joined_via": (
-                JoinMethod.INVITE.value if invite else JoinMethod.SEARCH.value
-            ),
-            "invite_id": invite.id if invite else None,
-            "decided_by_user_id": None,
-            "decided_at": None,
-        }
-        if auto_approve:
-            values["decided_at"] = datetime.now(UTC)
-        if existing is not None:
-            membership = await memberships.update(existing, values)
-        else:
-            try:
-                membership = await memberships.create(values)
-            except DuplicateMembershipError as error:
-                raise AlreadyMemberError from error
-        if invite is not None:
-            invite.use_count += 1
-        return membership
 
-
-@dataclass(frozen=True)
-class MembershipView:
-    membership: CircleMembership
-    circle: Circle | None
+    circles = CircleRepository(session)
+    memberships = MembershipRepository(session)
+    invite: CircleInvite | None = None
+    if invite_code is not None:
+        invite = await InviteRepository(session).get_for_update_by_code(invite_code)
+        if invite is None or not invite_is_usable(invite, datetime.now(UTC)):
+            raise InviteNotFoundError
+        circle_id = invite.circle_id
+    circle = await circles.get(circle_id)
+    if circle is None or circle.status != CircleStatus.ACTIVE.value:
+        raise CircleNotFoundError
+    if invite is None and (not circle.open_to_nearby or circle.region != user.region):
+        raise CircleNotFoundError
+    existing = await memberships.get_for_update(circle.id, user.id)
+    if existing is not None and existing.status in (
+        MembershipStatus.APPROVED.value,
+        MembershipStatus.PENDING.value,
+    ):
+        raise AlreadyMemberError
+    auto_approve = (
+        invite is not None
+        and invite.auto_approve
+        and user.kind != UserKind.MANAGED.value
+    )
+    values = {
+        "circle_id": circle.id,
+        "user_id": user.id,
+        "role": MembershipRole.MEMBER.value,
+        "status": (
+            MembershipStatus.APPROVED.value
+            if auto_approve
+            else MembershipStatus.PENDING.value
+        ),
+        "joined_via": (JoinMethod.INVITE.value if invite else JoinMethod.SEARCH.value),
+        "invite_id": invite.id if invite else None,
+        "decided_by_user_id": None,
+        "decided_at": datetime.now(UTC) if auto_approve else None,
+    }
+    if existing is not None:
+        membership = await memberships.update(existing, values)
+    else:
+        try:
+            membership = await memberships.create(values)
+        except DuplicateMembershipError as error:
+            raise AlreadyMemberError from error
+    if invite is not None:
+        invite.use_count += 1
+    return MembershipView(membership=membership, circle=circle)
 
 
 @dataclass(frozen=True)
@@ -229,10 +280,26 @@ async def list_memberships(
     database: Database, user: User, page: PageRequest
 ) -> PageResult[MembershipView]:
     async with database.session() as session:
-        result = await MembershipRepository(session).list_for_user(user.id, page)
-        circles = await CircleRepository(session).get_many(
-            [membership.circle_id for membership in result.items]
-        )
+        return await _list_memberships(session, user.id, page)
+
+
+async def list_managed_memberships(
+    database: Database, creator: User, member_id: uuid.UUID, page: PageRequest
+) -> tuple[User, PageResult[MembershipView]]:
+    async with database.session() as session:
+        member = await get_managed_profile_for_creator(session, creator.id, member_id)
+        if member is None:
+            raise UserNotFoundError
+        return member, await _list_memberships(session, member.id, page)
+
+
+async def _list_memberships(
+    session: AsyncSession, user_id: uuid.UUID, page: PageRequest
+) -> PageResult[MembershipView]:
+    result = await MembershipRepository(session).list_for_user(user_id, page)
+    circles = await CircleRepository(session).get_many(
+        [membership.circle_id for membership in result.items]
+    )
     items = [
         MembershipView(membership=membership, circle=circles.get(membership.circle_id))
         for membership in result.items
@@ -244,22 +311,79 @@ def generate_invite_code() -> str:
     return secrets.token_urlsafe(12)
 
 
-async def _require_leader(session, circle_id: uuid.UUID, user_id: uuid.UUID) -> None:
+async def _require_leader(session, circle_id: uuid.UUID, user_id: uuid.UUID) -> Circle:
     circle = await CircleRepository(session).get(circle_id)
     if circle is None:
         raise CircleNotFoundError
     if not await MembershipRepository(session).is_leader(circle_id, user_id):
         raise NotCircleLeaderError
+    return circle
+
+
+async def _validate_parent(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    child: Circle | NewCircle,
+    parent_id: uuid.UUID,
+) -> None:
+    circles = CircleRepository(session)
+    if isinstance(child, Circle) and child.id == parent_id:
+        raise BadRequestError("A circle cannot be its own parent.")
+    parent = await circles.get(parent_id)
+    if parent is None:
+        raise CircleNotFoundError
+    if parent.region != child.region:
+        raise BadRequestError("Choose a parent circle in the same region.")
+    parent = await circles.get_for_update(parent_id)
+    if parent is None or parent.status != CircleStatus.ACTIVE.value:
+        raise CircleNotFoundError
+    if not await MembershipRepository(session).is_leader(parent_id, user_id, lock=True):
+        raise NotParentCircleLeaderError
+    if parent.unit_type not in PARENT_TYPES.get(child.unit_type, ()):
+        raise BadRequestError("Choose a compatible parent circle type.")
+    if (
+        parent.unit_type != CircleUnitType.CITY.value
+        and parent.approx_lat is not None
+        and parent.approx_lng is not None
+        and child.approx_lat is not None
+        and child.approx_lng is not None
+        and not await circles.is_nearby(
+            parent.id, float(child.approx_lat), float(child.approx_lng)
+        )
+    ):
+        raise BadRequestError("Choose a parent circle within 3 km.")
+
+    seen = {child.id} if isinstance(child, Circle) else set()
+    ancestor = parent
+    while ancestor is not None:
+        if ancestor.id in seen:
+            raise BadRequestError("The parent circle would create a cycle.")
+        seen.add(ancestor.id)
+        if ancestor.parent_id is None:
+            break
+        ancestor = await circles.get(ancestor.parent_id)
 
 
 async def update_circle(
     database: Database, user: User, circle_id: uuid.UUID, changes: dict
 ) -> CircleView:
     async with database.session() as session:
-        await _require_leader(session, circle_id, user.id)
-        circle = await CircleRepository(session).get_for_update(circle_id)
+        existing = await _require_leader(session, circle_id, user.id)
+        circles = CircleRepository(session)
+        if "parent_id" in changes:
+            await circles.lock_hierarchy(existing.region)
+        circle = await circles.get_for_update(circle_id)
+        if "parent_id" in changes:
+            if circle.status != CircleStatus.ACTIVE.value:
+                raise BadRequestError("An archived circle cannot change its parent.")
+            if not await MembershipRepository(session).is_leader(
+                circle_id, user.id, lock=True
+            ):
+                raise NotCircleLeaderError
+            if changes["parent_id"] is not None:
+                await _validate_parent(session, user.id, circle, changes["parent_id"])
         if changes:
-            circle = await CircleRepository(session).update(circle, changes)
+            circle = await circles.update(circle, changes)
         return await _build_view(session, circle, user.id)
 
 

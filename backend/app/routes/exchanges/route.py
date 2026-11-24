@@ -13,15 +13,17 @@ from pydantic import (
 )
 
 from app.database.models import Exchange, LoanExtension
-from app.database.models.enums import ExchangeStatus, HandoverPhase, Language
+from app.database.models.enums import ExchangeStatus, HandoverPhase, Language, UserKind
 from app.routes.dependencies import (
     ActorDep,
+    CurrentUserDep,
     DatabaseDep,
     RedisDep,
     SettingsDep,
     StorageDep,
 )
 from app.routes.pagination import Page, PageQuery
+from app.routes.requests.route import RequestSummary
 from app.services.exchanges.handover import (
     CheckView,
     add_item,
@@ -43,6 +45,7 @@ from app.services.exchanges.service import (
     hand_over,
     list_extensions,
     list_my_exchanges,
+    list_return_favours,
     mark_returned,
     request_extension,
     update_exchange,
@@ -162,6 +165,13 @@ class ExchangeModel(BaseModel):
     created_at: datetime
 
 
+class ExchangeDetailModel(ExchangeModel):
+    can_manage: bool
+    can_manage_pickup: bool
+    can_chat: bool
+    can_thank: bool
+
+
 class ExtensionModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -248,8 +258,31 @@ async def my_exchanges(
 @router.get("/{exchange_id}")
 async def read_exchange(
     exchange_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
-) -> ExchangeModel:
-    return exchange_model(await get_exchange(database, actor, exchange_id))
+) -> ExchangeDetailModel:
+    exchange = await get_exchange(database, actor, exchange_id)
+    grant = actor.grant
+    return ExchangeDetailModel(
+        **exchange_model(exchange).model_dump(),
+        can_manage=grant is None or grant.can_post_requests,
+        can_manage_pickup=grant is None
+        or (actor.subject.kind == UserKind.MANAGED.value and grant.can_post_requests),
+        can_chat=grant is None or grant.can_chat,
+        can_thank=grant is None or grant.can_thank_and_pay,
+    )
+
+
+class ReturnFavourOptions(BaseModel):
+    items: list[RequestSummary]
+
+
+@router.get("/{exchange_id}/return-favours")
+async def read_return_favours(
+    exchange_id: uuid.UUID, user: CurrentUserDep, database: DatabaseDep
+) -> ReturnFavourOptions:
+    options = await list_return_favours(database, user.id, exchange_id)
+    return ReturnFavourOptions(
+        items=[RequestSummary.model_validate(request) for request in options]
+    )
 
 
 @router.patch("/{exchange_id}")

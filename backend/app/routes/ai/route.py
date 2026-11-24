@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.database.models.enums import AiFeature
 from app.routes.dependencies import (
+    ActorDep,
     AuthClaimsDep,
     CurrentUserDep,
     DatabaseDep,
@@ -32,6 +33,7 @@ from app.services.ai.helpers import (
     draft_tool_guide,
     draft_translation,
 )
+from app.services.ai.request_writer import RequestWording, WordingInput
 from app.services.ai.runner import (
     Transcript,
     enforce_feature_limit,
@@ -39,6 +41,7 @@ from app.services.ai.runner import (
     suggest_listing,
     transcribe_voice,
 )
+from app.services.requests.destinations import draft_for_destination
 from app.services.users.service import ProfileNotFoundError, get_active_profile
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -86,6 +89,28 @@ async def listing_drafts(
     redis: RedisDep,
 ) -> ListingDraft:
     return await suggest_listing(database, redis, storage, settings, user, body)
+
+
+class DestinationDraftBody(WordingInput):
+    home_circle_id: uuid.UUID
+
+
+@router.post("/request-drafts")
+async def request_drafts(
+    body: DestinationDraftBody,
+    actor: ActorDep,
+    database: DatabaseDep,
+    settings: SettingsDep,
+    redis: RedisDep,
+) -> RequestWording:
+    return await draft_for_destination(
+        database,
+        redis,
+        settings,
+        actor,
+        body.home_circle_id,
+        body,
+    )
 
 
 @router.post("/translations")

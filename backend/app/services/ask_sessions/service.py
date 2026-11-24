@@ -27,6 +27,7 @@ from app.services.ai.request_writer import (
     write_request,
 )
 from app.services.ai.runner import run_feature, transcribe_voice
+from app.services.culture_packs import culture_pack_for
 from app.services.errors import BadRequestError, NotFoundError
 from app.services.listings.service import ListingCard, browse_listings
 from app.services.storage.service import Storage
@@ -37,7 +38,6 @@ RELATIONSHIP_BY_AUDIENCE = {
     "han": "circle_member",
     "ripple": "neighbor",
 }
-CULTURE_BY_REGION = {"jp": "japan", "bd": "bangladesh"}
 
 
 class AskSessionNotFoundError(NotFoundError):
@@ -224,7 +224,7 @@ async def draft_ask_message(
                 else None
             ),
             relationship=RELATIONSHIP_BY_AUDIENCE.get(audience, "neighbor"),
-            culture_pack=CULTURE_BY_REGION.get(region, "japan"),
+            culture_pack=culture_pack_for(region).name,
         )
         draft = await run_feature(
             database,

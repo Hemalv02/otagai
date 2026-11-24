@@ -103,6 +103,7 @@ async def test_profile_visibility_hides_optional_details_in_neighbour_reads(clie
             "intro": " I like gardening. ",
             "happy_to_help_with": " Gardening ",
             "text_scale_percent": 150,
+            "profile_details_visible": True,
         },
     )
     assert saved.status_code == 200, saved.text
@@ -198,3 +199,21 @@ async def test_notification_preferences_round_trip(client):
         "/users/me", headers=auth(token), json={"quiet_hours_start": "25:99"}
     )
     assert invalid.status_code == 422
+
+
+async def test_new_intro_card_requires_explicit_sharing(client):
+    owner = await make_user(client, display_name="Private intro")
+    reader = await make_user(client)
+    circle = await make_circle(client, owner)
+    await join_circle(client, owner, circle, reader)
+    profile = await client.patch(
+        "/users/me",
+        headers=auth(owner),
+        json={"intro": "I grow flowers", "hobbies": "Gardening"},
+    )
+    assert profile.status_code == 200, profile.text
+    assert profile.json()["profile_details_visible"] is False
+    response = await client.get(f"/users/{profile.json()['id']}", headers=auth(reader))
+    assert response.status_code == 200, response.text
+    assert response.json()["intro"] is None
+    assert response.json()["hobbies"] is None

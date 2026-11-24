@@ -1,21 +1,23 @@
 import { useRef, useState } from "react";
 import { Text, View } from "react-native";
 
+import { ActivityToggle } from "@/components/activity-toggle";
 import {
   OnboardingLink,
   OnboardingScreen,
 } from "@/components/onboarding-screen";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
-import { ApiError, api, type Language, type Region } from "@/lib/api";
+import { ApiError, api, type ContentLanguage, type Region } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { draftLanguageNames, draftLanguages } from "@/lib/request-wording-copy";
+import { settingsCopy } from "@/lib/settings-copy";
 import { useSession } from "@/lib/session";
 
-const languages = [
-  { value: "ja", label: "日本語" },
-  { value: "en", label: "English" },
-  { value: "bn", label: "বাংলা" },
-] as const;
+const languages = draftLanguages.map((value) => ({
+  value,
+  label: draftLanguageNames[value],
+}));
 
 export default function ProfileSetup() {
   const localizedType = useLocalizedType();
@@ -23,10 +25,12 @@ export default function ProfileSetup() {
   const { t, locale } = useOnboardingText();
   const { setProfile, reloadProfile, signOut } = useSession();
   const [name, setName] = useState("");
-  const [language, setLanguage] = useState<Language>(state.language);
+  const [language, setLanguage] = useState<ContentLanguage>(state.language);
   const [region, setRegion] = useState<Region>(state.region);
   const [helpWith, setHelpWith] = useState("");
   const [intro, setIntro] = useState("");
+  const [shareProfile, setShareProfile] = useState(false);
+  const visibility = settingsCopy[locale];
   const [suggested, setSuggested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -71,6 +75,7 @@ export default function ProfileSetup() {
         region,
         happy_to_help_with: skills || undefined,
         intro: intro.trim() || undefined,
+        profile_details_visible: shareProfile,
       });
       setProfile(profile);
     } catch (failure) {
@@ -178,7 +183,10 @@ export default function ProfileSetup() {
           editable={!busy && !drafting}
           placeholder={t("introPlaceholder")}
         />
-        <Text className="text-secondary" style={localizedType("supporting", locale)}>
+        <Text
+          className="text-secondary"
+          style={localizedType("supporting", locale)}
+        >
           {skills ? t("introHint") : t("addSkillsFirst")}
         </Text>
         <Button
@@ -190,6 +198,24 @@ export default function ProfileSetup() {
           onPress={suggestIntro}
         />
         {draftFailed ? <ErrorText>{t("introDraftError")}</ErrorText> : null}
+      </View>
+      <View className="flex-row items-center gap-related-gap">
+        <View className="flex-1">
+          <Text style={fieldLabel}>{visibility.visibility}</Text>
+          <Text
+            className="text-secondary"
+            style={localizedType("supporting", locale)}
+          >
+            {visibility.visibilityDetail}
+          </Text>
+        </View>
+        <ActivityToggle
+          label={visibility.visibility}
+          hint={visibility.visibilityDetail}
+          value={shareProfile}
+          disabled={busy || drafting}
+          onChange={setShareProfile}
+        />
       </View>
       {failed ? <ErrorText>{t("saveError")}</ErrorText> : null}
     </OnboardingScreen>

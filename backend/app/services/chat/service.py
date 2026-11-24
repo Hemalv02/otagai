@@ -11,8 +11,10 @@ from app.database.models import (
     User,
 )
 from app.database.models.enums import (
+    AiFeature,
     ConversationKind,
     ConversationStatus,
+    Language,
     MediaPurpose,
     MessageKind,
     NotificationType,
@@ -33,6 +35,8 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.users import UserRepository
 from app.services.actors.service import Actor, ProxyScope
+from app.services.ai.helpers import Translation, TranslationInput, draft_translation
+from app.services.ai.runner import enforce_feature_limit
 from app.services.errors import BadRequestError, ConflictError, NotFoundError
 from app.services.storage.service import Storage
 from app.settings import Settings
@@ -263,6 +267,63 @@ def _translated(message: Message, language: str) -> str | None:
     return message.body
 
 
+async def translate_message(
+    database: Database,
+    redis,
+    settings: Settings,
+    actor: Actor,
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    target: Language,
+) -> Translation:
+    actor.require(ProxyScope.CHAT)
+    async with database.session() as session:
+        await _require_participant(session, conversation_id, actor.subject_id)
+        message = await MessageRepository(session).get(message_id)
+        if (
+            message is None
+            or message.conversation_id != conversation_id
+            or message.deleted_at
+            or message.kind != MessageKind.TEXT.value
+            or not message.body
+        ):
+            raise MessageNotFoundError
+        source = message.body
+        edited_at = message.edited_at
+        cached = (message.translations or {}).get(target.value)
+        if cached:
+            return Translation(translated=cached)
+
+    await enforce_feature_limit(redis, AiFeature.TRANSLATE, actor.user.id)
+    translated = await draft_translation(
+        settings,
+        TranslationInput(text=source, target_language=target),
+    )
+    async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.CHAT)
+        await _require_participant(session, conversation_id, actor.subject_id)
+        messages = MessageRepository(session)
+        current = await messages.get_for_update(message_id)
+        if current is None or current.deleted_at:
+            raise MessageNotFoundError
+        if current.body != source or current.edited_at != edited_at:
+            raise ConflictError(
+                "The message changed. Refresh and try translating again."
+            )
+        translations = dict(current.translations or {})
+        if saved := translations.get(target.value):
+            return Translation(translated=saved)
+        translations[target.value] = translated.translated
+        await messages.update(
+            current,
+            {
+                "translations": translations,
+                "translation_status": TranslationStatus.DONE.value,
+            },
+        )
+    return translated
+
+
 async def _sign_media(
     session, storage: Storage, settings: Settings, media_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, dict[str, str]]:
@@ -291,10 +352,12 @@ async def send_message(
     body: str | None,
     client_message_id: uuid.UUID | None,
     media_ids: list[uuid.UUID],
+    language: str | None = None,
 ) -> tuple[Message, bool]:
     actor.require(ProxyScope.CHAT)
     now = datetime.now(UTC)
     async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.CHAT)
         await _require_participant(session, conversation_id, actor.subject_id)
         conversations = ConversationRepository(session)
         conversation = await conversations.get(conversation_id)
@@ -310,7 +373,6 @@ async def send_message(
         attachments = await _validated_attachments(
             session, actor.subject_id, kind, media_ids
         )
-        lang = actor.subject.preferred_language
         values = {
             "conversation_id": conversation_id,
             "sender_user_id": actor.subject_id,
@@ -318,7 +380,7 @@ async def send_message(
             "client_message_id": client_message_id,
             "kind": kind,
             "body": body,
-            "lang": lang if body else None,
+            "lang": language if body else None,
             "translation_status": (
                 TranslationStatus.PENDING.value
                 if body

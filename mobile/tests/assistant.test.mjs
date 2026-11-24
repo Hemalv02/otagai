@@ -121,3 +121,29 @@ test("merging saved turns restores chronological order without duplicate widgets
   const posted = { ...second, request_id: "request" };
   assert.deepEqual(mergeTurns([second], [posted, first]), [first, posted]);
 });
+
+test("review posts edited wording with the selected language and tone", () => {
+  const review = {
+    ...makeReview(turn),
+    title: "ドリルをお借りするお願い",
+    language: "ja",
+    tone: "keigo",
+    when: "土曜日",
+  };
+  assert.deepEqual(
+    confirmationBody(
+      review,
+      "ドリルをお借りしてもよろしいでしょうか。",
+      "日曜日",
+      "han",
+    ),
+    {
+      kind: "borrow",
+      text: "ドリルをお借りしてもよろしいでしょうか。\n\n日曜日",
+      title: review.title,
+      language: "ja",
+      tone: "keigo",
+      home_circle_id: "han",
+    },
+  );
+});

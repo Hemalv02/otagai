@@ -21,6 +21,7 @@ import {
 } from "@/components/request-edit-form";
 import { RequestNotice } from "@/components/request-notice";
 import { RequestResponseForm } from "@/components/request-response-form";
+import { TranslationOption } from "@/components/translation-option";
 import { Button, ErrorText } from "@/components/ui";
 import { ApiError, type Page } from "@/lib/api";
 import { assistantError, assistantApi } from "@/lib/assistant-api";
@@ -48,15 +49,28 @@ type RequestConfirmation = {
 };
 
 export default function RequestDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return isUuid(id) ? (
-    <LiveRequestDetail key={id} id={id} />
+  const { id, actingFor } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
+  return isUuid(id) && (actingFor === undefined || isUuid(actingFor)) ? (
+    <LiveRequestDetail
+      key={`${id}:${actingFor ?? "self"}`}
+      id={id}
+      actingFor={actingFor}
+    />
   ) : (
     <Redirect href="/requests" />
   );
 }
 
-function LiveRequestDetail({ id }: { id: string }) {
+function LiveRequestDetail({
+  id,
+  actingFor,
+}: {
+  id: string;
+  actingFor?: string;
+}) {
   const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   const copy = requestCopy[locale];
@@ -79,16 +93,29 @@ function LiveRequestDetail({ id }: { id: string }) {
   const [form, setForm] = useState<ResponseKind>();
   const [edit, setEdit] = useState<RequestEditKind>();
   const [confirmation, setConfirmation] = useState<RequestConfirmation>();
-  const [translation, setTranslation] = useState<{
-    locale: string;
-    text: string;
-    source: string;
-  }>();
-  const [translating, setTranslating] = useState(false);
-  const translationVersion = useRef(0);
-  const translated =
-    translation?.locale === locale &&
-    translation.source === detail?.polite_text;
+  const loadNames = useCallback(
+    async (ids: string[], current: number) => {
+      const people = await Promise.allSettled(
+        [...new Set(ids)].map(
+          async (person) =>
+            [
+              person,
+              (await requestsApi.person(person, actingFor)).display_name,
+            ] as const,
+        ),
+      );
+      if (current !== version.current) return;
+      setNames((existing) => ({
+        ...existing,
+        ...Object.fromEntries(
+          people.flatMap((person) =>
+            person.status === "fulfilled" ? [person.value] : [],
+          ),
+        ),
+      }));
+    },
+    [actingFor],
+  );
 
   const load = useCallback(async () => {
     const current = ++version.current;
@@ -97,12 +124,12 @@ function LiveRequestDetail({ id }: { id: string }) {
     setError(null);
     setResponseError(null);
     try {
-      const data = await requestsApi.detail(id);
+      const data = await requestsApi.detail(id, actingFor);
       if (current !== version.current) return;
       setDetail(data);
       if (data.my_role === "requester") {
         try {
-          const page = await requestsApi.responses(id);
+          const page = await requestsApi.responses(id, undefined, actingFor);
           if (current !== version.current) return;
           setResponses(page);
           void loadNames(
@@ -114,7 +141,7 @@ function LiveRequestDetail({ id }: { id: string }) {
         }
       } else {
         void loadNames([data.requester_user_id], current);
-        if (!markedSeen.current) {
+        if (!actingFor && !markedSeen.current) {
           markedSeen.current = true;
           void requestsApi.markSeen(id).catch(() => {
             markedSeen.current = false;
@@ -129,25 +156,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     } finally {
       if (current === version.current) setLoading(false);
     }
-  }, [id]);
-
-  async function loadNames(ids: string[], current: number) {
-    const people = await Promise.allSettled(
-      [...new Set(ids)].map(
-        async (person) =>
-          [person, (await requestsApi.person(person)).display_name] as const,
-      ),
-    );
-    if (current !== version.current) return;
-    setNames((existing) => ({
-      ...existing,
-      ...Object.fromEntries(
-        people.flatMap((person) =>
-          person.status === "fulfilled" ? [person.value] : [],
-        ),
-      ),
-    }));
-  }
+  }, [id, actingFor, loadNames]);
 
   useFocusEffect(
     useCallback(() => {
@@ -165,7 +174,11 @@ function LiveRequestDetail({ id }: { id: string }) {
     setLoadingResponses(true);
     setResponseError(null);
     try {
-      const page = await requestsApi.responses(id, responses.next_cursor);
+      const page = await requestsApi.responses(
+        id,
+        responses.next_cursor,
+        actingFor,
+      );
       if (current !== version.current) return;
       setResponses((previous) => ({
         items: [...(previous?.items ?? []), ...page.items],
@@ -211,44 +224,9 @@ function LiveRequestDetail({ id }: { id: string }) {
 
   function saveEdit(changes: UpdateRequest) {
     void apply(async () => {
-      const updated = await requestsApi.update(id, changes);
-      if (changes.polite_text !== undefined) {
-        translationVersion.current += 1;
-        setTranslation(undefined);
-        setTranslating(false);
-      }
+      const updated = await requestsApi.update(id, changes, actingFor);
       setDetail(updated);
     });
-  }
-
-  async function showTranslation() {
-    if (!detail || translating) return;
-    if (translated) {
-      setTranslation(undefined);
-      return;
-    }
-    const current = ++translationVersion.current;
-    setTranslating(true);
-    setActionError(undefined);
-    try {
-      const result = await assistantApi.translate(
-        detail.polite_text,
-        detail.lang,
-        locale,
-      );
-      if (current !== translationVersion.current) return;
-      setTranslation({
-        locale,
-        text: result.translated,
-        source: detail.polite_text,
-      });
-    } catch (cause) {
-      if (current === translationVersion.current) {
-        setActionError(assistantError(cause, locale));
-      }
-    } finally {
-      if (current === translationVersion.current) setTranslating(false);
-    }
   }
 
   const label = localizedType("field-label", locale);
@@ -264,10 +242,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     const unavailable =
       error instanceof ApiError && [403, 404].includes(error.status);
     return (
-      <CommunityScreen
-        back
-        title={unavailable ? copy.notFound : copy.requests}
-      >
+      <CommunityScreen back title={unavailable ? copy.notFound : copy.requests}>
         {loading ? (
           <ActivityIndicator
             accessibilityLabel={words.loading}
@@ -290,9 +265,9 @@ function LiveRequestDetail({ id }: { id: string }) {
 
   const owns = detail.my_role === "requester";
   const isOpen = detail.status === "open";
-  const responding = !owns && isOpen && !detail.my_response_id;
+  const responding = !actingFor && !owns && isOpen && !detail.my_response_id;
   const pendingResponse =
-    !owns && isOpen && detail.my_response_status === "pending";
+    !actingFor && !owns && isOpen && detail.my_response_status === "pending";
   const { needed_from: start, needed_until: end } = detail;
   let timing = "";
   if (start && end) timing = `${formatDate(start)} – ${formatDate(end)}`;
@@ -337,7 +312,10 @@ function LiveRequestDetail({ id }: { id: string }) {
               if (detail.exchange_id) {
                 router.push({
                   pathname: "/exchanges/[id]",
-                  params: { id: detail.exchange_id },
+                  params: {
+                    id: detail.exchange_id,
+                    ...(actingFor ? { actingFor } : {}),
+                  },
                 });
               } else {
                 startForm("offer");
@@ -353,23 +331,21 @@ function LiveRequestDetail({ id }: { id: string }) {
             {live.postedBy} · {requesterName}
           </Text>
         ) : null}
-        <Text style={[body, styles.ink]}>
-          {translated ? translation?.text : detail.polite_text}
-        </Text>
+        <Text style={[body, styles.ink]}>{detail.polite_text}</Text>
         {timing ? (
           <Text style={[supporting, styles.secondary]}>{timing}</Text>
         ) : null}
-        {detail.lang !== locale ? (
-          <Button
-            variant="text"
-            label={translated ? words.original : words.translate}
-            labelStyle={label}
-            busy={translating}
-            disabled={disabled}
-            onPress={() => void showTranslation()}
-          />
-        ) : null}
-        {owns && isOpen ? (
+        <TranslationOption
+          key={`${locale}:${detail.lang}:${detail.polite_text}`}
+          locale={locale}
+          source={detail.lang}
+          original={detail.polite_text}
+          load={(target) =>
+            assistantApi.translate(detail.polite_text, detail.lang, target)
+          }
+          chooseLanguage
+        />
+        {detail.can_manage && isOpen ? (
           <View style={styles.actions}>
             <Button
               variant="secondary"
@@ -469,7 +445,10 @@ function LiveRequestDetail({ id }: { id: string }) {
             label={rippleCopy[locale].delivery}
             labelStyle={label}
             onPress={() =>
-              router.push({ pathname: "/requests/[id]/ripple", params: { id } })
+              router.push({
+                pathname: "/requests/[id]/ripple",
+                params: { id, ...(actingFor ? { actingFor } : {}) },
+              })
             }
           />
           <Text
@@ -483,6 +462,7 @@ function LiveRequestDetail({ id }: { id: string }) {
           ) : null}
           {responses?.items.map((response) => {
             const canAccept =
+              detail.can_manage &&
               isOpen &&
               response.status === "pending" &&
               response.kind !== "question";
@@ -515,7 +495,7 @@ function LiveRequestDetail({ id }: { id: string }) {
                         live.acceptTitle,
                         live.acceptDetail,
                         acceptLabel,
-                        () => requestsApi.accept(id, response.id),
+                        () => requestsApi.accept(id, response.id, actingFor),
                       )
                     }
                   />
@@ -542,7 +522,7 @@ function LiveRequestDetail({ id }: { id: string }) {
               onPress={() => void loadMore()}
             />
           ) : null}
-          {isOpen ? (
+          {detail.can_manage && isOpen ? (
             <Button
               variant="text"
               label={live.cancelRequest}
@@ -553,7 +533,7 @@ function LiveRequestDetail({ id }: { id: string }) {
                   live.cancelRequest,
                   live.cancelDetail,
                   live.cancelRequest,
-                  () => requestsApi.cancel(id),
+                  () => requestsApi.cancel(id, actingFor),
                 )
               }
             />

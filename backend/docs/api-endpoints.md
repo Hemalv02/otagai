@@ -303,7 +303,7 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `GET /users/{user_id}/listings` | Their listings I'm allowed to see | 200 | 30 | MVP |
 | `GET /users/{user_id}/requests?status=` | Their requests I'm allowed to see. Neighbours see open ones for "return the favour". A caretaker with `can_view_activity` sees everything | 200 | 30, 33 | MVP |
 | `GET /users/{user_id}/exchanges` | Exchanges of someone I care for (needs `can_view_activity`) | 200 | 33 | MVP |
-| `GET /users/{user_id}/thank-yous` | Thank-you notes they've received that are visible to me | 200 | 30 | MVP |
+| `GET /users/{user_id}/thank-yous` | Shared thank-yous with a circle audience that includes the viewer | 200 | 30 | MVP |
 
 ## 2. Home and badges
 
@@ -319,7 +319,7 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `GET /circles?near=lat,lng` or `?q=` | Search open circles in the profile's region. Nearby results are limited to 3 km and ordered by distance. Returns approximate locations only | 200 | 4 | MVP |
 | `GET /circles/{circle_id}` | Circle details. Members whose membership isn't approved get a limited view | 200 | 4, 38 | MVP |
 | `POST /circles` | Start a circle; the creator becomes its leader | 201 | 4 | MVP |
-| `PATCH /circles/{circle_id}` | Leader edits the name, translations or `open_to_nearby` | 200 | 40 | Later |
+| `PATCH /circles/{circle_id}` | Leader edits the name, translations, discovery setting or parent circle | 200 | 40 | MVP |
 | `POST /circles/{circle_id}/archive` | Leader archives the circle | 200 | 40 | Later |
 | `GET /circle-invites/{code}` | Preview the circle behind an invite code or QR before joining. 404 if the code is invalid or expired | 200 | 4 | MVP |
 | `POST /users/me/memberships` | Join with `{invite_code}`, or ask to join a found circle with `{circle_id}`. Approved straight away if the invite auto-approves, otherwise pending | 201 | 4 | MVP |
@@ -333,6 +333,8 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `POST /circles/{circle_id}/invites` | Leader creates an invite code (expiry, max uses, auto-approve) | 201 | 40 | Later |
 | `GET /circles/{circle_id}/invites` | List the circle's invites | 200 | 40 | Later |
 | `POST /circles/{circle_id}/invites/{invite_id}/revoke` | Revoke an invite | 200 | 40 | Later |
+
+To link a circle, pass `parent_id` when creating it or patching an existing circle. The actor must be an approved leader of both circles, and both circles must be active and in the same region. A han can link to an association, a para to a moholla, and a building to either. Associations and mohollas can link to a city. Local circles with coordinates must be within 3 km of their parent. Pass `parent_id: null` in a patch to unlink a circle. Only approved members of the child circle receive its parent ID in circle details.
 
 ## 4. Media uploads
 
@@ -428,6 +430,8 @@ Both request creation and Assistant draft confirmation accept `ripple_max_stage`
 
 Family delivery uses accepted family links. The Han stage uses approved members of the home circle, including buildings or para that serve as the home circle. The association stage uses approved members of the enclosing association or moholla and its active, same-region child circles. The nearby stage uses approved members of other active, open circles within 3 km of the nearest approximate coordinates in the home circle's hierarchy. Without those coordinates, there is no nearby delivery. All stages exclude suspended or deleted users, both directions of a block, and anyone already reached by the request.
 
+Within each stage, eligible recipients are ranked using relevant listings available at the requested start, visible profile skills, pair balance, and approximate distance from the home circle. Matching recognizes catalog categories and common equivalent terms in English, Japanese and Bengali. Equal scores and distances sort by recipient ID. Every eligible recipient in the stage receives an inbox entry. Push delivery starts in ranked order and respects quiet hours and push preferences. Direct requests go to the selected recipient. The sender receipt reports stage totals.
+
 Empty stages are recorded and skipped immediately under the chosen cap. After a nonempty stage, an open request waits six hours before widening, provided it will still be open at that time. The receipt distinguishes `sent`, `no_recipients`, `scheduled`, `pending`, and `stopped`. A sent count describes committed in-app delivery and does not disclose identities, reads, or device push state.
 
 With `X-Acting-For`, request detail, response lists, and incoming requests require `can_view_activity`. Request edits use the separate `can_post_requests` scope.
@@ -438,6 +442,7 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 |---|---|---|---|---|
 | `GET /users/me/exchanges?status=` | My scheduled, active and finished exchanges, as lender or borrower | 200 | 25 | MVP |
 | `GET /exchanges/{exchange_id}` | Detail: time, place note, due date, both confirmations | 200 | 23–27 | MVP |
+| `GET /exchanges/{exchange_id}/return-favours` | Up to three open requests from the person who helped, delivered to the requester and still available for a response | 200 | 27, 28 | MVP |
 | `PATCH /exchanges/{exchange_id}` | Set the agreed time, place note or due date | 200 | 23 | MVP |
 | `POST /exchanges/{exchange_id}/hand-over` | Move a scheduled exchange to active. Loans require a completed pickup checklist | 200 | 24 | MVP |
 | `POST /exchanges/{exchange_id}/return` | Mark the item as returned | 200 | 26 | MVP |
@@ -480,6 +485,7 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 | `POST /conversations` | Start a listing chat ("ask the owner") or a direct chat with someone I share a circle with. Returns 200 with the existing chat if there is one | 201 | 9, 30 | MVP |
 | `GET /conversations/{conversation_id}` | Participants and the linked request, exchange or listing | 200 | 23 | MVP |
 | `GET /conversations/{conversation_id}/messages?before=` | Message history with translations in my language | 200 | 23 | MVP |
+| `POST /conversations/{conversation_id}/messages/{message_id}/translations` | Translate a visible message with `{target_language}`. Supports Japanese, English, Bengali and Vietnamese. The saved translation is cleared when the message is edited. | 200 | 23 | MVP |
 | `POST /conversations/{conversation_id}/messages` | Send text, image, voice or a card. A resend with the same `client_message_id` returns 200 with the original | 201 | 23 | MVP |
 | `PATCH /conversations/{conversation_id}/messages/{message_id}` | Edit my message within a short window | 200 | 23 | Later |
 | `DELETE /conversations/{conversation_id}/messages/{message_id}` | Delete my message (soft delete) | 204 | 23 | Later |
@@ -492,10 +498,10 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 |---|---|---|---|---|
 | `POST /thank-yous` | Send a note, sweets, points or money for a completed exchange. 409 if the exchange isn't completed | 201 | 28 | MVP |
 | `GET /thank-yous/{thank_you_id}` | One thank-you | 200 | 28 | MVP |
-| `PATCH /thank-yous/{thank_you_id}` | The recipient opts in to showing it on the wall | 200 | 32 | Later |
+| `PATCH /thank-yous/{thank_you_id}` | The recipient opts in to the source circle’s wall if the sender allowed sharing | 200 | 32 | Later |
 | `POST /thank-yous/{thank_you_id}/decline-money` | The helper turns down the money; the note is kept | 200 | 28 | MVP |
 | `GET /users/me/thank-yous?direction=sent\|received` | My thank-yous | 200 | 30, 47 | MVP |
-| `GET /circles/{circle_id}/thank-yous` | Opted-in notes for the circle's wall | 200 | 32 | Later |
+| `GET /circles/{circle_id}/thank-yous` | Notes shared by both participants in their exchange’s circle | 200 | 32 | Later |
 | `POST /payments` | Start a payment for a thank-you (`Idempotency-Key` required). Returns a Stripe client secret, or a bKash mock checkout | 201 | 29 | MVP |
 | `GET /payments/{payment_id}` | Payment status, polled after checkout | 200 | 29 | MVP |
 | `POST /payments/{payment_id}/cancel` | Cancel before it is paid. 409 once it has succeeded | 200 | 29 | MVP |
@@ -512,6 +518,8 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 | `GET /users/me/neighbours` | Everyone I've exchanged with, most recent activity first, with the pair balance | 200 | 31 | MVP |
 | `POST /managed-users` | Create a managed account with no phone, plus its proxy grant (consent method and witness) | 201 | 34 | MVP |
 | `PATCH /managed-users/{user_id}` | A caretaker edits a managed person's profile | 200 | 34 | MVP |
+| `GET /managed-users/{member_id}/memberships` | List a managed member's circle applications and memberships. Available to the creator while their grant is active. | 200 | 34 | MVP |
+| `POST /managed-users/{member_id}/memberships` | Use `invite_code` to request circle membership for a managed member. The creator needs an active grant and a leader must approve the application. | 201 | 34 | MVP |
 | `GET /users/me/family-links` | My family links, both pending and accepted. `other` includes `kind` (`self` or `managed`) | 200 | 33 | MVP |
 | `POST /family-links` | Link to an existing user by their member ID (`relative_user_id`) and relation. `invite_code` is accepted but not redeemed. Pending until they accept; accepting grants no access by itself | 201 | 34 | MVP |
 | `POST /family-links/{link_id}/accept` | The other person accepts | 200 | 34 | MVP |

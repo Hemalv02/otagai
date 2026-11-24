@@ -13,7 +13,7 @@ from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.pair_stats import PairStatsRepository
 from app.repositories.proxy_grants import ProxyGrantRepository
 from app.repositories.requests import RequestRepository
-from app.repositories.thanks import ThankYouRepository
+from app.repositories.thanks import ThankYouRepository, WallThankYou
 from app.repositories.users import UserRepository
 from app.services.errors import NotFoundError, PermissionDeniedError
 
@@ -130,11 +130,13 @@ async def list_user_exchanges(
 
 async def list_user_thank_yous(
     database: Database, viewer: User, target_id: uuid.UUID, page: PageRequest
-) -> PageResult[ThankYou]:
+) -> PageResult[ThankYou] | PageResult[WallThankYou]:
     async with database.session() as session:
+        repository = ThankYouRepository(session)
+        if viewer.id == target_id:
+            return await repository.list_for_user(
+                viewer.id, page=page, direction="received"
+            )
         if not await can_view_profile(session, viewer.id, target_id):
             raise ProfileHiddenError
-        wall_only = viewer.id != target_id
-        return await ThankYouRepository(session).list_for_recipient(
-            target_id, page, wall_only=wall_only
-        )
+        return await repository.list_public(viewer.id, page, recipient_id=target_id)

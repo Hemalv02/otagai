@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
+import { ReturnFavourCard } from "@/components/return-favour-card";
 import { Button, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Exchange, type LoanExtension } from "@/lib/api";
 import {
@@ -28,6 +29,7 @@ import { loanStage } from "@/lib/loan-state";
 import { livePickupCopy } from "@/lib/live-pickup";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 async function visible<T>(load: Promise<T>): Promise<T | null> {
@@ -39,21 +41,29 @@ async function visible<T>(load: Promise<T>): Promise<T | null> {
   }
 }
 
-async function loadLoan(id: string, profileId: string | null) {
-  const exchange = await api.getExchange(id);
+async function loadLoan(
+  id: string,
+  profileId: string | null,
+  actingFor?: string,
+) {
+  const exchange = await api.getExchange(id, actingFor);
   if (exchange.mode !== "loan") throw new ApiError(404, "Loan unavailable.");
   const other =
     exchange.requester_user_id === profileId
       ? exchange.helper_user_id
       : exchange.requester_user_id;
   const [listing, partner] = await Promise.all([
-    exchange.listing_id ? visible(api.getListing(exchange.listing_id)) : null,
-    visible(api.getPublicProfile(other)),
+    exchange.listing_id
+      ? visible(
+          api.getListing(exchange.listing_id, undefined, undefined, actingFor),
+        )
+      : null,
+    visible(api.getPublicProfile(other, actingFor)),
   ]);
   const history: LoanExtension[] = [];
   let cursor: string | null = null;
   do {
-    const page = await api.listExtensions(id, cursor);
+    const page = await api.listExtensions(id, cursor, actingFor);
     history.push(...page.items);
     cursor = page.next_cursor;
   } while (cursor);
@@ -81,20 +91,32 @@ type LoanAction =
 
 export default function LoanDetailsScreen() {
   const localizedType = useLocalizedType();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, actingFor: member } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
+  const actingFor = isUuid(member) ? member : undefined;
+  const params = { id, ...(actingFor ? { actingFor } : {}) };
   const { locale } = useOnboardingText();
-  const { profile } = useSession();
-  const profileId = profile.status === "ready" ? profile.profile.id : null;
+  const { profile, session } = useSession();
+  const profileId =
+    actingFor ?? (profile.status === "ready" ? profile.profile.id : null);
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];
   const loan = useLiveResource(
-    useCallback(() => loadLoan(id, profileId), [id, profileId]),
+    useCallback(
+      () => loadLoan(id, profileId, actingFor),
+      [id, profileId, actingFor],
+    ),
   );
   const now = useCurrentTime();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { exchange, history = [], title, photo, partnerName } = loan.data ?? {};
+  const canManage = !actingFor || exchange?.can_manage === true;
+  const canChat = !actingFor || exchange?.can_chat === true;
+  const canThank = !actingFor || exchange?.can_thank === true;
   const borrower = profileId === exchange?.requester_user_id;
   const lender = profileId === exchange?.helper_user_id;
   const pending = history.find((item) => item.status === "pending");
@@ -111,22 +133,23 @@ export default function LoanDetailsScreen() {
   const next =
     stage === "return" || stage === "confirm" ? progression[stage] : null;
   const itemName = title || copy.unnamedLoan;
-  const messageAction = (draft?: string | null) => (
-    <Button
-      label={exchangeMessageCopy[locale].messagePartner(
-        partnerName || exchangeMessageCopy[locale].neighbour,
-      )}
-      variant="text"
-      labelStyle={localizedType("field-label", locale)}
-      disabled={busy || loan.loading || loan.error}
-      onPress={() => {
-        if (profileId && draft?.trim()) {
-          stageLoanMessageDraft(profileId, id, draft);
-        }
-        router.push({ pathname: "/loans/[id]/messages", params: { id } });
-      }}
-    />
-  );
+  const messageAction = (draft?: string | null) =>
+    canChat ? (
+      <Button
+        label={exchangeMessageCopy[locale].messagePartner(
+          partnerName || exchangeMessageCopy[locale].neighbour,
+        )}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        disabled={busy || loan.loading || loan.error}
+        onPress={() => {
+          if (profileId && draft?.trim()) {
+            stageLoanMessageDraft(profileId, id, draft);
+          }
+          router.push({ pathname: "/loans/[id]/messages", params });
+        }}
+      />
+    ) : null;
   const heading =
     stage === "completed"
       ? screen.completed
@@ -151,17 +174,17 @@ export default function LoanDetailsScreen() {
       : copy.lent;
 
   async function act(action: LoanAction) {
-    if (!exchange || busy) return;
+    if (!exchange || busy || !canManage) return;
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
       if ("decision" in action && pending)
-        await api.decideExtension(pending.id, action.decision);
+        await api.decideExtension(pending.id, action.decision, actingFor);
       else if ("request" in action)
-        await api.requestExtension(exchange.id, action.request);
+        await api.requestExtension(exchange.id, action.request, actingFor);
       else if ("advance" in action)
-        await api.advanceLoan(exchange.id, action.advance);
+        await api.advanceLoan(exchange.id, action.advance, actingFor);
       await loan.reload();
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 409) {
@@ -243,11 +266,11 @@ export default function LoanDetailsScreen() {
               labelStyle={localizedType("button", locale)}
               disabled={loan.loading || loan.error}
               onPress={() =>
-                router.push({ pathname: "/loans/[id]/pickup", params: { id } })
+                router.push({ pathname: "/loans/[id]/pickup", params })
               }
             />
           ) : null}
-          {next ? (
+          {next && canManage ? (
             <Button
               label={next.label}
               labelStyle={localizedType("button", locale)}
@@ -289,7 +312,7 @@ export default function LoanDetailsScreen() {
               {borrower ? copy.overdue : copy.lenderOverdue}
             </ActivityText>
           ) : null}
-          {borrower && !pending && active ? (
+          {canManage && borrower && !pending && active ? (
             <ExtensionDraft
               key={`${exchange.id}:${exchange.due_at}:${locale}`}
               exchange={exchange}
@@ -301,7 +324,7 @@ export default function LoanDetailsScreen() {
               onSend={(request) => act({ request })}
               messageAction={messageAction()}
             />
-          ) : lender && active ? (
+          ) : canChat && lender && active ? (
             <ReminderDraft
               key={`${exchange.id}:reminder:${locale}`}
               itemName={itemName}
@@ -338,7 +361,10 @@ export default function LoanDetailsScreen() {
                       locale,
                     )}
                   </ActivityText>
-                  {item.status === "pending" && lender && active ? (
+                  {item.status === "pending" &&
+                  canManage &&
+                  lender &&
+                  active ? (
                     <>
                       {new Date(item.new_due_at).getTime() <=
                       Math.max(
@@ -379,19 +405,26 @@ export default function LoanDetailsScreen() {
               onPress={loan.reload}
             />
           ) : null}
-          {stage === "completed" ? (
+          {stage === "completed" && canThank ? (
             <Button
               label={neighbour.sayThanks}
               labelStyle={localizedType("button", locale)}
               onPress={() =>
                 router.push({
                   pathname: "/loans/[id]/thank-you",
-                  params: { id },
+                  params,
                 })
               }
             />
           ) : null}
-          {partnerId ? (
+          {stage === "completed" && !actingFor && borrower && session ? (
+            <ReturnFavourCard
+              exchangeId={exchange.id}
+              authUserId={session.user.id}
+              partnerName={partnerName}
+            />
+          ) : null}
+          {partnerId && !actingFor ? (
             <Button
               label={neighbour.reportOrBlock}
               variant="text"

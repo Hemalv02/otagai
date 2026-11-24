@@ -23,6 +23,7 @@ export class ApiError extends Error {
 }
 
 export type Language = "ja" | "en" | "bn";
+export type ContentLanguage = Language | "vi";
 export type Region = "jp" | "bd";
 
 export type UserProfile = {
@@ -30,13 +31,14 @@ export type UserProfile = {
   kind: "self" | "managed";
   display_name: string;
   avatar_media_id: string | null;
-  preferred_language: Language;
-  languages: Language[];
+  preferred_language: ContentLanguage;
+  languages: ContentLanguage[];
   region: Region;
   timezone: string;
   age_band: string | null;
   intro: string | null;
   happy_to_help_with: string | null;
+  hobbies: string | null;
   profile_details_visible: boolean;
   accepts_money_orei: boolean;
   simple_mode: boolean;
@@ -54,6 +56,7 @@ export type UpdateMyProfile = Partial<
     | "display_name"
     | "intro"
     | "happy_to_help_with"
+    | "hobbies"
     | "avatar_media_id"
     | "profile_details_visible"
     | "text_scale_percent"
@@ -62,9 +65,10 @@ export type UpdateMyProfile = Partial<
 
 export type NewProfile = {
   display_name: string;
-  preferred_language: Language;
+  preferred_language: ContentLanguage;
   region: Region;
-  languages?: Language[];
+  languages?: ContentLanguage[];
+  profile_details_visible?: boolean;
   age_band?: string;
   happy_to_help_with?: string;
   intro?: string;
@@ -74,21 +78,18 @@ export type Circle = {
   id: string;
   region: Region;
   unit_type: string;
+  status?: string;
   name: string;
   name_translations: Partial<Record<Language, unknown>>;
 };
 
 export type CircleUnitType =
-  | "city"
-  | "association"
-  | "han"
-  | "para"
-  | "moholla"
-  | "building";
+  "city" | "association" | "han" | "para" | "moholla" | "building";
 
 export type MembershipRole = "member" | "leader" | "coordinator";
 
 export type CircleDetail = Circle & {
+  parent_id: string | null;
   approx_lat: number | null;
   approx_lng: number | null;
   open_to_nearby: boolean;
@@ -108,6 +109,7 @@ export type CircleMembership = {
 export type NewCircle = {
   name: string;
   unit_type: CircleUnitType;
+  parent_id?: string;
   region?: Region;
   open_to_nearby?: boolean;
   approx_lat?: number;
@@ -132,6 +134,10 @@ export type Exchange = {
   requester_confirmed_at: string | null;
   helper_confirmed_at: string | null;
   meet_place_note: string | null;
+  can_manage?: boolean;
+  can_manage_pickup?: boolean;
+  can_chat?: boolean;
+  can_thank?: boolean;
 };
 
 export type LoanExtension = {
@@ -172,6 +178,9 @@ export type ChatMessage = {
   sender_user_id: string | null;
   kind: string;
   body: string | null;
+  original_body?: string | null;
+  lang: ContentLanguage | null;
+  edited_at: string | null;
   deleted: boolean;
   created_at: string;
 };
@@ -216,11 +225,7 @@ export type ProxyGrant = {
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";
 export type RippleStage =
-  | "direct"
-  | "family"
-  | "han"
-  | "association"
-  | "nearby";
+  "direct" | "family" | "han" | "association" | "nearby";
 
 export type RequestSummary = {
   id: string;
@@ -228,7 +233,7 @@ export type RequestSummary = {
   kind: RequestKind;
   status: string;
   polite_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   listing_id: string | null;
   direct_to_user_id: string | null;
   needed_from: string | null;
@@ -243,6 +248,10 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 const MAX_REQUEST_PAGES = 10;
 
 type ListingRequestOptions = { authUserId?: string; signal?: AbortSignal };
+
+export function actingForHeaders(actingFor?: string) {
+  return actingFor ? { "X-Acting-For": actingFor } : undefined;
+}
 
 export async function request<T>(
   path: string,
@@ -349,7 +358,7 @@ export type CreateListingBody = {
   kind: ListingKind;
   category_id: string;
   title: string;
-  lang: Language;
+  lang: ContentLanguage;
   lend_mode: "lend" | "help_only";
   media_ids: string[];
   description?: string;
@@ -454,10 +463,16 @@ export const api = {
       authUserId,
     });
   },
-  getListing: (id: string, signal?: AbortSignal, authUserId?: string) =>
+  getListing: (
+    id: string,
+    signal?: AbortSignal,
+    authUserId?: string,
+    actingFor?: string,
+  ) =>
     request<ListingDetail>(`/listings/${encodeURIComponent(id)}`, {
       signal,
       authUserId,
+      headers: actingForHeaders(actingFor),
     }),
   updateListing: (
     id: string,
@@ -499,7 +514,11 @@ export const api = {
       body: JSON.stringify(preferences),
     }),
   draftIntroCard: (
-    body: { skills: string; happy_to_help_with?: string; language: Language },
+    body: {
+      skills: string;
+      happy_to_help_with?: string;
+      language: ContentLanguage;
+    },
     options?: ListingRequestOptions,
   ) =>
     request<{ intro: string }>("/ai/intro-cards", {
@@ -526,63 +545,107 @@ export const api = {
     query.set("status", "scheduled,active,returned");
     return request<Page<Exchange>>(`/users/me/exchanges?${query}`);
   },
-  getExchange: (id: string) =>
-    request<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
-  listConversations: (cursor?: string | null) =>
-    request<Page<Conversation>>(`/users/me/conversations?${pageQuery(cursor)}`),
-  getConversation: (id: string) =>
-    request<Conversation>(`/conversations/${encodeURIComponent(id)}`),
-  listMessages: (id: string, before?: string | null) => {
+  getExchange: (id: string, actingFor?: string) =>
+    request<Exchange>(`/exchanges/${encodeURIComponent(id)}`, {
+      headers: actingForHeaders(actingFor),
+    }),
+  listConversations: (cursor?: string | null, actingFor?: string) =>
+    request<Page<Conversation>>(
+      `/users/me/conversations?${pageQuery(cursor)}`,
+      { headers: actingForHeaders(actingFor) },
+    ),
+  getConversation: (id: string, actingFor?: string) =>
+    request<Conversation>(`/conversations/${encodeURIComponent(id)}`, {
+      headers: actingForHeaders(actingFor),
+    }),
+  listMessages: (id: string, before?: string | null, actingFor?: string) => {
     const query = new URLSearchParams({
       limit: "20",
       ...(before ? { before } : {}),
     });
     return request<Page<ChatMessage>>(
       `/conversations/${encodeURIComponent(id)}/messages?${query}`,
+      { headers: actingForHeaders(actingFor) },
     );
   },
-  sendMessage: (id: string, body: string, clientMessageId: string) =>
+  translateChatMessage: (
+    conversationId: string,
+    messageId: string,
+    target: ContentLanguage,
+    actingFor?: string,
+  ) =>
+    request<{ translated: string }>(
+      `/conversations/${conversationId}/messages/${messageId}/translations`,
+      {
+        method: "POST",
+        headers: actingForHeaders(actingFor),
+        body: JSON.stringify({ target_language: target }),
+      },
+    ),
+  sendMessage: (
+    id: string,
+    body: string,
+    clientMessageId: string,
+    actingFor?: string,
+    authUserId?: string,
+  ) =>
     request<ChatMessage>(`/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
+      authUserId,
       body: JSON.stringify({
         kind: "text",
         body,
         client_message_id: clientMessageId,
       }),
     }),
-  markConversationRead: (id: string) =>
+  markConversationRead: (id: string, actingFor?: string) =>
     request<unknown>(
       `/conversations/${encodeURIComponent(id)}/participants/me`,
       {
         method: "PATCH",
+        headers: actingForHeaders(actingFor),
         body: JSON.stringify({ mark_read: true }),
       },
     ),
   getHome: () => request<HomeView>("/users/me/home"),
-  getPublicProfile: (id: string) =>
+  getPublicProfile: (id: string, actingFor?: string) =>
     request<{ id: string; display_name: string }>(
       `/users/${encodeURIComponent(id)}`,
+      { headers: actingForHeaders(actingFor) },
     ),
-  advanceLoan: (id: string, action: "hand-over" | "return" | "confirm") =>
+  advanceLoan: (
+    id: string,
+    action: "hand-over" | "return" | "confirm",
+    actingFor?: string,
+  ) =>
     request<Exchange>(`/exchanges/${encodeURIComponent(id)}/${action}`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
     }),
-  listExtensions: (id: string, cursor?: string | null) =>
+  listExtensions: (id: string, cursor?: string | null, actingFor?: string) =>
     request<Page<LoanExtension>>(
       `/exchanges/${encodeURIComponent(id)}/extensions?${pageQuery(cursor)}`,
+      { headers: actingForHeaders(actingFor) },
     ),
   requestExtension: (
     id: string,
     body: { new_due_at: string; message?: string },
+    actingFor?: string,
   ) =>
     request<LoanExtension>(`/exchanges/${encodeURIComponent(id)}/extensions`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
       body: JSON.stringify(body),
     }),
-  decideExtension: (id: string, decision: "accept" | "decline") =>
+  decideExtension: (
+    id: string,
+    decision: "accept" | "decline",
+    actingFor?: string,
+  ) =>
     request<LoanExtension>(
       `/loan-extensions/${encodeURIComponent(id)}/${decision}`,
-      { method: "POST" },
+      { method: "POST", headers: actingForHeaders(actingFor) },
     ),
   listNotifications: (unreadOnly: boolean, cursor?: string | null) => {
     const query = pageQuery(cursor);
@@ -605,9 +668,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(profile),
     }),
-  previewCircleInvite: (code: string) =>
+  previewCircleInvite: (code: string, authUserId?: string) =>
     request<{ circle: Circle; auto_approve: boolean }>(
       `/circle-invites/${encodeURIComponent(code)}`,
+      { authUserId },
     ),
   findNearbyCircles: (latitude: number, longitude: number, cursor?: string) => {
     const query = new URLSearchParams({
@@ -648,7 +712,7 @@ export const api = {
         "/users/me/proxy-grants?as=caretaker",
       )
     ).items,
-  listOpenRequests: async ({
+  listFamilyRequests: async ({
     actingFor,
     signal,
   }: {
@@ -662,7 +726,10 @@ export const api = {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const query = new URLSearchParams({ status: "open", limit: "50" });
+      const query = new URLSearchParams({
+        status: "open,matched,in_progress,done,cancelled,expired",
+        limit: "50",
+      });
       if (cursor) query.set("cursor", cursor);
       const page: Page<RequestSummary> = await request(
         `/users/me/requests?${query}`,

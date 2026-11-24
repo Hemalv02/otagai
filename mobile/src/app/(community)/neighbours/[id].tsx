@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
 import { CommunityScreen } from "@/components/community-screen";
+import { PublishedThankYous } from "@/components/published-thank-yous";
 import { NeighbourHeading } from "@/components/neighbour-ui";
 import { Button } from "@/components/ui";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/neighbour-api";
 import { neighbourCopy, shortExchangeDate } from "@/lib/neighbour-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { recognitionCopy } from "@/lib/recognition-copy";
 import { useSession } from "@/lib/session";
 import { colors, controls, fonts, spacing } from "@/theme/tokens.json";
 
@@ -47,6 +49,7 @@ function NeighbourProfile({
   const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
+  const recognition = recognitionCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
   const resource = useLiveResource(
     useCallback(async () => {
@@ -77,6 +80,10 @@ function NeighbourProfile({
       const page = await optionalVisible(api.openRequests(id));
       return page?.items ?? [];
     }, [api, authUserId, id, profileId]),
+  );
+  const profileThanks = useCallback(
+    (cursor?: string | null) => api.profileThankYous(id, cursor),
+    [api, id],
   );
   const data = resource.data?.status === "ready" ? resource.data : null;
   const available = listing.data;
@@ -135,6 +142,12 @@ function NeighbourProfile({
                 <ActivityText strong>{copy.happyToHelp}</ActivityText>
                 <ActivityText>{data.person.happy_to_help_with}</ActivityText>
               </View>
+            </View>
+          ) : null}
+          {data.person.hobbies ? (
+            <View>
+              <ActivityText strong>{recognition.hobbies}</ActivityText>
+              <ActivityText>{data.person.hobbies}</ActivityText>
             </View>
           ) : null}
           {available && !listing.error ? (
@@ -214,6 +227,8 @@ function NeighbourProfile({
             error={openRequests.error}
             retry={openRequests.reload}
           />
+          <NeighbourHeading>{recognition.profileThanks}</NeighbourHeading>
+          <PublishedThankYous loadPage={profileThanks} empty={recognition.profileEmpty} />
           <NeighbourHeading>{copy.history}</NeighbourHeading>
           <PairHistory
             authUserId={authUserId}

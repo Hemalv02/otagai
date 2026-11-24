@@ -1,6 +1,9 @@
 import {
+  type CircleMembership,
   type FamilyLink,
+  type ContentLanguage,
   type Language,
+  type Page,
   type ProxyGrant,
   type Region,
   request,
@@ -13,6 +16,12 @@ import type {
   ScopeChoice,
 } from "@/lib/family-consent";
 
+import type {
+  RequestTone,
+  RequestWording,
+  WordingInput,
+} from "@/lib/request-wording";
+
 export type DestinationCircle = {
   id: string;
   name: string;
@@ -23,10 +32,10 @@ export type DestinationCircle = {
 
 export type NewManagedMember = {
   display_name: string;
-  preferred_language: Language;
+  preferred_language: ContentLanguage;
   region: Region;
   grant: {
-    caretaker_role: "family";
+    caretaker_role: "family" | "welfare_volunteer";
     consent_method: ConsentMethod;
     scopes: ExplicitScopes;
   };
@@ -35,11 +44,16 @@ export type NewManagedMember = {
 export type ActingRequestBody = {
   kind: "help";
   raw_text: string;
-  lang: Language;
+  lang: ContentLanguage;
+  tone?: RequestTone;
   home_circle_id: string;
 };
 
 type Write = { authUserId: string };
+
+export type ManagedMemberships = Page<CircleMembership> & {
+  member: { id: string; display_name: string };
+};
 
 function post<T>(path: string, body: unknown, { authUserId }: Write) {
   return request<T>(path, {
@@ -51,6 +65,10 @@ function post<T>(path: string, body: unknown, { authUserId }: Write) {
 
 function actingHeaders(memberId: string) {
   return { "X-Acting-For": memberId };
+}
+
+function managedMembershipPath(memberId: string) {
+  return `/managed-users/${encodeURIComponent(memberId)}/memberships`;
 }
 
 export const familyApi = {
@@ -75,6 +93,24 @@ export const familyApi = {
     post<{ user: { id: string; display_name: string }; grant: ProxyGrant }>(
       "/managed-users",
       body,
+      write,
+    ),
+  managedMemberships: (
+    memberId: string,
+    authUserId: string,
+    cursor?: string,
+  ) => {
+    const query = new URLSearchParams({ limit: "20" });
+    if (cursor) query.set("cursor", cursor);
+    return request<ManagedMemberships>(
+      `${managedMembershipPath(memberId)}?${query}`,
+      { authUserId },
+    );
+  },
+  joinManagedCircle: (memberId: string, inviteCode: string, write: Write) =>
+    post<CircleMembership>(
+      managedMembershipPath(memberId),
+      { invite_code: inviteCode },
       write,
     ),
   linkFamily: (
@@ -144,6 +180,19 @@ export const familyApi = {
         { headers: actingHeaders(memberId), signal, authUserId },
       )
     ).items,
+  draftFor: (
+    memberId: string,
+    body: WordingInput & { home_circle_id: string },
+    { authUserId }: Write,
+    signal: AbortSignal,
+  ) =>
+    request<RequestWording>("/ai/request-drafts", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: actingHeaders(memberId),
+      authUserId,
+      signal,
+    }),
   postFor: (memberId: string, body: ActingRequestBody, write: Write) =>
     request<RequestSummary>("/requests", {
       method: "POST",

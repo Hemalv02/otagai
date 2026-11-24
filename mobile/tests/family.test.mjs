@@ -88,6 +88,7 @@ test("the signed-in account comes first, then everyone with an active grant", ()
       isSelf: true,
       canViewActivity: true,
       canPostRequests: true,
+      canManageCircles: false,
     },
     {
       id: "u-mum",
@@ -95,6 +96,7 @@ test("the signed-in account comes first, then everyone with an active grant", ()
       isSelf: false,
       canViewActivity: true,
       canPostRequests: true,
+      canManageCircles: false,
     },
     {
       id: "u-grandpa",
@@ -102,8 +104,44 @@ test("the signed-in account comes first, then everyone with an active grant", ()
       isSelf: false,
       canViewActivity: false,
       canPostRequests: true,
+      canManageCircles: false,
     },
   ]);
+});
+
+test("only a managed account's creator can enroll it, independently of posting permissions", () => {
+  const { accounts } = buildFamilyOverview(
+    self,
+    [],
+    [
+      grant({
+        other: { id: "u-mum", display_name: "Mum", kind: "managed" },
+        can_change_scopes: true,
+        can_post_requests: false,
+        can_view_activity: false,
+      }),
+      grant({
+        member_user_id: "u-not-mine",
+        other: { id: "u-not-mine", display_name: "Cousin", kind: "managed" },
+        can_change_scopes: false,
+      }),
+      grant({
+        member_user_id: "u-self",
+        other: { id: "u-self", display_name: "Dad", kind: "self" },
+        can_change_scopes: true,
+      }),
+    ],
+  );
+
+  assert.deepEqual(
+    accounts.map(({ id, canManageCircles }) => [id, canManageCircles]),
+    [
+      [self.id, false],
+      ["u-mum", true],
+      ["u-not-mine", false],
+      ["u-self", false],
+    ],
+  );
 });
 
 test("grants without a profile, for someone else, or duplicated are skipped", () => {

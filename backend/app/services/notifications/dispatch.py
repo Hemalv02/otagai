@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from sqlalchemy import select, update
+from sqlalchemy import ARRAY, Uuid, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,12 +60,19 @@ async def enqueue_ripple_push(
     ]
     if not ids:
         return
+    ordered = (
+        func.unnest(cast(ids, ARRAY(Uuid)))
+        .table_valued("notification_id", with_ordinality="position")
+        .render_derived()
+    )
+    available_at = func.now() + (ordered.c.position - 1) * timedelta(microseconds=1)
     devices = (
-        select(Notification.id, PushToken.id)
+        select(Notification.id, PushToken.id, available_at)
+        .select_from(ordered)
+        .join(Notification, Notification.id == ordered.c.notification_id)
         .join(User, User.id == Notification.user_id)
         .join(PushToken, PushToken.user_id == User.id)
         .where(
-            Notification.id.in_(ids),
             User.status == UserStatus.ACTIVE,
             User.push_enabled.is_(True),
             PushToken.disabled_at.is_(None),
@@ -73,7 +80,7 @@ async def enqueue_ripple_push(
     )
     await session.execute(
         insert(PushDelivery)
-        .from_select(["notification_id", "push_token_id"], devices)
+        .from_select(["notification_id", "push_token_id", "available_at"], devices)
         .on_conflict_do_nothing(index_elements=["notification_id", "push_token_id"])
     )
 

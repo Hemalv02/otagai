@@ -2,12 +2,13 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import FamilyLink, PairStats, ProxyGrant, User
 from app.database.models.enums import (
     LinkStatus,
     NotificationType,
-    Region,
     UserKind,
     UserStatus,
 )
@@ -20,13 +21,14 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.pair_stats import PairStatsRepository
 from app.repositories.proxy_grants import DuplicateGrantError, ProxyGrantRepository
 from app.repositories.users import UserRepository
+from app.services.culture_packs import culture_pack_for
 from app.services.errors import (
     BadRequestError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
 )
-from app.services.users.service import REGION_TIMEZONES, ordered_languages
+from app.services.users.service import ordered_languages
 
 
 class UserNotFoundError(NotFoundError):
@@ -99,11 +101,13 @@ class NewGrant:
     consent_witness_user_id: uuid.UUID | None
 
 
-async def _authority_over(
-    session, caller_id: uuid.UUID, member_id: uuid.UUID, *, for_update: bool = False
-) -> bool:
-    if caller_id == member_id:
-        return True
+async def get_managed_profile_for_creator(
+    session: AsyncSession,
+    caller_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+) -> User | None:
     member = await UserRepository(session).get(member_id)
     if (
         member is None
@@ -111,11 +115,28 @@ async def _authority_over(
         or member.status != UserStatus.ACTIVE.value
         or member.created_by_user_id != caller_id
     ):
-        return False
+        return None
     grant = await ProxyGrantRepository(session).get_active(
         member_user_id=member_id, caretaker_user_id=caller_id, for_update=for_update
     )
-    return grant is not None
+    return member if grant is not None else None
+
+
+async def _authority_over(
+    session: AsyncSession,
+    caller_id: uuid.UUID,
+    member_id: uuid.UUID,
+    *,
+    for_update: bool = False,
+) -> bool:
+    if caller_id == member_id:
+        return True
+    return (
+        await get_managed_profile_for_creator(
+            session, caller_id, member_id, for_update=for_update
+        )
+        is not None
+    )
 
 
 async def list_neighbours(database: Database, user: User) -> list[NeighbourView]:
@@ -153,7 +174,7 @@ async def create_managed_user(
                     profile.preferred_language, profile.languages
                 ),
                 "region": profile.region,
-                "timezone": REGION_TIMEZONES[Region(profile.region)],
+                "timezone": culture_pack_for(profile.region).timezone,
                 "age_band": profile.age_band,
                 "created_by_user_id": caretaker.id,
             }
@@ -399,8 +420,15 @@ async def revoke_proxy_grant(
         grant = await repository.get_for_update(grant_id)
         if grant is None:
             raise GrantNotFoundError
-        if grant.revoked_at is not None:
-            return grant
-        return await repository.update(
-            grant, {"revoked_at": datetime.now(UTC), "revoked_by_user_id": user.id}
-        )
+        if grant.revoked_at is None:
+            grant = await repository.update(
+                grant, {"revoked_at": datetime.now(UTC), "revoked_by_user_id": user.id}
+            )
+        subject = await UserRepository(session).get(grant.member_user_id)
+        if (
+            subject is not None
+            and subject.kind == UserKind.MANAGED.value
+            and subject.created_by_user_id == grant.caretaker_user_id
+        ):
+            await repository.revoke_delegates(grant)
+        return grant

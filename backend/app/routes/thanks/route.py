@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.database.models import PointsEntry, ThankYou
 from app.database.models.enums import Currency, GiftType, Language
-from app.routes.dependencies import ActorDep, DatabaseDep
+from app.routes.dependencies import ActorDep, CurrentUserDep, DatabaseDep
 from app.routes.pagination import Page, PageQuery
 from app.services.thanks.service import (
     NewThankYou,
@@ -40,6 +40,7 @@ class CreateThankYouBody(BaseModel):
     currency: Currency | None = None
     points_amount: int | None = Field(default=None, gt=0, le=100_000)
     ai_drafted: bool = False
+    allow_wall_sharing: bool = False
 
 
 class WallBody(BaseModel):
@@ -66,7 +67,21 @@ class ThankYouModel(BaseModel):
     amount_minor: int | None
     currency: str | None
     money_status: str
+    allow_wall_sharing: bool
     show_on_wall: bool
+    created_at: datetime
+
+
+class WallThankYouModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    from_name: str
+    to_name: str
+    note: str
+    lang: str | None
     created_at: datetime
 
 
@@ -103,6 +118,7 @@ async def send_thank_you(
             currency=body.currency.value if body.currency else None,
             points_amount=body.points_amount,
             ai_drafted=body.ai_drafted,
+            allow_wall_sharing=body.allow_wall_sharing,
         ),
     )
     response.headers["Location"] = f"/thank-yous/{thank_you.id}"
@@ -120,11 +136,11 @@ async def read_thank_you(
 async def update_thank_you(
     thank_you_id: uuid.UUID,
     body: WallBody,
-    actor: ActorDep,
+    user: CurrentUserDep,
     database: DatabaseDep,
 ) -> ThankYouModel:
     return thank_you_model(
-        await set_wall_visibility(database, actor, thank_you_id, body.show_on_wall)
+        await set_wall_visibility(database, user.id, thank_you_id, body.show_on_wall)
     )
 
 
@@ -178,8 +194,8 @@ async def my_points_entries(
 async def circle_wall(
     circle_id: uuid.UUID,
     query: Annotated[PageQuery, Query()],
-    actor: ActorDep,
+    user: CurrentUserDep,
     database: DatabaseDep,
-) -> Page[ThankYouModel]:
-    result = await list_circle_wall(database, actor, circle_id, query.page())
-    return Page.build(result, ThankYouModel)
+) -> Page[WallThankYouModel]:
+    result = await list_circle_wall(database, user.id, circle_id, query.page())
+    return Page.build(result, WallThankYouModel)

@@ -217,12 +217,16 @@ class ListingSummaryModel(BaseModel):
 
 
 class RequestDetailModel(RequestSummary):
+    region: str
     raw_text: str
     tone: str
     category_id: uuid.UUID | None
     home_circle_id: uuid.UUID
     expires_at: datetime
     my_role: str
+    can_manage: bool
+    can_chat: bool
+    can_thank: bool
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
@@ -255,12 +259,16 @@ class ReceivedItem(BaseModel):
 def request_detail(view: RequestDetail) -> RequestDetailModel:
     return RequestDetailModel(
         **RequestSummary.model_validate(view.request).model_dump(),
+        region=view.request.region,
         raw_text=view.request.raw_text,
         tone=view.request.tone,
         category_id=view.request.category_id,
         home_circle_id=view.request.home_circle_id,
         expires_at=view.request.expires_at,
         my_role=view.my_role,
+        can_manage=view.can_manage,
+        can_chat=view.can_chat,
+        can_thank=view.can_thank,
         my_response_status=view.my_response_status,
         my_response_id=view.my_response_id,
         exchange_id=view.exchange_id,

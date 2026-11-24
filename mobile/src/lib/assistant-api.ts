@@ -1,9 +1,16 @@
+import type {
+  DraftRelationship,
+  RequestTone,
+  RequestWording,
+  WordingInput,
+} from "@/lib/request-wording";
 import type { RippleScope } from "@/lib/request-ripple";
 import { File as ExpoFile } from "expo-file-system";
 
 import {
   ApiError,
   request as apiRequest,
+  type ContentLanguage,
   type Language,
   type Page,
 } from "@/lib/api";
@@ -24,7 +31,7 @@ export type ListingSummary = {
 
 export type ListingDetail = Omit<ListingSummary, "photo_url"> & {
   description: string | null;
-  lang: Language;
+  lang: ContentLanguage;
   safety_notes: string | null;
   availability_note: string | null;
   max_loan_days: number | null;
@@ -64,19 +71,16 @@ export type AssistantTurn = {
   reply: string;
   no_matches: boolean;
   clarification:
-    | "task"
-    | "tool"
-    | "tool_or_help"
-    | "material"
-    | "timing"
-    | "photo"
-    | null;
+    "task" | "tool" | "tool_or_help" | "material" | "timing" | "photo" | null;
   cards: AssistantCard[];
   draft: {
     kind: RequestKind;
     title: string;
     description: string;
     when_text: string | null;
+    language: ContentLanguage;
+    tone: RequestTone;
+    relationship: DraftRelationship;
     status: "awaiting_confirmation" | "posted";
   } | null;
   image_media_id: string | null;
@@ -95,6 +99,10 @@ export type AssistantThread = {
 export type ConfirmRequest = {
   kind: RequestKind;
   text: string;
+  title?: string;
+  language?: ContentLanguage;
+  tone?: RequestTone;
+  relationship?: DraftRelationship;
   listing_id?: string;
   home_circle_id?: string;
   ripple_start_stage?: "family" | "han";
@@ -106,7 +114,7 @@ export type PostedRequest = {
   kind: RequestKind;
   status: "open" | "matched" | "in_progress" | "done" | "cancelled" | "expired";
   polite_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   listing_id: string | null;
   direct_to_user_id: string | null;
 };
@@ -176,11 +184,20 @@ export const assistantApi = {
       paginate(`/assistant/threads/${threadId}/turns`, cursor),
     ),
   send: (body: {
-    language: Language;
+    language: ContentLanguage;
     text?: string;
     image_media_id?: string;
     previous_turn_id?: string;
   }) => post<AssistantTurn>("/assistant/turns", body),
+  draftWording: (
+    turnId: string,
+    body: WordingInput & { listing_id?: string },
+    signal: AbortSignal,
+  ) =>
+    apiRequest<RequestWording>(
+      `/assistant/turns/${encodeURIComponent(turnId)}/drafts`,
+      { method: "POST", body: JSON.stringify(body), signal },
+    ),
   confirm: (turnId: string, body: ConfirmRequest) =>
     post<PostedRequest>(`/assistant/turns/${turnId}/confirm`, body),
   listing: (id: string) => request<ListingDetail>(`/listings/${id}`),
@@ -195,7 +212,11 @@ export const assistantApi = {
   },
   transcribe: (id: string) =>
     post<{ text: string }>("/ai/transcriptions", { media_id: id }),
-  translate: (text: string, from: Language, to: Language) =>
+  translate: (
+    text: string,
+    from: ContentLanguage | null,
+    to: ContentLanguage,
+  ) =>
     post<{ translated: string }>("/ai/translations", {
       text,
       source_language: from,

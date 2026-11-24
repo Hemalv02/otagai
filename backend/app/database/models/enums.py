@@ -21,6 +21,7 @@ class Language(StrEnum):
     JA = "ja"
     EN = "en"
     BN = "bn"
+    VI = "vi"
 
 
 class AgeBand(StrEnum):

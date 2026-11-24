@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { RequestWordingReview } from "@/components/request-wording-review";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import type { Circle, Language } from "@/lib/api";
 import {
@@ -33,6 +34,7 @@ import {
   type Review,
 } from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
+import { draftLanguageNames, wordingCopy } from "@/lib/request-wording-copy";
 import { useLocalizedType } from "@/lib/onboarding-i18n";
 import {
   rippleCopy,
@@ -386,11 +388,29 @@ export function ConversationTurn({
               >
                 {copy.pending}
               </Text>
-              <Text style={[label, styles.ink]}>{turn.draft.title}</Text>
+              <Text
+                style={[
+                  localizedType("field-label", turn.draft.language),
+                  styles.ink,
+                ]}
+              >
+                {turn.draft.title}
+              </Text>
+              <Text
+                style={[localizedType("supporting", locale), styles.secondary]}
+              >
+                {wordingCopy[locale].relationships[turn.draft.relationship]} ·{" "}
+                {draftLanguageNames[turn.draft.language]}
+              </Text>
             </View>
           </View>
           <View style={styles.draftBody}>
-            <Text style={[localizedType("supporting", locale), styles.ink]}>
+            <Text
+              style={[
+                localizedType("supporting", turn.draft.language),
+                styles.ink,
+              ]}
+            >
               {turn.draft.description}
             </Text>
             {turn.draft.when_text ? (
@@ -458,7 +478,7 @@ export function AssistantSheet({
 }
 
 export function ReviewSheet({
-  review,
+  review: originalReview,
   homeCircle,
   locale,
   busy,
@@ -476,6 +496,11 @@ export function ReviewSheet({
 }) {
   const localizedType = useLocalizedType();
   const copy = assistantCopy[locale];
+  const [review, setReview] = useState(originalReview);
+  const [beforeRewrite, setBeforeRewrite] = useState<{
+    description: string;
+    when: string;
+  } | null>(null);
   const [description, setDescription] = useState(review.text);
   const [when, setWhen] = useState(review.when);
   const [scope, setScope] = useState<RippleScope>("han");
@@ -499,7 +524,8 @@ export function ReviewSheet({
     validation = copy.removeTiming;
   else if (!body) validation = copy.requestTooLong;
   const label = localizedType("field-label", locale);
-  const text = localizedType("body", locale);
+  const wording = wordingCopy[locale];
+  const text = localizedType("body", review.language ?? locale);
   return (
     <AssistantSheet
       title={copy.review}
@@ -530,13 +556,24 @@ export function ReviewSheet({
       <View style={styles.reviewHeading}>
         <Text style={[label, styles.green]}>{copy[review.kind]}</Text>
         {review.title ? (
-          <Text style={[localizedType("card-title", locale), styles.ink]}>
+          <Text
+            style={[
+              localizedType("card-title", review.language ?? locale),
+              styles.ink,
+            ]}
+          >
             {review.title}
           </Text>
         ) : null}
         {review.recipient ? (
           <Text style={[localizedType("supporting", locale), styles.secondary]}>
             {copy.to} · {review.recipient}
+          </Text>
+        ) : null}
+        {review.language || review.relationship ? (
+          <Text style={[localizedType("supporting", locale), styles.secondary]}>
+            {wording.relationships[review.relationship ?? "neighbor"]}
+            {review.language ? ` · ${draftLanguageNames[review.language]}` : ""}
           </Text>
         ) : null}
       </View>
@@ -561,6 +598,54 @@ export function ReviewSheet({
         style={text}
         labelStyle={label}
       />
+      <RequestWordingReview
+        locale={locale}
+        defaultLanguage={review.language ?? locale}
+        initialRelationship={review.relationship}
+        source={{
+          text: description.trim(),
+          ...(review.title ? { title: review.title } : {}),
+          ...(when.trim() ? { when_text: when.trim() } : {}),
+        }}
+        generate={(input, signal) =>
+          assistantApi.draftWording(
+            review.turnId,
+            {
+              ...input,
+              ...(review.listingId ? { listing_id: review.listingId } : {}),
+            },
+            signal,
+          )
+        }
+        disabled={busy || !body}
+        onApply={(suggestion) => {
+          setBeforeRewrite((current) => current ?? { description, when });
+          setReview({
+            ...review,
+            title: suggestion.title,
+            when: suggestion.when_text ?? "",
+            language: suggestion.language,
+            tone: suggestion.tone,
+            relationship: suggestion.relationship,
+          });
+          setDescription(suggestion.message);
+          setWhen(suggestion.when_text ?? "");
+        }}
+      />
+      {beforeRewrite ? (
+        <Button
+          label={wording.restore}
+          labelStyle={label}
+          variant="text"
+          disabled={busy}
+          onPress={() => {
+            setReview(originalReview);
+            setDescription(beforeRewrite.description);
+            setWhen(beforeRewrite.when);
+            setBeforeRewrite(null);
+          }}
+        />
+      ) : null}
       {!review.listingId && homeCircle ? (
         <View style={styles.reviewHeading}>
           <Text style={[label, styles.ink]}>{delivery.limit}</Text>

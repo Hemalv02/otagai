@@ -901,3 +901,146 @@ async def test_grant_lists_say_who_can_change_scopes(client):
     ).json()["items"]
     assert as_member["can_change_scopes"] is True
     assert as_caretaker["can_change_scopes"] is False
+
+
+async def test_ending_managed_creator_access_ends_delegated_access(client):
+    creator = await make_user(client, display_name="Volunteer")
+    delegate = await make_user(client)
+    created = await client.post(
+        "/managed-users",
+        headers=auth(creator),
+        json={
+            "display_name": "Amina",
+            "preferred_language": "bn",
+            "region": "bd",
+            "grant": {**_grant_body(), "caretaker_role": "welfare_volunteer"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    member = created.json()["user"]["id"]
+    creator_grant = created.json()["grant"]["id"]
+    await give_grant(
+        client, creator, member, await me_id(client, delegate), "can_view_activity"
+    )
+    path = "/users/me/requests"
+    delegate_headers = acting(delegate, member)
+    assert (await client.get(path, headers=delegate_headers)).status_code == 200
+    assert (
+        await client.post(
+            f"/proxy-grants/{creator_grant}/revoke", headers=auth(creator)
+        )
+    ).status_code == 200
+    assert (await client.get(path, headers=delegate_headers)).status_code == 403
+
+
+async def test_proxy_request_details_reflect_current_management_scope(client):
+    ctx = await pair(client)
+    await circle_in(client, ctx["member"], "jp")
+    posted = await post_help(client, auth(ctx["member"]))
+    path = f"/requests/{posted.json()['id']}"
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_view_activity",
+    )
+    headers = acting(ctx["caretaker"], ctx["member_id"])
+    read_only = await client.get(path, headers=headers)
+    assert read_only.status_code == 200, read_only.text
+    assert read_only.json()["can_manage"] is False
+    assert read_only.json()["can_thank"] is False
+    denied = await client.patch(path, headers=headers, json={"polite_text": "Updated"})
+    assert denied.status_code == 403, denied.text
+    updated = await client.patch(
+        f"/proxy-grants/{grant_id}",
+        headers=auth(ctx["member"]),
+        json={"can_post_requests": True},
+    )
+    assert updated.status_code == 200, updated.text
+    allowed = await client.patch(path, headers=headers, json={"polite_text": "Updated"})
+    assert allowed.status_code == 200, allowed.text
+    assert allowed.json()["can_manage"] is True
+    assert allowed.json()["polite_text"] == "Updated"
+    cancelled = await client.post(f"{path}/cancel", headers=headers)
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["status"] == "cancelled"
+
+
+async def test_proxy_help_exchange_writes_require_posting_consent(client):
+    ctx = await pair(client)
+    helper = await make_user(client)
+    circle = await circle_in(client, ctx["member"], "jp", helper)
+    posted = await post_help(client, auth(ctx["member"]), home_circle_id=circle)
+    path = f"/requests/{posted.json()['id']}"
+    offered = await client.post(
+        f"{path}/responses", headers=auth(helper), json={"kind": "offer"}
+    )
+    assert offered.status_code == 201, offered.text
+    accepted = await client.post(
+        f"{path}/responses/{offered.json()['id']}/accept", headers=auth(ctx["member"])
+    )
+    assert accepted.status_code == 200, accepted.text
+    exchange_id = (await client.get(path, headers=auth(ctx["member"]))).json()[
+        "exchange_id"
+    ]
+    exchange_path = f"/exchanges/{exchange_id}"
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_view_activity",
+    )
+    headers = acting(ctx["caretaker"], ctx["member_id"])
+    assert (await client.get(exchange_path, headers=headers)).status_code == 200
+    assert (
+        await client.post(f"{exchange_path}/hand-over", headers=headers)
+    ).status_code == 403
+    updated = await client.patch(
+        f"/proxy-grants/{grant_id}",
+        headers=auth(ctx["member"]),
+        json={"can_post_requests": True},
+    )
+    assert updated.status_code == 200
+    assert (
+        await client.post(f"{exchange_path}/hand-over", headers=headers)
+    ).status_code == 200
+    assert (
+        await client.post(f"{exchange_path}/confirm", headers=headers)
+    ).status_code == 200
+    completed = await client.post(f"{exchange_path}/confirm", headers=auth(helper))
+    assert completed.status_code == 200 and completed.json()["status"] == "completed"
+
+
+async def test_one_caretaker_cannot_confirm_two_principals_exchange(client):
+    from tests.integration.conftest import matched_exchange
+
+    match = await matched_exchange(client)
+    caretaker = await make_user(client, display_name="Shared caretaker")
+    caretaker_id = await me_id(client, caretaker)
+    requester, helper = match["requester"], match["helper"]
+    requester_id = await me_id(client, requester)
+    helper_id = await me_id(client, helper)
+    for principal, member_id in ((requester, requester_id), (helper, helper_id)):
+        await give_grant(
+            client,
+            principal,
+            member_id,
+            caretaker_id,
+            "can_view_activity",
+            "can_post_requests",
+        )
+    path = f"/exchanges/{match['exchange_id']}"
+    started = await client.post(f"{path}/hand-over", headers=auth(helper))
+    assert started.status_code == 200, started.text
+    first = await client.post(
+        f"{path}/confirm", headers=acting(caretaker, requester_id)
+    )
+    assert first.status_code == 200 and first.json()["status"] == "active", first.text
+    second = await client.post(f"{path}/confirm", headers=acting(caretaker, helper_id))
+    assert second.status_code == 409, second.text
+    independent = await client.post(f"{path}/confirm", headers=auth(helper))
+    assert (
+        independent.status_code == 200 and independent.json()["status"] == "completed"
+    )
