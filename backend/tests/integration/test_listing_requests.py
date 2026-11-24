@@ -1,8 +1,12 @@
 import asyncio
+import uuid
 
 import pytest
+from sqlalchemy import text
 
+from app.database.connection import Database
 from tests.integration.conftest import (
+    _settings,
     auth,
     join_circle,
     make_circle,
@@ -398,3 +402,71 @@ async def test_reopening_an_expired_request_for_a_paused_listing_is_409(client):
     assert widened.status_code == 409, widened.text
     still = await client.get(f"/requests/{stale.json()['id']}", headers=auth(seeker))
     assert still.json()["status"] == "expired"
+
+
+@pytest.mark.parametrize("action", ["withdraw", "cancel_exchange"])
+async def test_reversing_match_keeps_newer_listing_request_open(client, action):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    older = await _post(client, seeker, _body(listing, owner_id))
+    assert older.status_code == 201, older.text
+    request_path = f"/requests/{older.json()['id']}"
+    offer = await client.post(
+        f"{request_path}/responses", headers=auth(owner), json={"kind": "offer"}
+    )
+    assert offer.status_code == 201, offer.text
+    offer_path = f"{request_path}/responses/{offer.json()['id']}"
+    accepted = await client.post(f"{offer_path}/accept", headers=auth(seeker))
+    assert accepted.status_code == 200, accepted.text
+    matched = await client.get(request_path, headers=auth(seeker))
+    assert matched.status_code == 200, matched.text
+    exchange_id = matched.json()["exchange_id"]
+
+    newer = await _post(client, seeker, _body(listing, owner_id))
+    assert newer.status_code == 201, newer.text
+    assert newer.json()["id"] != older.json()["id"]
+    if action == "withdraw":
+        reversed_match = await client.post(
+            f"{offer_path}/withdraw", headers=auth(owner)
+        )
+        assert reversed_match.status_code == 200, reversed_match.text
+        assert reversed_match.json()["status"] == "withdrawn"
+    else:
+        reversed_match = await client.post(
+            f"/exchanges/{exchange_id}/cancel", headers=auth(seeker)
+        )
+        assert reversed_match.status_code == 200, reversed_match.text
+        assert reversed_match.json()["status"] == "cancelled"
+
+    old_detail = await client.get(request_path, headers=auth(seeker))
+    new_detail = await client.get(
+        f"/requests/{newer.json()['id']}", headers=auth(seeker)
+    )
+    assert old_detail.status_code == 200, old_detail.text
+    assert new_detail.status_code == 200, new_detail.text
+    assert old_detail.json()["status"] == "expired"
+    assert new_detail.json()["status"] == "open"
+
+
+async def test_reopening_elapsed_open_listing_request_ignores_itself(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    request = await _post(client, seeker, _body(listing, owner_id))
+    assert request.status_code == 201, request.text
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            await session.execute(
+                text(
+                    "UPDATE help_requests SET expires_at = now() - interval '1 second' WHERE id = :request_id"
+                ),
+                {"request_id": uuid.UUID(request.json()["id"])},
+            )
+    finally:
+        await database.close()
+    widened = await client.post(
+        f"/requests/{request.json()['id']}/widen", headers=auth(seeker)
+    )
+    assert widened.status_code == 200, widened.text
+    assert widened.json()["id"] == request.json()["id"]
+    assert widened.json()["status"] == "open"
