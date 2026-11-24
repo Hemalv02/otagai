@@ -49,6 +49,7 @@ class CreateReportBody(BaseModel):
     reason: ReportReason
     details: ReportDetails | None = None
     circle_id: uuid.UUID | None = None
+    submission_id: uuid.UUID | None = None
 
 
 class ReportModel(BaseModel):
@@ -129,6 +130,7 @@ async def report(
             reason=body.reason.value,
             details=body.details,
             circle_id=body.circle_id,
+            submission_id=body.submission_id,
         ),
     )
     response.headers["Location"] = f"/reports/{created.id}"

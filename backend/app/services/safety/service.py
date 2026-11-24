@@ -4,13 +4,18 @@ from datetime import UTC, datetime
 
 from app.database.connection import Database
 from app.database.models import Report, User
-from app.database.models.enums import ReportStatus
+from app.database.models.enums import ReportStatus, ReportTargetType
 from app.repositories.blocks import BlockRepository
-from app.repositories.circles import MembershipRepository
+from app.repositories.circles import CircleRepository, MembershipRepository
 from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.reports import ReportRepository
 from app.repositories.users import UserRepository
-from app.services.errors import BadRequestError, NotFoundError, PermissionDeniedError
+from app.services.errors import (
+    BadRequestError,
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 
 
 class CannotBlockSelfError(BadRequestError):
@@ -40,6 +45,7 @@ class NewReport:
     reason: str
     details: str | None
     circle_id: uuid.UUID | None
+    submission_id: uuid.UUID | None = None
 
 
 async def block_user(
@@ -77,16 +83,32 @@ async def create_report(
     database: Database, user: User, new_report: NewReport
 ) -> Report:
     async with database.session() as session:
-        return await ReportRepository(session).create(
-            {
-                "reporter_user_id": user.id,
-                "target_type": new_report.target_type,
-                "target_id": new_report.target_id,
-                "reason": new_report.reason,
-                "details": new_report.details,
-                "circle_id": new_report.circle_id,
-            }
+        circle_id = new_report.circle_id
+        if (
+            circle_id is None
+            and new_report.target_type == ReportTargetType.USER.value
+            and new_report.target_id != user.id
+        ):
+            circle_id = await CircleRepository(session).shared_approved_circle_id(
+                user.id, new_report.target_id, prefer_eligible_leader=True
+            )
+        submitted = {
+            "reporter_user_id": user.id,
+            "target_type": new_report.target_type,
+            "target_id": new_report.target_id,
+            "reason": new_report.reason,
+            "details": new_report.details,
+        }
+        report = await ReportRepository(session).create_or_get(
+            new_report.submission_id or uuid.uuid4(),
+            {**submitted, "circle_id": circle_id},
         )
+        if any(getattr(report, name) != value for name, value in submitted.items()) or (
+            new_report.circle_id is not None
+            and report.circle_id != new_report.circle_id
+        ):
+            raise ConflictError("This submission ID was used for a different report.")
+        return report
 
 
 async def list_my_reports(
@@ -107,7 +129,7 @@ async def list_circle_reports(
         if not await MembershipRepository(session).is_leader(circle_id, user.id):
             raise NotCircleLeaderError
         return await ReportRepository(session).list_for_circle(
-            circle_id, statuses, page
+            circle_id, user.id, statuses, page
         )
 
 
@@ -119,6 +141,11 @@ async def resolve_report(
         reports = ReportRepository(session)
         report = await reports.get_for_update(report_id)
         if report is None or report.circle_id is None:
+            raise ReportNotFoundError
+        if (
+            report.target_type == ReportTargetType.USER.value
+            and report.target_id == user.id
+        ):
             raise ReportNotFoundError
         if not await MembershipRepository(session).is_leader(report.circle_id, user.id):
             raise NotCircleLeaderError

@@ -12,6 +12,7 @@ import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestCopy } from "@/lib/request-demo-copy";
 import { activityCopy } from "@/lib/activity-copy";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { type IncomingRequest, requestsApi } from "@/lib/requests-api";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -99,6 +100,12 @@ export default function RequestsScreen() {
         labelStyle={localizedType("button", locale)}
         variant="secondary"
         onPress={() => router.push("/loans")}
+      />
+      <Button
+        label={neighbourCopy[locale].neighbours}
+        labelStyle={label}
+        variant="text"
+        onPress={() => router.push("/neighbours")}
       />
       <View style={styles.tabs}>
         {feeds.map((key) => (

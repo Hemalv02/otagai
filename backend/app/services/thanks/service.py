@@ -10,6 +10,7 @@ from app.database.models.enums import (
     NotificationType,
     PointsReason,
 )
+from app.repositories.blocks import BlockRepository
 from app.repositories.circles import MembershipRepository
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.notifications import NotificationRepository
@@ -74,6 +75,8 @@ async def create_thank_you(
             if sender == exchange.requester_user_id
             else exchange.requester_user_id
         )
+        if await BlockRepository(session).is_blocked_either_way(sender, recipient):
+            raise ThankYouNotFoundError
         money_status = (
             MoneyStatus.OFFERED.value
             if new_thank_you.gift_type == GiftType.MONEY.value

@@ -82,6 +82,15 @@ class CircleRepository:
     ) -> bool:
         if user_id == other_id:
             return True
+        return await self.shared_approved_circle_id(user_id, other_id) is not None
+
+    async def shared_approved_circle_id(
+        self,
+        user_id: uuid.UUID,
+        other_id: uuid.UUID,
+        *,
+        prefer_eligible_leader: bool = False,
+    ) -> uuid.UUID | None:
         mine = aliased(CircleMembership)
         theirs = aliased(CircleMembership)
         statement = (
@@ -93,9 +102,22 @@ class CircleRepository:
                 theirs.user_id == other_id,
                 theirs.status == MembershipStatus.APPROVED.value,
             )
-            .limit(1)
         )
-        return await self._session.scalar(statement) is not None
+        if prefer_eligible_leader:
+            leader = aliased(CircleMembership)
+            has_eligible_leader = (
+                select(leader.user_id)
+                .where(
+                    leader.circle_id == mine.circle_id,
+                    leader.user_id != other_id,
+                    leader.status == MembershipStatus.APPROVED.value,
+                    leader.role == MembershipRole.LEADER.value,
+                )
+                .exists()
+            )
+            statement = statement.order_by(has_eligible_leader.desc())
+        statement = statement.order_by(mine.created_at.desc(), mine.circle_id).limit(1)
+        return await self._session.scalar(statement)
 
     async def search(
         self, criteria: CircleSearch, page: PageRequest
