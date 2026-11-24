@@ -48,6 +48,7 @@ class CreateProfileBody(BaseModel):
     age_band: AgeBand | None = None
     happy_to_help_with: HelpText | None = None
     intro: IntroText | None = None
+    profile_details_visible: bool = False
 
 
 class UpdateProfileBody(BaseModel):
@@ -139,6 +140,7 @@ async def create_me(
         age_band=body.age_band.value if body.age_band else None,
         happy_to_help_with=body.happy_to_help_with,
         intro=body.intro,
+        profile_details_visible=body.profile_details_visible,
     )
     user = await create_profile(database, claims.auth_user_id, new_profile)
     response.headers["Location"] = "/users/me"

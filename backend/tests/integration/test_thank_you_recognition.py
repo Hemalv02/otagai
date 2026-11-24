@@ -134,7 +134,7 @@ async def test_hobbies_follow_profile_visibility(client):
     requester, helper = ctx["requester"], ctx["helper"]
     helper_id = await _user_id(client, helper)
     public = f"/users/{helper_id}"
-    data = {"hobbies": " Gardening and shogi "}
+    data = {"profile_details_visible": True, "hobbies": " Gardening and shogi "}
     saved = await client.patch("/users/me", headers=auth(helper), json=data)
     assert saved.status_code == 200, saved.text
     assert saved.json()["hobbies"] == "Gardening and shogi"

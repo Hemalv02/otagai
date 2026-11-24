@@ -96,7 +96,9 @@ async def test_avatar_must_be_owned_media_400(client):
     other = await make_user(client, display_name="Other")
     # Other cannot set their avatar to media they do not own.
     response = await client.patch(
-        "/users/me", headers=auth(other), json={"avatar_media_id": media_id}
+        "/users/me",
+        headers=auth(other),
+        json={"avatar_media_id": media_id},
     )
     assert response.status_code == 400
 
@@ -118,7 +120,9 @@ async def test_neighbours_can_only_read_a_visible_attached_avatar(client):
     assert (await client.get(media_url, headers=auth(neighbour))).status_code == 404
 
     attached = await client.patch(
-        "/users/me", headers=auth(owner), json={"avatar_media_id": media_id}
+        "/users/me",
+        headers=auth(owner),
+        json={"avatar_media_id": media_id, "profile_details_visible": True},
     )
     assert attached.status_code == 200, attached.text
     assert attached.json()["avatar_media_id"] == media_id

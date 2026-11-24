@@ -67,7 +67,8 @@ export type NewProfile = {
   display_name: string;
   preferred_language: ContentLanguage;
   region: Region;
-  languages?: Language[];
+  languages?: ContentLanguage[];
+  profile_details_visible?: boolean;
   age_band?: string;
   happy_to_help_with?: string;
   intro?: string;
@@ -503,7 +504,11 @@ export const api = {
       body: JSON.stringify(preferences),
     }),
   draftIntroCard: (
-    body: { skills: string; happy_to_help_with?: string; language: Language },
+    body: {
+      skills: string;
+      happy_to_help_with?: string;
+      language: ContentLanguage;
+    },
     options?: ListingRequestOptions,
   ) =>
     request<{ intro: string }>("/ai/intro-cards", {
@@ -594,9 +599,10 @@ export const api = {
       },
     ),
   getHome: () => request<HomeView>("/users/me/home"),
-  getPublicProfile: (id: string) =>
+  getPublicProfile: (id: string, actingFor?: string) =>
     request<{ id: string; display_name: string }>(
       `/users/${encodeURIComponent(id)}`,
+      { headers: actingForHeaders(actingFor) },
     ),
   advanceLoan: (id: string, action: "hand-over" | "return" | "confirm") =>
     request<Exchange>(`/exchanges/${encodeURIComponent(id)}/${action}`, {

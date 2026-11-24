@@ -49,6 +49,7 @@ class NewProfile:
     age_band: str | None
     happy_to_help_with: str | None
     intro: str | None
+    profile_details_visible: bool = False
 
 
 def ordered_languages(preferred: str, languages: list[str]) -> list[str]:
