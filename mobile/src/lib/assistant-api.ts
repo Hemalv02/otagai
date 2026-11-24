@@ -1,3 +1,9 @@
+import type {
+  DraftRelationship,
+  RequestTone,
+  RequestWording,
+  WordingInput,
+} from "@/lib/request-wording";
 import type { RippleScope } from "@/lib/request-ripple";
 import { File as ExpoFile } from "expo-file-system";
 
@@ -64,19 +70,16 @@ export type AssistantTurn = {
   reply: string;
   no_matches: boolean;
   clarification:
-    | "task"
-    | "tool"
-    | "tool_or_help"
-    | "material"
-    | "timing"
-    | "photo"
-    | null;
+    "task" | "tool" | "tool_or_help" | "material" | "timing" | "photo" | null;
   cards: AssistantCard[];
   draft: {
     kind: RequestKind;
     title: string;
     description: string;
     when_text: string | null;
+    language: Language;
+    tone: RequestTone;
+    relationship: DraftRelationship;
     status: "awaiting_confirmation" | "posted";
   } | null;
   image_media_id: string | null;
@@ -95,6 +98,10 @@ export type AssistantThread = {
 export type ConfirmRequest = {
   kind: RequestKind;
   text: string;
+  title?: string;
+  language?: Language;
+  tone?: RequestTone;
+  relationship?: DraftRelationship;
   listing_id?: string;
   home_circle_id?: string;
   ripple_start_stage?: "family" | "han";
@@ -181,6 +188,15 @@ export const assistantApi = {
     image_media_id?: string;
     previous_turn_id?: string;
   }) => post<AssistantTurn>("/assistant/turns", body),
+  draftWording: (
+    turnId: string,
+    body: WordingInput & { listing_id?: string },
+    signal: AbortSignal,
+  ) =>
+    apiRequest<RequestWording>(
+      `/assistant/turns/${encodeURIComponent(turnId)}/drafts`,
+      { method: "POST", body: JSON.stringify(body), signal },
+    ),
   confirm: (turnId: string, body: ConfirmRequest) =>
     post<PostedRequest>(`/assistant/turns/${turnId}/confirm`, body),
   listing: (id: string) => request<ListingDetail>(`/listings/${id}`),

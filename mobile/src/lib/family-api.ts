@@ -15,6 +15,12 @@ import type {
   ScopeChoice,
 } from "@/lib/family-consent";
 
+import type {
+  RequestTone,
+  RequestWording,
+  WordingInput,
+} from "@/lib/request-wording";
+
 export type DestinationCircle = {
   id: string;
   name: string;
@@ -38,6 +44,7 @@ export type ActingRequestBody = {
   kind: "help";
   raw_text: string;
   lang: Language;
+  tone?: RequestTone;
   home_circle_id: string;
 };
 
@@ -172,6 +179,19 @@ export const familyApi = {
         { headers: actingHeaders(memberId), signal, authUserId },
       )
     ).items,
+  draftFor: (
+    memberId: string,
+    body: WordingInput & { home_circle_id: string },
+    { authUserId }: Write,
+    signal: AbortSignal,
+  ) =>
+    request<RequestWording>("/ai/request-drafts", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: actingHeaders(memberId),
+      authUserId,
+      signal,
+    }),
   postFor: (memberId: string, body: ActingRequestBody, write: Write) =>
     request<RequestSummary>("/requests", {
       method: "POST",

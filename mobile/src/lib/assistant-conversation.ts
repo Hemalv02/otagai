@@ -1,3 +1,5 @@
+import type { Language } from "./api";
+import type { DraftRelationship, RequestTone } from "./request-wording";
 import type { RippleScope } from "./request-ripple";
 import type {
   AssistantCard,
@@ -14,6 +16,9 @@ export type Review = {
   when: string;
   recipient?: string;
   listingId?: string;
+  language?: Language;
+  tone?: RequestTone;
+  relationship?: DraftRelationship;
 };
 
 export function makeReview(
@@ -27,18 +32,21 @@ export function makeReview(
       ? "borrow"
       : "help"
     : (draft?.kind ?? "help");
+  const matchingDraft = draft && (draft.kind === kind || !card) ? draft : null;
   return {
     turnId: turn.id,
     kind,
     title: card?.listing.title ?? draft?.title ?? "",
     text:
-      draft && (draft.kind === kind || !card)
-        ? draft.description
-        : (cardMessage ??
-          (card?.action === "ask_for_help" ? "" : (turn.text ?? ""))),
+      matchingDraft?.description ??
+      cardMessage ??
+      (card?.action === "ask_for_help" ? "" : (turn.text ?? "")),
     when: draft?.when_text ?? "",
     recipient: card?.owner.display_name,
     listingId: card?.listing.id,
+    language: matchingDraft?.language,
+    tone: matchingDraft?.tone,
+    relationship: matchingDraft?.relationship,
   };
 }
 
@@ -80,6 +88,10 @@ export function confirmationBody(
   return {
     kind: review.kind,
     text: reviewedText,
+    ...(review.language ? { language: review.language } : {}),
+    ...(review.tone ? { tone: review.tone } : {}),
+    ...(review.relationship ? { relationship: review.relationship } : {}),
+    ...(review.language && review.title ? { title: review.title } : {}),
     ...(review.listingId ? { listing_id: review.listingId } : {}),
     ...(!review.listingId && homeCircleId
       ? {
