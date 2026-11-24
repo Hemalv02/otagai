@@ -145,6 +145,7 @@ async def delete_account(database: Database, auth_user_id: uuid.UUID) -> None:
                 "intro": None,
                 "intro_lang": None,
                 "happy_to_help_with": None,
+                "hobbies": None,
                 "avatar_media_id": None,
                 "push_enabled": False,
             },

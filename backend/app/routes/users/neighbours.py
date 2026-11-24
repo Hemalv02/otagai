@@ -19,7 +19,7 @@ from app.routes.exchanges.route import ExchangeModel
 from app.routes.listings.route import ListingSummary, listing_summary
 from app.routes.pagination import Page, PageQuery
 from app.routes.requests.route import RequestSummary
-from app.routes.thanks.route import ThankYouModel
+from app.routes.thanks.route import ThankYouModel, WallThankYouModel
 from app.services.actors.service import Actor
 from app.services.listings.service import list_user_listings
 from app.services.media.service import MediaNotFoundError, read_media
@@ -56,6 +56,7 @@ class PublicProfile(BaseModel):
     age_band: str | None
     intro: str | None
     happy_to_help_with: str | None
+    hobbies: str | None
     avatar_url: str | None = None
     accepts_money_orei: bool
     created_at: datetime
@@ -84,7 +85,12 @@ async def read_user(
     response = PublicProfile.model_validate(target)
     if not may_see_profile_details(user.id, target):
         return response.model_copy(
-            update={"age_band": None, "intro": None, "happy_to_help_with": None}
+            update={
+                "age_band": None,
+                "intro": None,
+                "happy_to_help_with": None,
+                "hobbies": None,
+            }
         )
     if storage is not None and target.avatar_media_id is not None:
         try:
@@ -166,6 +172,8 @@ async def read_user_thank_yous(
     query: Annotated[PageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-) -> Page[ThankYouModel]:
+) -> Page[ThankYouModel] | Page[WallThankYouModel]:
     result = await list_user_thank_yous(database, user, user_id, query.page())
-    return Page.build(result, ThankYouModel)
+    if user_id == user.id:
+        return Page.build(result, ThankYouModel)
+    return Page.build(result, WallThankYouModel)

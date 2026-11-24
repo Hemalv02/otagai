@@ -303,7 +303,7 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `GET /users/{user_id}/listings` | Their listings I'm allowed to see | 200 | 30 | MVP |
 | `GET /users/{user_id}/requests?status=` | Their requests I'm allowed to see. Neighbours see open ones for "return the favour". A caretaker with `can_view_activity` sees everything | 200 | 30, 33 | MVP |
 | `GET /users/{user_id}/exchanges` | Exchanges of someone I care for (needs `can_view_activity`) | 200 | 33 | MVP |
-| `GET /users/{user_id}/thank-yous` | Thank-you notes they've received that are visible to me | 200 | 30 | MVP |
+| `GET /users/{user_id}/thank-yous` | Shared thank-yous with a circle audience that includes the viewer | 200 | 30 | MVP |
 
 ## 2. Home and badges
 
@@ -496,10 +496,10 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 |---|---|---|---|---|
 | `POST /thank-yous` | Send a note, sweets, points or money for a completed exchange. 409 if the exchange isn't completed | 201 | 28 | MVP |
 | `GET /thank-yous/{thank_you_id}` | One thank-you | 200 | 28 | MVP |
-| `PATCH /thank-yous/{thank_you_id}` | The recipient opts in to showing it on the wall | 200 | 32 | Later |
+| `PATCH /thank-yous/{thank_you_id}` | The recipient opts in to the source circle’s wall if the sender allowed sharing | 200 | 32 | Later |
 | `POST /thank-yous/{thank_you_id}/decline-money` | The helper turns down the money; the note is kept | 200 | 28 | MVP |
 | `GET /users/me/thank-yous?direction=sent\|received` | My thank-yous | 200 | 30, 47 | MVP |
-| `GET /circles/{circle_id}/thank-yous` | Opted-in notes for the circle's wall | 200 | 32 | Later |
+| `GET /circles/{circle_id}/thank-yous` | Notes shared by both participants in their exchange’s circle | 200 | 32 | Later |
 | `POST /payments` | Start a payment for a thank-you (`Idempotency-Key` required). Returns a Stripe client secret, or a bKash mock checkout | 201 | 29 | MVP |
 | `GET /payments/{payment_id}` | Payment status, polled after checkout | 200 | 29 | MVP |
 | `POST /payments/{payment_id}/cancel` | Cancel before it is paid. 409 once it has succeeded | 200 | 29 | MVP |

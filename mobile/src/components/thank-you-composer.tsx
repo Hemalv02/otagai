@@ -2,6 +2,7 @@ import { router, useLocalSearchParams, usePreventRemove } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
+import { ActivityToggle } from "@/components/activity-toggle";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
 import { CommunityScreen } from "@/components/community-screen";
 import {
@@ -11,7 +12,7 @@ import {
 } from "@/components/neighbour-ui";
 import { Button, ErrorText, Field } from "@/components/ui";
 import { activityCopy } from "@/lib/activity-copy";
-import { ApiError, type Exchange } from "@/lib/api";
+import { ApiError, type Exchange, type Region } from "@/lib/api";
 import { useLiveResource } from "@/lib/live-resource";
 import {
   exchangeLabel,
@@ -25,21 +26,24 @@ import {
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { recognitionCopy } from "@/lib/recognition-copy";
 import { useSession } from "@/lib/session";
 import { THANK_YOU_POINTS, type ThankYouChoice } from "@/lib/thank-you";
 import { thankYouCopy } from "@/lib/thank-you-copy";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export function ThankYouComposer({ mode }: { mode: Exchange["mode"] }) {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, actingFor } = useLocalSearchParams<{ id: string; actingFor?: string }>();
+  const actingId = isUuid(actingFor) ? actingFor : undefined;
   const { session, profile } = useSession();
   const member = profile.status === "ready" ? profile.profile : null;
   return (
     <ExchangeThankYou
-      key={`${session?.user.id}:${mode}:${id}`}
+      key={`${session?.user.id}:${actingId}:${mode}:${id}`}
       id={id}
       authUserId={session?.user.id ?? ""}
-      profileId={member?.id ?? ""}
+      profileId={actingFor === undefined ? member?.id ?? "" : actingId ?? ""}
+      actingFor={actingId}
       mode={mode}
       region={member?.region === "bd" ? "bd" : "jp"}
     />
@@ -49,26 +53,27 @@ export function ThankYouComposer({ mode }: { mode: Exchange["mode"] }) {
 function ExchangeThankYou({
   id,
   authUserId,
+  actingFor,
   profileId,
   mode,
   region,
 }: {
   id: string;
   authUserId: string;
+  actingFor?: string;
   profileId: string;
   mode: Exchange["mode"];
-  region: "jp" | "bd";
+  region: Region;
 }) {
   const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const thanks = thankYouCopy[locale];
-  const culturePack = region === "bd" ? "bangladesh" : "japan";
-  const currency = region === "bd" ? "BDT" : "JPY";
-  const demoProvider = region === "bd" ? "bKash" : "Stripe";
-  const demoAmount = new Intl.NumberFormat(locale, { style: "currency", currency })
-    .format(region === "bd" ? 50 : 500);
-  const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
+  const recognition = recognitionCopy[locale];
+  const api = useMemo(
+    () => neighbourApi(authUserId, actingFor),
+    [actingFor, authUserId],
+  );
   const data = useLiveResource(
     useCallback(async () => {
       if (!authUserId || !profileId || !isUuid(id))
@@ -80,16 +85,19 @@ function ExchangeThankYou({
           return { status: "unavailable" } as const;
         if (exchange.status !== "completed")
           return { status: "incomplete" } as const;
-        const [person, title, existing] = await Promise.all([
+        const [person, request, title, existing] = await Promise.all([
           optionalVisible(api.profile(partnerId)),
-          exchangeLabel(api, exchange),
+          actingFor ? api.request(exchange.request_id) : null,
+          actingFor && mode === "help" ? null : exchangeLabel(api, exchange),
           findSentNote(api, id),
         ]);
-        if (!person && !existing) return { status: "unavailable" } as const;
+        if (!actingFor && !person && !existing)
+          return { status: "unavailable" } as const;
         return {
           status: "ready",
           name: person?.display_name,
-          title,
+          title: title ?? request?.polite_text,
+          region: request?.region ?? region,
           existing,
           requester: exchange.requester_user_id === profileId,
         } as const;
@@ -97,9 +105,10 @@ function ExchangeThankYou({
         if (isUnavailable(error)) return { status: "unavailable" } as const;
         throw error;
       }
-    }, [api, authUserId, id, mode, profileId]),
+    }, [actingFor, api, authUserId, id, mode, profileId, region]),
   );
   const [choice, setChoice] = useState<ThankYouChoice>("note");
+  const [allowWallSharing, setAllowWallSharing] = useState(false);
   const [note, setNote] = useState("");
   const [orei, setOrei] = useState<string | null>(null);
   const [review, setReview] = useState(false);
@@ -114,11 +123,17 @@ function ExchangeThankYou({
   const lock = useRef(false);
   const context = data.data?.status === "ready" ? data.data : null;
   const saved = confirmed ?? context?.existing;
+  const isBangladesh = (context?.region ?? region) === "bd";
+  const culturePack = isBangladesh ? "bangladesh" : "japan";
+  const currency = isBangladesh ? "BDT" : "JPY";
+  const demoProvider = isBangladesh ? "bKash" : "Stripe";
+  const demoAmount = new Intl.NumberFormat(locale, { style: "currency", currency })
+    .format(isBangladesh ? 50 : 500);
   const name = context?.name ?? copy.neighbour;
   const showExchange = () =>
     router.navigate({
       pathname: mode === "loan" ? "/loans/[id]" : "/exchanges/[id]",
-      params: { id },
+      params: { id, ...(actingFor ? { actingFor } : {}) },
     });
   const options = [
     { value: "note", title: copy.sendNote, detail: copy.privateTo(name) },
@@ -186,7 +201,7 @@ function ExchangeThankYou({
     setBusy("send");
     setError(null);
     try {
-      setConfirmed(await api.sendThankYou(id, note, locale, suggested, choice));
+      setConfirmed(await api.sendThankYou(id, note, locale, suggested, choice, allowWallSharing));
     } catch (cause) {
       if (isUnavailable(cause)) {
         await data.reload();
@@ -258,6 +273,7 @@ function ExchangeThankYou({
               <NeighbourNotice>
                 <ActivityText strong>{copy.privateTo(name)}</ActivityText>
                 <ActivityText>{note.trim()}</ActivityText>
+                {allowWallSharing ? <ActivityText>{recognition.senderReview}</ActivityText> : null}
                 {choice === "points" ? <ActivityText>{thanks.points(THANK_YOU_POINTS)}</ActivityText> : null}
                 {choice === "demo" ? (
                   <>
@@ -312,6 +328,23 @@ function ExchangeThankYou({
                     });
                   }}
                 />
+                {!actingFor ? (
+                  <NeighbourNotice>
+                    <View style={styles.permissionRow}>
+                      <View style={styles.permissionLabel}>
+                        <ActivityText strong>{recognition.senderPermission}</ActivityText>
+                      </View>
+                      <ActivityToggle
+                        label={recognition.senderPermission}
+                        hint={recognition.senderDetail}
+                        value={allowWallSharing}
+                        disabled={Boolean(busy)}
+                        onChange={setAllowWallSharing}
+                      />
+                    </View>
+                    <ActivityText>{recognition.senderDetail}</ActivityText>
+                  </NeighbourNotice>
+                ) : null}
                 {suggested && orei ? (
                   <NeighbourNotice>
                     <ActivityText strong>{copy.oreiIdea}</ActivityText>
@@ -395,4 +428,10 @@ const styles = StyleSheet.create({
   options: { gap: spacing["card-inset"] },
   ink: { color: colors.ink },
   actions: { gap: spacing["related-gap"] },
+  permissionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing["control-gap"],
+  },
+  permissionLabel: { flex: 1 },
 });

@@ -60,6 +60,7 @@ class UpdateProfileBody(BaseModel):
     age_band: AgeBand | None = None
     intro: IntroText | None = None
     happy_to_help_with: HelpText | None = None
+    hobbies: HelpText | None = None
     profile_details_visible: bool | None = None
     accepts_money_orei: bool | None = None
     simple_mode: bool | None = None
@@ -98,6 +99,7 @@ class UserProfile(BaseModel):
     age_band: str | None
     intro: str | None
     happy_to_help_with: str | None
+    hobbies: str | None
     profile_details_visible: bool
     accepts_money_orei: bool
     simple_mode: bool

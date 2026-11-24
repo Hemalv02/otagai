@@ -35,6 +35,7 @@ import {
 } from "@/lib/listing-workflow";
 import { useMemberships } from "@/lib/memberships";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { recognitionCopy } from "@/lib/recognition-copy";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -300,6 +301,12 @@ function CircleHome({ circleName }: { circleName: string }) {
           tintColor={colors.action}
         />
       </Pressable>
+      <Button
+        label={recognitionCopy[locale].title}
+        variant="secondary"
+        labelStyle={label}
+        onPress={() => router.push("/thank-you-wall")}
+      />
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}

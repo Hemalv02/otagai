@@ -2,17 +2,18 @@ import type { UpdateMyProfile, UserProfile } from "./api";
 
 type ProfileText = Pick<
   UserProfile,
-  "display_name" | "intro" | "happy_to_help_with"
+  "display_name" | "intro" | "happy_to_help_with" | "hobbies"
 >;
 
 export function buildProfilePatch(
   profile: ProfileText,
-  draft: { displayName: string; intro: string; helpWith: string },
+  draft: { displayName: string; intro: string; helpWith: string; hobbies: string },
 ): UpdateMyProfile {
   const patch: UpdateMyProfile = {};
   const name = draft.displayName.trim();
   const intro = draft.intro.trim() || null;
   const help = draft.helpWith.trim() || null;
+  const hobbies = draft.hobbies.trim() || null;
   if (
     draft.displayName !== profile.display_name &&
     name !== profile.display_name
@@ -27,6 +28,9 @@ export function buildProfilePatch(
     help !== profile.happy_to_help_with
   ) {
     patch.happy_to_help_with = help;
+  }
+  if (draft.hobbies !== (profile.hobbies ?? "") && hobbies !== profile.hobbies) {
+    patch.hobbies = hobbies;
   }
   return patch;
 }

@@ -37,6 +37,7 @@ export type UserProfile = {
   age_band: string | null;
   intro: string | null;
   happy_to_help_with: string | null;
+  hobbies: string | null;
   profile_details_visible: boolean;
   accepts_money_orei: boolean;
   simple_mode: boolean;
@@ -54,6 +55,7 @@ export type UpdateMyProfile = Partial<
     | "display_name"
     | "intro"
     | "happy_to_help_with"
+    | "hobbies"
     | "avatar_media_id"
     | "profile_details_visible"
     | "text_scale_percent"

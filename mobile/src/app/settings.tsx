@@ -107,6 +107,7 @@ function AccountSettings({
     displayName: profile.display_name,
     intro: profile.intro ?? "",
     helpWith: profile.happy_to_help_with ?? "",
+    hobbies: profile.hobbies ?? "",
   });
   const [savedProfile, setSavedProfile] = useState(profile);
   const [photoChange, setPhotoChange] = useState<PhotoChange | null>(null);
@@ -216,6 +217,7 @@ function AccountSettings({
           displayName: updated.display_name,
           intro: updated.intro ?? "",
           helpWith: updated.happy_to_help_with ?? "",
+          hobbies: updated.hobbies ?? "",
         });
         setPhotoChange(null);
       },
@@ -341,6 +343,16 @@ function AccountSettings({
           style={[bodyStyle, styles.multiline]}
           value={draft.helpWith}
           onChangeText={(value) => changeField("helpWith", value)}
+          maxLength={500}
+          multiline
+          editable={!disabled}
+        />
+        <Field
+          label={copy.hobbies}
+          labelStyle={labelStyle}
+          style={[bodyStyle, styles.multiline]}
+          value={draft.hobbies}
+          onChangeText={(value) => changeField("hobbies", value)}
           maxLength={500}
           multiline
           editable={!disabled}

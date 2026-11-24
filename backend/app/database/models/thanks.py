@@ -122,6 +122,7 @@ class ThankYou(UUIDPrimaryKey, Timestamps, Base):
     payment_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("payments.id", ondelete="SET NULL"), unique=True
     )
+    allow_wall_sharing: Mapped[bool] = mapped_column(server_default=text("false"))
     show_on_wall: Mapped[bool] = mapped_column(server_default=text("false"))
 
 

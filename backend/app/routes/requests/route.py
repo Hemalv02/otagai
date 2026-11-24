@@ -217,6 +217,7 @@ class ListingSummaryModel(BaseModel):
 
 
 class RequestDetailModel(RequestSummary):
+    region: str
     raw_text: str
     tone: str
     category_id: uuid.UUID | None
@@ -257,6 +258,7 @@ class ReceivedItem(BaseModel):
 def request_detail(view: RequestDetail) -> RequestDetailModel:
     return RequestDetailModel(
         **RequestSummary.model_validate(view.request).model_dump(),
+        region=view.request.region,
         raw_text=view.request.raw_text,
         tone=view.request.tone,
         category_id=view.request.category_id,

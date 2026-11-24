@@ -9,6 +9,7 @@ const en = {
   nameRequired: "Enter a display name.",
   intro: "About you (optional)",
   helpWith: "Happy to help with (optional)",
+  hobbies: "Hobbies (optional)",
   saveProfile: "Save profile",
   profileSaved: "Profile saved.",
   profileFailed: "Couldn’t save your profile. Try again.",
@@ -26,7 +27,7 @@ const en = {
   privacy: "Privacy",
   visibility: "Show profile details",
   visibilityDetail:
-    "Neighbours who can view your profile can see your photo, age group, and optional profile text when this is on. They can always see your name.",
+    "Neighbours who can view your profile can see your photo, age group, hobbies, and other optional profile details when this is on. They can always see your name.",
   privacyFailed: "Couldn’t change your privacy setting. Try again.",
   privacySaved: "Privacy setting saved.",
   account: "Account",
@@ -54,6 +55,7 @@ const ja: typeof en = {
   nameRequired: "表示名を入力してください。",
   intro: "自己紹介（任意）",
   helpWith: "お手伝いできること（任意）",
+  hobbies: "趣味（任意）",
   saveProfile: "プロフィールを保存",
   profileSaved: "プロフィールを保存しました。",
   profileFailed: "プロフィールを保存できませんでした。もう一度お試しください。",
@@ -73,7 +75,7 @@ const ja: typeof en = {
   privacy: "プライバシー",
   visibility: "プロフィールの詳細を表示",
   visibilityDetail:
-    "オンにすると、プロフィールを閲覧できるご近所さんに、写真、年代、自己紹介、お手伝いできることが表示されます。名前は常に表示されます。",
+    "オンにすると、プロフィールを閲覧できるご近所さんに、写真、年代、自己紹介、趣味、お手伝いできることが表示されます。名前は常に表示されます。",
   privacyFailed:
     "プライバシー設定を変更できませんでした。もう一度お試しください。",
   privacySaved: "プライバシー設定を保存しました。",
@@ -105,6 +107,7 @@ const bn: typeof en = {
   nameRequired: "প্রোফাইলে দেখানোর জন্য একটি নাম লিখুন।",
   intro: "আপনার পরিচয় (ঐচ্ছিক)",
   helpWith: "যে কাজে সাহায্য করতে চান (ঐচ্ছিক)",
+  hobbies: "শখ (ঐচ্ছিক)",
   saveProfile: "প্রোফাইল সংরক্ষণ করুন",
   profileSaved: "প্রোফাইল সংরক্ষণ করা হয়েছে।",
   profileFailed: "প্রোফাইল সংরক্ষণ করা যায়নি। আবার চেষ্টা করুন।",
@@ -122,7 +125,7 @@ const bn: typeof en = {
   privacy: "গোপনীয়তা",
   visibility: "প্রোফাইলের বিস্তারিত দেখান",
   visibilityDetail:
-    "চালু থাকলে যেসব প্রতিবেশী আপনার প্রোফাইল দেখতে পারেন, তাঁরা আপনার ছবি, বয়সের পরিসর ও ঐচ্ছিক পরিচয় দেখতে পাবেন। তাঁরা সব সময় আপনার নাম দেখতে পাবেন।",
+    "চালু থাকলে যেসব প্রতিবেশী আপনার প্রোফাইল দেখতে পারেন, তাঁরা আপনার ছবি, বয়সের পরিসর, শখ ও ঐচ্ছিক পরিচয় দেখতে পাবেন। তাঁরা সব সময় আপনার নাম দেখতে পাবেন।",
   privacyFailed: "গোপনীয়তা সেটিংস বদলানো যায়নি। আবার চেষ্টা করুন।",
   privacySaved: "গোপনীয়তা সেটিংস সংরক্ষণ করা হয়েছে।",
   account: "অ্যাকাউন্ট",

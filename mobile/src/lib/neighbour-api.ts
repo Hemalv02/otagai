@@ -5,6 +5,7 @@ import {
   type Language,
   type Page,
   type RequestSummary,
+  type Region,
 } from "@/lib/api";
 
 import { type ThankYouChoice, thankYouPayload } from "@/lib/thank-you";
@@ -17,6 +18,7 @@ export type PublicNeighbour = Person & {
   languages: Language[];
   intro: string | null;
   happy_to_help_with: string | null;
+  hobbies: string | null;
 };
 export type Pair = {
   i_helped_them: number;
@@ -33,8 +35,13 @@ export type ThankYou = {
   lang: Language | null;
   gift_type: string;
   points_amount: number | null;
+  allow_wall_sharing: boolean;
+  show_on_wall: boolean;
   created_at: string;
 };
+export type WallThankYou = Pick<
+  ThankYou, "id" | "from_user_id" | "to_user_id" | "lang" | "created_at"
+> & { from_name: string; to_name: string; note: string };
 export type ReportTarget = "user" | "listing" | "message" | "request";
 export type ReportReason = "harassment" | "spam" | "unsafe" | "scam" | "other";
 type HistoryExchange = Exchange & { completed_at: string | null };
@@ -67,15 +74,17 @@ function pagePath(
   return `${path}?${query}`;
 }
 
-export function neighbourApi(authUserId: string) {
-  function get<T>(path: string) {
-    return request<T>(path, { authUserId });
+export function neighbourApi(authUserId: string, actingFor?: string) {
+  const actingHeaders = actingFor ? { "X-Acting-For": actingFor } : undefined;
+  function get<T>(path: string, headers?: HeadersInit) {
+    return request<T>(path, { authUserId, headers });
   }
-  function post<T>(path: string, body: unknown) {
+  function post<T>(path: string, body: unknown, headers?: HeadersInit) {
     return request<T>(path, {
       authUserId,
       method: "POST",
       body: JSON.stringify(body),
+      headers,
     });
   }
 
@@ -89,7 +98,7 @@ export function neighbourApi(authUserId: string) {
         pagePath("/users/me/exchanges", { status: "completed" }, cursor),
       ),
     exchange: (id: string) =>
-      get<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
+      get<Exchange>(`/exchanges/${encodeURIComponent(id)}`, actingHeaders),
     listing: (id: string) =>
       get<{ title: string }>(`/listings/${encodeURIComponent(id)}`),
     listings: (id: string) =>
@@ -103,23 +112,49 @@ export function neighbourApi(authUserId: string) {
         }),
       ),
     request: (id: string) =>
-      get<{ polite_text: string }>(`/requests/${encodeURIComponent(id)}`),
+      get<{ polite_text: string; region: Region }>(
+        `/requests/${encodeURIComponent(id)}`, actingHeaders,
+      ),
     thankYou: (id: string) =>
       get<ThankYou>(`/thank-yous/${encodeURIComponent(id)}`),
     sent: (cursor?: string | null) =>
       get<Page<ThankYou>>(
         pagePath("/users/me/thank-yous", { direction: "sent" }, cursor),
+        actingHeaders,
       ),
+    received: (cursor?: string | null) =>
+      get<Page<ThankYou>>(
+        pagePath("/users/me/thank-yous", { direction: "received" }, cursor),
+      ),
+    profileThankYous: (id: string, cursor?: string | null) =>
+      get<Page<WallThankYou>>(
+        pagePath(`/users/${encodeURIComponent(id)}/thank-yous`, {}, cursor),
+      ),
+    circleWall: (id: string, cursor?: string | null) =>
+      get<Page<WallThankYou>>(
+        pagePath(`/circles/${encodeURIComponent(id)}/thank-yous`, {}, cursor),
+      ),
+    setWallVisibility: (id: string, show: boolean) =>
+      request<ThankYou>(`/thank-yous/${encodeURIComponent(id)}`, {
+        authUserId,
+        method: "PATCH",
+        body: JSON.stringify({ show_on_wall: show }),
+      }),
     sendThankYou: (
       exchangeId: string,
       note: string,
       lang: Language,
       aiDrafted: boolean,
       choice: ThankYouChoice,
+      allowWallSharing: boolean,
     ) =>
       post<ThankYou>(
         "/thank-yous",
-        thankYouPayload(exchangeId, note, lang, aiDrafted, choice),
+        {
+          ...thankYouPayload(exchangeId, note, lang, aiDrafted, choice),
+          allow_wall_sharing: allowWallSharing,
+        },
+        actingHeaders,
       ),
     suggest: (
       helpedWith: string,

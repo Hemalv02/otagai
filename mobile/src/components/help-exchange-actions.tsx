@@ -157,7 +157,12 @@ export function HelpExchangeActions({
           <Button
             label={neighbourCopy[locale].sayThanks}
             labelStyle={label}
-            onPress={() => router.push(thankYou)}
+            onPress={() =>
+              router.push({
+                ...thankYou,
+                params: { ...thankYou.params, ...(actingFor ? { actingFor } : {}) },
+              })
+            }
           />
         </>
       ) : null}
