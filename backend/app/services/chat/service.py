@@ -290,17 +290,14 @@ async def translate_message(
             raise MessageNotFoundError
         source = message.body
         edited_at = message.edited_at
-        if message.lang == target.value:
-            return Translation(translated=source)
         cached = (message.translations or {}).get(target.value)
         if cached:
             return Translation(translated=cached)
-        language = Language(message.lang) if message.lang else None
 
     await enforce_feature_limit(redis, AiFeature.TRANSLATE, actor.user.id)
     translated = await draft_translation(
         settings,
-        TranslationInput(text=source, source_language=language, target_language=target),
+        TranslationInput(text=source, target_language=target),
     )
     async with database.session() as session:
         await actor.require_for_write(session, ProxyScope.CHAT)
@@ -376,7 +373,6 @@ async def send_message(
         attachments = await _validated_attachments(
             session, actor.subject_id, kind, media_ids
         )
-        lang = language or actor.subject.preferred_language
         values = {
             "conversation_id": conversation_id,
             "sender_user_id": actor.subject_id,
@@ -384,7 +380,7 @@ async def send_message(
             "client_message_id": client_message_id,
             "kind": kind,
             "body": body,
-            "lang": lang if body else None,
+            "lang": language if body else None,
             "translation_status": (
                 TranslationStatus.PENDING.value
                 if body

@@ -386,7 +386,7 @@ function ExchangeChat({
                 <TranslationOption
                   key={`${locale}:${item.id}:${item.edited_at}`}
                   locale={locale}
-                  source={item.lang}
+                  source={null}
                   original={body}
                   load={(target) =>
                     api.translateChatMessage(

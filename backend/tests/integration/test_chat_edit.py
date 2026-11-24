@@ -94,3 +94,16 @@ async def test_chat_translation_is_cached_and_invalidated_by_edits(client, monke
     assert calls == ["Bonjour", "Changed"]
     assert (await client.delete(message, headers=auth(sender))).status_code == 204
     assert (await client.post(path, headers=auth(reader), json=body)).status_code == 404
+
+
+async def test_unspecified_chat_language_is_not_assumed_from_profile(client):
+    ctx = await completed_exchange(client)
+    author = ctx["requester"]
+    conversation = await _conversation(client, author)
+    sent = await client.post(
+        f"/conversations/{conversation}/messages",
+        headers=auth(author),
+        json={"kind": "text", "body": "বাংলায় একটি বার্তা"},
+    )
+    assert sent.status_code == 201, sent.text
+    assert sent.json()["lang"] is None
