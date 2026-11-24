@@ -107,11 +107,11 @@ export function taps(ring, dev, t, list) {
   let cur = null;
   for (const tp of list) if (t >= tp[0] - 0.1 && t < tp[0] + 0.7) cur = tp;
   if (!cur) { ring.style.opacity = 0; return; }
-  const [t0, node] = cur;
+  const [t0, node, offsetY = 0] = cur;
   const [x, y, w, h] = rel(node, inner);
   const q = seg(t, t0, t0 + 0.6);
   ring.style.left = `${x + w / 2}px`;
-  ring.style.top = `${y + h / 2}px`;
+  ring.style.top = `${y + h / 2 + offsetY}px`;
   ring.style.opacity = (t < t0 ? seg(t, t0 - 0.1, t0) * 0.35 : (1 - q) * 0.35).toFixed(3);
   ring.style.transform = `translate(-50%,-50%) scale(${(t < t0 ? 0.5 : 0.5 + easeOut(q) * 1.1).toFixed(3)})`;
 }

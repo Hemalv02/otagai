@@ -23,8 +23,8 @@ function measure(scene, root, map) {
 }
 const F = (dev, node) => { node.__d = dev; return node; };
 const tap1 = (d) => { d.querySelector('.dev-in').insertAdjacentHTML('beforeend', tapRingHTML); return d.querySelector('.tapr'); };
-const sel = (title, sub, on, c = '') => `<div class="row ${c}" style="gap:14px;padding:14px 16px;border-radius:8px;box-shadow:0 0 0 ${on ? '1.5px var(--action)' : '1px var(--control)'} inset;background:${on ? 'var(--wash)' : '#fff'}"><span class="mk" style="width:22px;height:22px;border-radius:11px;box-shadow:0 0 0 ${on ? '7px var(--action)' : '1.5px var(--control)'} inset;flex:none"></span><div style="flex:1"><div style="${T.label}">${title}</div><div style="${T.sup}">${sub}</div></div></div>`;
-const selOff = (title, sub) => `<div class="row" style="gap:14px;padding:14px 16px;border-radius:8px;box-shadow:0 0 0 1px var(--rule) inset;background:var(--paper)"><span style="width:22px;height:22px;border-radius:11px;box-shadow:0 0 0 1.5px var(--rule) inset;flex:none"></span><div style="flex:1"><div style="${T.label};color:var(--secondary)">${title}</div><div style="${T.sup}">${sub}</div></div></div>`;
+const sel = (title, sub, on, c = '') => `<div class="row ${c}" style="gap:14px;padding:var(--option-block-padding, 14px) 16px;border-radius:8px;box-shadow:0 0 0 ${on ? '1.5px var(--action)' : '1px var(--control)'} inset;background:${on ? 'var(--wash)' : '#fff'}"><span class="mk" style="width:22px;height:22px;border-radius:11px;box-shadow:0 0 0 ${on ? '7px var(--action)' : '1.5px var(--control)'} inset;flex:none"></span><div style="flex:1"><div style="${T.label}">${title}</div><div style="${T.sup}">${sub}</div></div></div>`;
+const selOff = (title, sub) => `<div class="row" style="gap:14px;padding:var(--option-block-padding, 14px) 16px;border-radius:8px;box-shadow:0 0 0 1px var(--rule) inset;background:var(--paper)"><span style="width:22px;height:22px;border-radius:11px;box-shadow:0 0 0 1.5px var(--rule) inset;flex:none"></span><div style="flex:1"><div style="${T.label};color:var(--secondary)">${title}</div><div style="${T.sup}">${sub}</div></div></div>`;
 function setSel(node, on) {
   if (node._on === on) return;
   node._on = on;
@@ -38,9 +38,9 @@ export const thank = {
   build(el) {
     const ty = screen(`
       ${backRow()}${head({ title: 'Thank Tanaka-san', sub: 'Loan: Hammer drill' })}
-      <div style="display:flex;flex-direction:column;gap:10px">${sel('Send a note', 'A private thank-you to Tanaka-san', false, 's0')}${selOff('Bring a small gift', 'Gift option unavailable in this version.')}${selOff('Send a small orei', 'Payments are unavailable in this version.')}</div>
-      <div class="nf">${field('Suggested note · Editable', '<span class="nt"></span>', { min: 104 })}</div>
-      <div class="a-notice"><div style="${T.label}">A fitting orei to bring in person</div><div style="${T.sup}">A small box of sweets, about ¥500.</div></div>`, { footer: btn('Send thank-you', 'primary', { cls: 'snd' }) });
+      <div class="thank-options" style="display:flex;flex-direction:column;gap:8px">${sel('Send a note', 'A private thank-you to Tanaka-san', false, 's0')}${selOff('Bring a small gift', 'Gift option unavailable in this version.')}${selOff('Send a small orei', 'Payments are unavailable in this version.')}</div>
+      <div class="nf">${field('Suggested note · Editable', '<span class="nt"></span>', { min: 84 })}</div>
+      <div class="a-notice"><div style="${T.label}">A fitting orei to bring in person</div><div style="${T.sup}">A small box of sweets, about ¥500.</div></div>`, { cls: 'thank-compose', pad: 12, footer: btn('Send thank-you', 'primary', { cls: 'snd' }) });
     const sent = screen(`${backRow()}${head({ title: 'Thank-you sent', sub: 'Your note was shared privately with Tanaka-san.' })}<div class="a-notice"><div style="${T.label}">To Tanaka-san</div><div style="${T.body}">Thank you for taking the time to help me. I really appreciate it.</div></div>`, { footer: btn('View exchange') });
     const prof = screen(`
       ${backRow()}${head({ title: 'Rahim', sub: 'Speaks Bengali, English, Japanese' })}
@@ -125,6 +125,7 @@ export const family = {
     this.rig = el.querySelector('.rig'); this.dR = el.querySelector('.dev'); this.tap = tap1(this.dR);
     const q = (s) => this.dR.querySelector(s);
     this.sc = [...this.dR.querySelectorAll('.a-scr')];
+    this.addContent = this.sc[0].querySelector('.a-content');
     this.fn = q('.fn'); this.lng = [...this.dR.querySelectorAll('.lng .a-choice')]; this.rgn = [...this.dR.querySelectorAll('.rgn .a-choice')];
     this.call = q('.call'); this.rv = q('.rv'); this.tg = [...this.dR.querySelectorAll('.tg')]; this.pl = F(this.dR, q('.pl'));
     this.gv = q('.gv'); this.given = q('.given'); this.amr = q('.amr'); this.ofr = q('.ofr');
@@ -136,7 +137,7 @@ export const family = {
     trans(this.el, t, { tin: 104.8, kin: 'rise', din: 0.9, tout: 114.6, kout: 'fade', dout: 0.5 });
     devAt(this.dR, 1060);
     const m = measure(this, this.rig, { pl: this.pl });
-    zoomRig(this.rig, t, [[0, [960, 540, 1]], [108.6, [...m.pl, 1.4]], [110.6, [960, 540, 1]]]);
+    zoomRig(this.rig, t, [[0, [960, 540, 1]], [108.6, [...m.pl, 1.4]], [109.85, [960, 540, 1]]]);
     swap(this.sc, t, [0, 108.4, 111.0]);
     typeText(this.fn, 'Ammu', t, 105.5, 14, { caret: t < 106.0 });
     this.lng.forEach((c, i) => cls(c, 'on', t > 106.1 && i === 2));
@@ -149,7 +150,8 @@ export const family = {
     });
     press(this.gv, t, 110.2);
     show(this.given, t, 110.4, Infinity, { dy: 12 });
-    taps(this.tap, this.dR, t, [[106.1, this.lng[2]], [106.5, this.rgn[1]], [107.3, this.call], [108.0, this.rv], [110.2, this.gv]]);
+    this.addContent.scrollTop = (this.addContent.scrollHeight - this.addContent.clientHeight) * easeInOut(seg(t, 106.7, 107.25));
+    taps(this.tap, this.dR, t, [[106.1, this.lng[2]], [106.5, this.rgn[1]], [107.3, this.call, -this.addContent.scrollTop], [108.0, this.rv], [110.2, this.gv]]);
     show(this.ofr, t, 113.0, Infinity, { dy: 6, s0: 0.8, preset: 'snappy' });
     const mp = spring(t - 111.2, 'default'), mq = easeIn(seg(t, 114.3, 114.7));
     css(this.map, { o: clamp(mp * 1.5) * (1 - mq), x: (1 - mp) * 60 });
@@ -284,7 +286,7 @@ export const disaster = {
     this.dM.style.transform = `translateY(${((1 - mr) * 900).toFixed(1)}px)`;
     this.dM.style.display = t > 127.7 ? '' : 'none';
     const m = measure(this, this.rig, { lvl: this.lvl, sa: this.sa, safe: this.safe });
-    zoomRig(this.rig, t, [[0, [960, 540, 1]], [125.5, [m.lvl[0], m.lvl[1] + 80, 1.35]], [127.6, [960, 540, 1]], [129.0, [m.safe[0], m.safe[1] + 40, 1.4]], [130.8, [960, 540, 1]]]);
+    zoomRig(this.rig, t, [[0, [960, 540, 1]], [125.5, [m.lvl[0], m.lvl[1] + 80, 1.35]], [126.95, [960, 540, 1]], [129.0, [m.safe[0], m.safe[1] + 40, 1.4]], [130.8, [960, 540, 1]]]);
     this.lv.forEach((c, i) => {
       const on = t > 125.8 && i === 2;
       if (c._on !== on) { c._on = on; c.style.background = on ? 'var(--clay-soft)' : '#fff'; c.style.boxShadow = on ? '0 0 0 1.5px var(--clay) inset' : '0 0 0 1px var(--rule) inset'; c.style.color = on ? '#7D4A37' : 'var(--ink)'; }
@@ -391,10 +393,8 @@ export const hud = {
   id: 'hud', start: 0, end: 171,
   build(el) {
     el.innerHTML = `<div class="abs clk mono halo" style="left:120px;top:64px;font-size:19px;letter-spacing:.16em;color:var(--control);text-transform:uppercase;display:flex;gap:16px;align-items:center">
-      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>
-      <div class="abs mobile-preview mono" style="left:140px;bottom:74px;padding:10px 14px;background:var(--paper);border:1px solid var(--rule);border-radius:8px;color:var(--ink);font-size:20px">Mobile concept preview</div>`;
+      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>`;
     this.clk = el.querySelector('.clk'); this.tm = el.querySelector('.tm'); this.pl = el.querySelector('.pl'); this.dot = el.querySelector('.dot');
-    this.preview = el.querySelector('.mobile-preview');
   },
   update(lt, t) {
     let i = -1;
@@ -409,6 +409,5 @@ export const hud = {
       this.tm.style.opacity = clamp(p * 1.4).toFixed(3);
     }
     this.dot.style.opacity = t > 125 && t < 137 ? (0.5 + 0.5 * Math.sin(t * 7)).toFixed(3) : '1';
-    this.preview.style.opacity = (seg(t, 114.8, 115.3) * (1 - seg(t, 139.5, 140.0))).toFixed(3);
   },
 };

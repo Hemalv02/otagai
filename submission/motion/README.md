@@ -37,7 +37,7 @@ Use the build steps below to generate the master and a smaller share copy in `ou
 | 2:20–2:32 | Trust and privacy |
 | 2:32–2:45 | Logo and close |
 
-The film labels disaster mode, notices, and events as mobile concept previews. Their screen designs follow the backend behaviour. Payments are shown as disabled options.
+The disaster mode, notice, and event screens are mobile concepts based on backend behaviour. Payments are shown as disabled options.
 
 ## Requirements
 

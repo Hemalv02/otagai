@@ -114,7 +114,7 @@ export const rahimAsks = {
     const opts = ['Concrete or brick', 'Wood or plasterboard', 'I’m not sure'];
     const s = screen(`
       <div class="row" style="justify-content:space-between"><div style="${T.label}">Ask</div><div style="width:48px;height:48px;display:flex;align-items:center;justify-content:center">${sf('history', 22, 'var(--action)')}</div></div>
-      <div style="flex:1;overflow:hidden;position:relative"><div class="convo" style="display:flex;flex-direction:column;gap:12px">
+      <div class="chat-viewport" style="flex:1;min-height:0;overflow:hidden;overflow-anchor:none;position:relative"><div class="convo" style="position:relative;display:flex;flex-direction:column;gap:12px;padding-bottom:16px">
         <div class="ubub u1"><img src="assets/ask-shelf-wall.png" style="width:186px;height:124px;border-radius:10px;object-fit:cover">How do I put up a shelf here?</div>
         <div class="row think t1" style="gap:10px;${T.sup}"><span class="spin" style="width:18px;height:18px;border-radius:50%;border:2.5px solid var(--wash);border-top-color:var(--action)"></span>Checking your circle…</div>
         <div class="r1" style="display:flex;flex-direction:column;gap:8px"><div style="${T.label};color:var(--action)">A wall with shelf brackets</div><div style="${T.body}">What is the wall made of?</div><div style="${T.sup}">The wall material helps us suggest the right drill and bits.</div>
@@ -138,9 +138,10 @@ export const rahimAsks = {
     this.dR.querySelector('.dev-in').insertAdjacentHTML('beforeend', tapRingHTML);
     this.tap = this.dR.querySelector('.tapr');
     const q = (s) => this.dR.querySelector(s);
-    this.convo = q('.convo'); this.u1 = q('.u1'); this.t1 = q('.t1'); this.r1 = q('.r1'); this.op = [...this.dR.querySelectorAll('.op')];
+    this.chat = q('.chat-viewport'); this.convo = q('.convo');
+    this.u1 = q('.u1'); this.t1 = q('.t1'); this.r1 = q('.r1'); this.op = [...this.dR.querySelectorAll('.op')];
     this.u2 = q('.u2'); this.t2 = q('.t2'); this.r2 = q('.r2'); this.g1 = q('.g1'); this.g2 = q('.g2'); this.posted = q('.posted');
-    this.wid = F(this.dR, q('.wid')); this.opts = F(this.dR, q('.opts')); this.bor = q('.bor');
+    this.wid = q('.wid'); this.opts = q('.opts'); this.bor = q('.bor');
     this.spins = [...this.dR.querySelectorAll('.spin')];
     [this.h1, this.h2] = el.querySelectorAll('.hl');
     this.el = el;
@@ -160,12 +161,24 @@ export const rahimAsks = {
     show(this.g2, t, 80.7, Infinity, { dy: 16 });
     show(this.posted, t, 83.0, Infinity, { dy: 14 });
     this.spins.forEach((s) => (s.style.transform = `rotate(${(t * 400) % 360}deg)`));
-    const scroll = track(t, [[0, 0], [79.1, 150, 'default'], [80.2, 470, 'default'], [83.1, 560, 'default']]);
-    this.convo.style.transform = `translateY(${(-scroll).toFixed(1)}px)`;
-    const m = measure(this, this.rig, { opts: this.opts, wid: this.wid });
-    zoomRig(this.rig, t, [[0, [960, 540, 1]], [76.9, [m.opts[0], m.opts[1] - 150, 1.5]], [79.0, [960, 540, 1]], [80.6, [m.wid[0], m.wid[1] - 470 + 40, 1.55]], [83.4, [960, 540, 1]]]);
+    const scrollTo = (node, from, to) => {
+      if (!node.offsetHeight) return 0;
+      const [, y, , height] = rel(node, this.convo);
+      return Math.max(0, y + height + 16 - this.chat.clientHeight) * easeInOut(seg(t, from, to));
+    };
+    this.chat.scrollTop = Math.max(
+      scrollTo(this.opts, 76.8, 77.4),
+      scrollTo(this.u2, 79.0, 79.25),
+      scrollTo(this.r2, 80.0, 80.35),
+      scrollTo(this.wid, 80.4, 80.95),
+      scrollTo(this.posted, 83.0, 83.65),
+    );
+    const scroll = this.chat.scrollTop;
+    const [ox, oy] = focusOn(this.dR, this.opts);
+    const [wx, wy] = focusOn(this.dR, this.wid);
+    zoomRig(this.rig, t, [[0, [960, 540, 1]], [77.1, [ox, oy - scroll, 1.4]], [79.0, [960, 540, 1]], [80.45, [wx, wy - scroll - 40, 1.4]], [83.1, [960, 540, 1]]]);
     press(this.bor, t, 82.6);
-    taps(this.tap, this.dR, t, [[78.6, this.op[0]], [82.6, this.bor]]);
+    taps(this.tap, this.dR, t, [[78.6, this.op[0], -scroll], [82.6, this.bor, -scroll]]);
     playHead(this.h1, t, 75.6, 84.4);
     playHead(this.h2, t, 76.4, 84.4);
   },
