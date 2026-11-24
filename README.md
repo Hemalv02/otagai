@@ -58,6 +58,8 @@ The seeded demo covers both Nagasaki and Cumilla, including a bilingual exchange
 
 ## 設計 · Architecture
 
+![Exploded 3D view of Otagai showing the Expo client, FastAPI and AI services, data stores, and background notification processes.](docs/readme/system-architecture.svg)
+
 The Expo app handles interaction and rendering. FastAPI verifies identity and enforces membership, consent and workflow rules. PostgreSQL stores the workflow state, and background processes advance eligible requests and deliver notifications.
 
 ```mermaid
