@@ -1,16 +1,19 @@
 # Otagai · お互い
 
-Otagai is a mobile app for borrowing tools and asking for everyday help within a neighbourhood. Residents join circles for their building or neighbourhood group, where they can find someone with a spare drill, ask for a hand carrying groceries, or offer a skill of their own.
+**Otagai is a mobile app for borrowing tools, sharing skills, and asking for everyday help within trusted neighbourhood circles.**
 
-Small favours can be hard to ask for when you’re unsure who to approach or how to word the request. Otagai lets you start with people you know, choose how far the request can reach, and arrange the details once someone offers.
+If you need a drill for an afternoon or a hand carrying groceries, the hardest part can be knowing whom to ask. Otagai gives residents a way to find tools and people nearby, ask a small group first, and arrange the exchange in one place. Family caregivers can also coordinate help for someone who lives in another neighbourhood.
 
-## What you can do
+[How it works](#how-it-works) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Run locally](#run-locally)
 
-- **Ask for help.** Describe what you need by text or voice. Ask searches for relevant listings and skills in your circles, follows up when it needs more detail, and lets you review a draft before posting.
-- **Choose who sees a request.** Send it directly to one neighbour or start with a small group. If it stays open, Otagai can widen delivery up to the audience you chose. This is the ripple feature.
-- **Lend and borrow tools.** Browse listings with photos, availability, and safety notes. Create a listing manually or start with suggestions from a photo, then arrange pickup and confirm the handover together.
-- **Coordinate and say thanks.** Chat with the other person, translate individual messages on demand, and send a private thank-you after both people confirm completion. The interface is available in English, Japanese, and Bengali.
-- **Help a family member remotely.** With their permission, a caregiver can post a request in the family member’s circle. Permissions are scoped and can be revoked.
+## How it works
+
+1. **Join a circle.** Sign up by email, then find your building or neighbourhood circle by invite or location. Request membership and wait for approval where required.
+2. **Find a tool or ask for help.** Browse the circle’s catalogue, or describe a task in Ask by text or voice. Ask can find tools and people with relevant skills, ask a follow-up question, or prepare an editable request.
+3. **Choose who receives the request.** Send it to one person or start with a small group. The ripple feature can widen delivery while the request is open, up to the audience you chose.
+4. **Arrange and complete the exchange.** Accept an offer and use chat to settle a time and place. For a loan, both people confirm the handover. For a favour, both confirm the task is done. Translate messages as needed and send a thank-you after completion.
+
+Members can publish tools and skills they want to share. A tool photo can fill in a first draft of a listing, which the owner can edit before publishing. In Family, a caregiver can request help in a relative’s circle with permission for that action. The interface is available in English, Japanese, and Bengali.
 
 ## Screenshots
 
@@ -18,22 +21,69 @@ Small favours can be hard to ask for when you’re unsure who to approach or how
 | --- | --- | --- |
 | [<img src="docs/screenshots/assistant-match.png" alt="Ask shows a neighbour who can help install a shelf" width="220">](docs/screenshots/assistant-match.png) | [<img src="docs/screenshots/tool-listing.png" alt="Cordless-drill listing with a photo, included items, and a safety note" width="220">](docs/screenshots/tool-listing.png) | [<img src="docs/screenshots/chat-translation.png" alt="Exchange chat shows a selected message and its translation" width="220">](docs/screenshots/chat-translation.png) |
 
-*Screenshots from the app with seeded demo accounts.* [Figma design](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai-%C2%B7-Colour-Explorations) · [Screen inventory](screens.md)
-
-## Hackathon demo
-
-Start as Tanaka in Nagasaki. Search for help with a shelf, open a tool or skill match, then see how a Bengali reply can be translated in an existing exchange. Switch to Rahim and open Family to see how he can request help for Amina in her building circle in Cumilla. The bKash option is a payment simulation. [Demo walkthrough](docs/demo.md)
+*Screenshots from the app with seeded accounts.* [Figma design](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai-%C2%B7-Colour-Explorations) · [Screen inventory](screens.md)
 
 ## Architecture
 
-The Expo and React Native app signs in through Supabase Auth and calls a FastAPI backend. FastAPI checks circle membership, family consent, and exchange permissions. PostgreSQL stores requests, exchanges, and messages. Redis supports caching and queued tasks, while RustFS stores private media.
+```mermaid
+flowchart TB
+    mobile["Expo app"] -->|Sign in| auth["Supabase Auth"]
+    mobile -->|HTTPS| caddy["Caddy"]
+    caddy -->|API host| api["FastAPI"]
+    caddy -->|Media host| media["RustFS"]
+    api --> media
+    api --> redis[("Redis")]
+    api --> ai["OpenAI"]
+    api --> db[("Supabase PostgreSQL")]
+    jobs["Ripple and push jobs"] --> db
+    jobs --> push["Expo Push"]
+```
 
-The OpenAI Agents SDK interprets Ask requests and searches eligible listings. The backend also uses OpenAI for photo suggestions and translation. Separate background processes widen open requests and deliver notifications. [Production architecture diagram](docs/architecture.md#production-architecture) · [Technical guide](docs/architecture.md)
+| Layer | Stack | What it handles |
+| --- | --- | --- |
+| Mobile | Expo SDK 58, React Native, TypeScript, Expo Router, i18next | Screens, navigation, accessibility settings, and localized copy. |
+| API | Python, FastAPI, Pydantic, SQLAlchemy | Validates requests and applies membership, consent, and exchange rules. |
+| Identity, data, and media | Supabase Auth, PostgreSQL, Redis, RustFS | Email sign-in, durable app data, caching and queues, and signed URLs for private files. |
+| AI | OpenAI Agents SDK and OpenAI API | Ask interprets needs and searches the permitted catalogue. OpenAI also handles transcription, photo suggestions, and on-demand translation. |
+| Infrastructure | Docker Compose, Caddy, Alembic | Runs services, routes HTTPS traffic, and applies database migrations. |
 
-## Develop locally
+FastAPI owns permissions and state changes. It checks the signed-in user and their circle access before returning Ask results. Posting requires a separate confirmation from the app. Dedicated processes handle ripple delivery and device push. [Architecture and implementation details](docs/architecture.md)
 
-Run the API and its dependencies with Docker Compose, then connect the Expo app using a Supabase project. The development guide includes environment variables, migrations, and test commands. [Local development](docs/development.md) · [API reference](backend/docs/api-endpoints.md)
+## Run locally
+
+Use Docker Compose v2, Node.js 24 with pnpm, and a Supabase project. Python 3.12+ and uv are needed for host-side backend development and tests.
+
+1. Configure the root `.env` and `mobile/.env.local`. Point both apps to the same Supabase project and use the local API URL in Expo. [Environment setup](docs/development.md#configure-the-environment)
+2. From the repository root, apply migrations and start the API.
+
+   ```bash
+   docker compose run --rm --build backend alembic upgrade head
+   docker compose up -d --wait
+   curl -fsS http://127.0.0.1:8000/ready
+   ```
+
+3. In another terminal, start the app from the repository root.
+
+   ```bash
+   cd mobile
+   pnpm install --frozen-lockfile
+   pnpm start
+   ```
+
+   Press `w` for the browser preview. Swagger UI is available at `http://127.0.0.1:8000/docs`.
+
+## Developer documentation
+
+| Guide | What's inside |
+| --- | --- |
+| [Local development](docs/development.md) | Environment variables, code layout, local media, and test commands. |
+| [Architecture](docs/architecture.md) | Request delivery, AI inputs and outputs, consent, and deployment topology. |
+| [API reference](backend/docs/api-endpoints.md) | Endpoint contracts for account, circles, listings, requests, chat, and exchanges. |
+| [Deployment](backend/docs/deployment.md) | Production configuration, release checks, and operations. |
 
 ## Team
 
-Built for the hackathon theme **繋ぐ** (*tsunagu*, to connect) by [Hemalv02](https://github.com/Hemalv02), [shyan23](https://github.com/shyan23), **fahim**, and **mithunvoe**.
+- [Mominul Islam Hemal](https://github.com/Hemalv02)
+- [Nafis Shyan](https://github.com/shyan23)
+- [Shahriar Hossen Fahim](https://github.com/shfahiim)
+- [Kabya Mithun Saha](https://github.com/mithunvoe)
