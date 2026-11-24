@@ -42,6 +42,10 @@ export function getDeviceRegistration(userId: string) {
   return AsyncStorage.getItem(keyFor(userId));
 }
 
+export function clearDeviceRegistration(userId: string) {
+  return queue(() => AsyncStorage.removeItem(keyFor(userId)));
+}
+
 export function removeDeviceRegistration(userId: string) {
   return queue(async () => {
     const id = await getDeviceRegistration(userId);

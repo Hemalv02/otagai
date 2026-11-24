@@ -121,9 +121,18 @@ This ran the real Expo web build in Chrome against the real FastAPI app and a di
 - **Task 3, no destination:** a managed member with no circle shows "isn't in an approved circle yet", and **Review request** is disabled.
 - **Languages:** the Japanese and Bengali screens render.
 
-## iPhone checks with real Supabase test accounts (not yet run)
+## macOS review with real Supabase test accounts
 
-This was built on Linux, so no iOS simulator was available. Run these steps on macOS with `pnpm ios` from `mobile/`. Use three Supabase test accounts in approved circles: a caretaker in Japan, a member in a Bangladesh circle, and a neighbour in the same Bangladesh circle.
+The review used local Supabase Auth, the FastAPI application, and disposable PostgreSQL. The integrated branch passed 388 backend tests and 168 mobile tests, as well as Ruff, TypeScript, and lint.
+
+- The browser walkthrough covered managed account creation with explicit consent, family link acceptance without granting access, independent permission changes, posting for a member in a different region, and revocation between review and Send.
+- On the iPhone simulator, the caretaker created a managed account, saved a Chat permission change, reviewed and edited a request, and sent it to the member’s Bangladesh circle. A second attempt after revocation published nothing and kept the unsent wording.
+- The authorized recipient saw the request. Backend checks confirmed the request belonged to the member and recorded the caretaker.
+- Managed accounts still need a separate circle enrollment flow before they can post. Ending a managed creator’s own grant leaves separate delegated grants active.
+
+## iPhone walkthrough checklist
+
+To repeat the full walkthrough on macOS, run `pnpm ios` from `mobile/`. Use three Supabase test accounts in approved circles: a caretaker in Japan, a member in a Bangladesh circle, and a neighbour in the same Bangladesh circle.
 
 - [ ] As the caretaker, go to Family › Add a family member. Create a managed account with one scope off. Check the scopes with `GET /users/me/proxy-grants?as=caretaker`.
 - [ ] As the caretaker, go to Link an existing account and send a link to the member's ID. Confirm Pending on both phones. As the member, tap Review › Accept link. Relaunch and check that both sides show the link as accepted.
@@ -140,4 +149,4 @@ This was built on Linux, so no iOS simulator was available. Run these steps on m
   - "Save for later" on the composer. No draft API exists, and the brief removes locally simulated success states.
   - "Manage requests" on Family home, which is not part of this brief.
 - **Photo slots** show initials, because these APIs return no images.
-- **Scope switches** are native `Switch` controls in the design's colours. On web, react-native-web draws the active thumb in its default colour.
+- **Scope switches** use the shared Otagai toggle so the controls look and behave consistently on mobile and web.

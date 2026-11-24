@@ -23,21 +23,33 @@ import {
   optionalVisible,
   partnerFor,
   type ReportReason,
+  type ReportTarget,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { spacing } from "@/theme/tokens.json";
 
 type Action = "report" | "block";
 type Result = Partial<Record<Action, "done" | "failed">>;
 
+const reportTargets: ReportTarget[] = ["user", "listing", "message"];
+
+function asReportTarget(value: string): ReportTarget | null {
+  return (reportTargets as string[]).includes(value)
+    ? (value as ReportTarget)
+    : null;
+}
+
 export default function ReportOrBlockScreen() {
-  const { targetId, targetType, loanId } = useLocalSearchParams<{
-    targetId: string;
-    targetType: string;
-    loanId?: string;
-  }>();
+  const { targetId, targetType, loanId, subjectId, title } =
+    useLocalSearchParams<{
+      targetId: string;
+      targetType: string;
+      loanId?: string;
+      subjectId?: string;
+      title?: string;
+    }>();
   const { session, profile } = useSession();
   return (
     <ReportOrBlock
@@ -45,6 +57,8 @@ export default function ReportOrBlockScreen() {
       targetId={targetId}
       targetType={targetType}
       loanId={loanId}
+      subjectId={subjectId}
+      title={title}
       authUserId={session?.user.id ?? ""}
       profileId={profile.status === "ready" ? profile.profile.id : ""}
     />
@@ -55,50 +69,58 @@ function ReportOrBlock({
   targetId,
   targetType,
   loanId,
+  subjectId,
+  title,
   authUserId,
   profileId,
 }: {
   targetId: string;
   targetType: string;
   loanId?: string;
+  subjectId?: string;
+  title?: string;
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
+  const kind = asReportTarget(targetType);
   const target = useLiveResource(
     useCallback(async () => {
-      if (
-        !authUserId ||
-        !profileId ||
-        !isUuid(targetId) ||
-        targetId === profileId ||
-        targetType !== "user"
-      )
-        return {};
+      if (!authUserId || !profileId || !kind || !isUuid(targetId)) return {};
+      if (kind === "user" && targetId === profileId) return {};
       try {
-        if (!loanId) {
-          const person = await api.profile(targetId);
-          return { name: person.display_name };
+        if (kind === "user") {
+          if (!loanId) {
+            const person = await api.profile(targetId);
+            return { name: person.display_name };
+          }
+          if (!isUuid(loanId)) return {};
+          const exchange = await api.exchange(loanId);
+          if (
+            exchange.mode !== "loan" ||
+            partnerFor(exchange, profileId) !== targetId
+          )
+            return {};
+          const [person, loanTitle] = await Promise.all([
+            optionalVisible(api.profile(targetId)),
+            exchangeLabel(api, exchange),
+          ]);
+          return { name: person?.display_name ?? null, title: loanTitle };
         }
-        if (!isUuid(loanId)) return {};
-        const exchange = await api.exchange(loanId);
-        if (
-          exchange.mode !== "loan" ||
-          partnerFor(exchange, profileId) !== targetId
-        )
-          return {};
-        const [person, title] = await Promise.all([
-          optionalVisible(api.profile(targetId)),
-          exchangeLabel(api, exchange),
-        ]);
-        return { name: person?.display_name ?? null, title };
+        if (kind === "listing") {
+          if (title?.trim()) return { name: title.trim() };
+          const listing = await optionalVisible(api.listing(targetId));
+          return { name: listing?.title ?? null };
+        }
+        return { name: title?.trim() || null };
       } catch (error) {
         if (isUnavailable(error)) return {};
         throw error;
       }
-    }, [api, authUserId, loanId, profileId, targetId, targetType]),
+    }, [api, authUserId, kind, loanId, profileId, targetId, title]),
   );
 
   const [reason, setReason] = useState<ReportReason | null>(null);
@@ -110,12 +132,46 @@ function ReportOrBlock({
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const submissionId = useRef<string | null>(null);
-  const reportDetails = reason === "other" ? details.trim() : "";
+  const reportDetails = details.trim();
   const ready = target.data?.name !== undefined;
-  const name = target.data?.name ?? copy.neighbour;
+  const headline =
+    target.data?.name ??
+    (kind === "listing"
+      ? copy.reportListing
+      : kind === "message"
+        ? copy.reportMessage
+        : copy.neighbour);
+  const blockId =
+    subjectId && isUuid(subjectId)
+      ? subjectId
+      : kind === "user"
+        ? targetId
+        : null;
+  const canBlock = Boolean(blockId);
+  const blockLabel = kind === "user" ? copy.block : copy.blockPerson;
+  const alsoBlockLabel =
+    kind === "user" ? copy.alsoBlock : copy.alsoBlockPerson;
+  const reasonOptions: [ReportReason, string, string][] =
+    kind === "listing"
+      ? [
+          ["unsafe", copy.unsafe, copy.unsafeDetail],
+          ["scam", copy.scam, copy.scamDetail],
+          ["spam", copy.spam, copy.spamDetail],
+          ["other", copy.other, copy.otherDetail],
+        ]
+      : kind === "message"
+        ? [
+            ["harassment", copy.unwanted, copy.unwantedDetail],
+            ["spam", copy.spam, copy.spamDetail],
+            ["other", copy.other, copy.otherDetail],
+          ]
+        : [
+            ["harassment", copy.unwanted, copy.unwantedDetail],
+            ["other", copy.other, copy.otherDetail],
+          ];
   const actions: Action[] = [];
   if (!blockOnly && reason) actions.push("report");
-  if (block) actions.push("block");
+  if (canBlock && block) actions.push("block");
   const hasResult = result.report !== undefined || result.block !== undefined;
   const labelFor = (selected: Action[]) =>
     selected.length === 2
@@ -133,12 +189,17 @@ function ReportOrBlock({
     setBusy(true);
     const outcomes: Result = {};
     try {
-      if (selected.includes("report") && reason && result.report !== "done") {
+      if (
+        selected.includes("report") &&
+        reason &&
+        kind &&
+        result.report !== "done"
+      ) {
         try {
           submissionId.current ??= randomUUID();
           await api.report(
             submissionId.current,
-            "user",
+            kind,
             targetId,
             reason,
             reportDetails,
@@ -148,9 +209,9 @@ function ReportOrBlock({
           outcomes.report = "failed";
         }
       }
-      if (selected.includes("block") && result.block !== "done") {
+      if (selected.includes("block") && blockId && result.block !== "done") {
         try {
-          await api.block(targetId);
+          await api.block(blockId);
           outcomes.block = "done";
         } catch {
           outcomes.block = "failed";
@@ -165,12 +226,17 @@ function ReportOrBlock({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
       title={copy.reportOrBlock}
-      subtitle={copy.safetyIntro}
+      subtitle={
+        kind === "listing"
+          ? copy.safetyListingIntro
+          : kind === "message"
+            ? copy.safetyMessageIntro
+            : copy.safetyIntro
+      }
     >
       <ActivityStatus
         loading={target.loading}
@@ -183,7 +249,7 @@ function ReportOrBlock({
       {ready ? (
         <>
           <View>
-            <ActivityText strong>{name}</ActivityText>
+            <ActivityText strong>{headline}</ActivityText>
             {target.data?.title ? (
               <ActivityText>{target.data.title}</ActivityText>
             ) : null}
@@ -229,30 +295,27 @@ function ReportOrBlock({
             <>
               <View style={styles.reasonHeading}>
                 {blockOnly ? (
-                  <NeighbourHeading>{copy.blockOnly}</NeighbourHeading>
+                  <NeighbourHeading>{blockLabel}</NeighbourHeading>
                 ) : (
                   <NeighbourHeading>{copy.reason}</NeighbourHeading>
                 )}
-                <Button
-                  label={blockOnly ? copy.includeReport : copy.blockOnly}
-                  variant="text"
-                  labelStyle={localizedType("field-label", locale)}
-                  disabled={busy}
-                  onPress={() => {
-                    if (!blockOnly) setBlock(true);
-                    setBlockOnly(!blockOnly);
-                  }}
-                />
+                {canBlock ? (
+                  <Button
+                    label={blockOnly ? copy.includeReport : copy.blockOnly}
+                    variant="text"
+                    labelStyle={localizedType("field-label", locale)}
+                    disabled={busy}
+                    onPress={() => {
+                      if (!blockOnly) setBlock(true);
+                      setBlockOnly(!blockOnly);
+                    }}
+                  />
+                ) : null}
               </View>
               {!blockOnly ? (
                 <>
                   <View accessibilityRole="radiogroup" style={styles.reasons}>
-                    {(
-                      [
-                        ["harassment", copy.unwanted, copy.unwantedDetail],
-                        ["other", copy.other, copy.otherDetail],
-                      ] as const
-                    ).map(([value, title, detail]) => (
+                    {reasonOptions.map(([value, title, detail]) => (
                       <Pressable
                         key={value}
                         accessibilityRole="radio"
@@ -264,7 +327,6 @@ function ReportOrBlock({
                         disabled={busy}
                         onPress={() => {
                           setReason(value);
-                          if (value !== "other") setDetails("");
                         }}
                       >
                         <SelectionCopy
@@ -275,7 +337,7 @@ function ReportOrBlock({
                       </Pressable>
                     ))}
                   </View>
-                  {reason === "other" ? (
+                  {reason ? (
                     <Field
                       label={copy.details}
                       labelStyle={localizedType("field-label", locale)}
@@ -289,20 +351,22 @@ function ReportOrBlock({
                   ) : null}
                 </>
               ) : null}
-              <View style={styles.blockRow}>
-                <View style={styles.blockCopy}>
-                  <ActivityText strong>
-                    {blockOnly ? copy.block : copy.alsoBlock}
-                  </ActivityText>
-                  <ActivityText>{copy.blockDetail}</ActivityText>
+              {canBlock ? (
+                <View style={styles.blockRow}>
+                  <View style={styles.blockCopy}>
+                    <ActivityText strong>
+                      {blockOnly ? blockLabel : alsoBlockLabel}
+                    </ActivityText>
+                    <ActivityText>{copy.blockDetail}</ActivityText>
+                  </View>
+                  <ActivityToggle
+                    label={blockOnly ? blockLabel : alsoBlockLabel}
+                    value={block}
+                    disabled={busy}
+                    onChange={setBlock}
+                  />
                 </View>
-                <ActivityToggle
-                  label={blockOnly ? copy.block : copy.alsoBlock}
-                  value={block}
-                  disabled={busy}
-                  onChange={setBlock}
-                />
-              </View>
+              ) : null}
               <NeighbourNotice>
                 <ActivityText strong>{copy.beforeConfirm}</ActivityText>
                 <ActivityText>{copy.privateAction}</ActivityText>
@@ -340,12 +404,13 @@ function ReportOrBlock({
           onConfirm={() => execute(confirmation)}
           onCancel={() => setConfirmation(null)}
         >
-          <ActivityText strong>{name}</ActivityText>
+          <ActivityText strong>{headline}</ActivityText>
           {confirmation.includes("report") && reason ? (
             <>
               <ActivityText>
                 {copy.reason} ·{" "}
-                {reason === "harassment" ? copy.unwanted : copy.other}
+                {reasonOptions.find(([value]) => value === reason)?.[1] ??
+                  copy.other}
               </ActivityText>
               {reportDetails ? (
                 <View>

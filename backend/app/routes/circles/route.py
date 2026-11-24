@@ -3,7 +3,14 @@ from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from app.database.models import Circle, CircleInvite, CircleMembership
 from app.database.models.enums import (
@@ -279,6 +286,10 @@ class MembershipDetail(BaseModel):
     decided_at: datetime | None
 
 
+class RosterMembershipDetail(MembershipDetail):
+    display_name: str | None = None
+
+
 class InviteModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -301,6 +312,16 @@ def _parse_membership_statuses(raw: str | None) -> tuple[str, ...]:
         if value not in allowed:
             raise ValueError("Unknown membership status.")
     return tuple(dict.fromkeys(values))
+
+
+class MembershipPageQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
+
+    @field_validator("status")
+    @classmethod
+    def check_statuses(cls, value: str | None) -> str | None:
+        _parse_membership_statuses(value)
+        return value
 
 
 @router.patch("/{circle_id}")
@@ -331,19 +352,26 @@ async def leave(
 @router.get("/{circle_id}/memberships")
 async def circle_memberships(
     circle_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[MembershipPageQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
-) -> Page[MembershipDetail]:
+) -> Page[RosterMembershipDetail]:
     result = await list_circle_memberships(
         database,
         user,
         circle_id,
-        _parse_membership_statuses(status_filter),
+        _parse_membership_statuses(query.status),
         query.page(),
     )
-    return Page.build(result, MembershipDetail)
+    return Page[RosterMembershipDetail](
+        items=[
+            RosterMembershipDetail.model_validate(item.membership).model_copy(
+                update={"display_name": item.display_name}
+            )
+            for item in result.items
+        ],
+        next_cursor=result.next_cursor,
+    )
 
 
 @router.post("/{circle_id}/memberships/{member_id}/approve")

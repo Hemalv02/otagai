@@ -39,13 +39,14 @@ import {
 } from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useAssistantVoice } from "@/lib/use-assistant-voice";
 import { colors, spacing } from "@/theme/tokens.json";
 
 type Attachment = MediaFile & { mediaId?: string };
 
 export default function AssistantScreen() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { state: memberships } = useMemberships();
   const copy = assistantCopy[locale];
@@ -298,7 +299,6 @@ export default function AssistantScreen() {
         />
       }
       scrollRef={scroll}
-      showDemoPreview={false}
       fixedTitle
       compactTitle
       keyboard

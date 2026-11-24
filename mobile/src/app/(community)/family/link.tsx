@@ -13,7 +13,7 @@ import {
   normalizeMemberId,
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -21,6 +21,7 @@ type LinkError = "invalid" | "self" | "notFound" | "exists" | "failed";
 
 export default function LinkFamilyAccountScreen() {
   const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const { session, profile } = useSession();
   const selfId = profile.status === "ready" ? profile.profile.id : null;
@@ -82,7 +83,6 @@ export default function LinkFamilyAccountScreen() {
       <CommunityScreen
         title={copy.link.sentTitle}
         subtitle={copy.link.sentBody}
-        showDemoPreview={false}
       >
         <Button
           label={copy.backToFamily}
@@ -99,7 +99,6 @@ export default function LinkFamilyAccountScreen() {
       keyboard
       title={copy.link.title}
       subtitle={copy.link.subtitle}
-      showDemoPreview={false}
       footer={
         <Button
           label={copy.link.send}

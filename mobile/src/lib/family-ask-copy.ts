@@ -33,9 +33,12 @@ type AskCopy = {
   revokedTitle: (name: string) => string;
   keptBody: string;
   copyWording: string;
+  shareFailed: string;
   destinationTitle: string;
   destinationBody: string;
-  offline: string;
+  unconfirmedTitle: string;
+  checkFamily: string;
+  checkWithMember: (name: string) => string;
   session: string;
   failed: string;
 };
@@ -77,10 +80,13 @@ const en: AskCopy = {
   revokedTitle: (name) => `You can no longer post for ${name}`,
   keptBody: "Nothing was sent. Your wording is kept so you can copy it.",
   copyWording: "Copy or share wording",
+  shareFailed: "Could not open sharing. You can select and copy your wording.",
   destinationTitle: "That circle can’t receive this request",
   destinationBody: "Nothing was sent. Choose a circle again and retry.",
-  offline:
-    "Could not reach Otagai. The request may not have been sent. Check Family before trying again.",
+  unconfirmedTitle: "We couldn’t confirm whether this request was sent",
+  checkFamily: "Check this person’s requests in Family before trying again.",
+  checkWithMember: (name) =>
+    `Ask ${name} to check their requests before you try again.`,
   session: "Sign in again to continue. Nothing was sent.",
   failed: "Could not send. Nothing was sent. Try again.",
 };
@@ -122,10 +128,13 @@ const ja: AskCopy = {
   keptBody:
     "何も送信されていません。入力した文章は残っているのでコピーできます。",
   copyWording: "文章をコピー・共有",
+  shareFailed: "共有画面を開けませんでした。文章を選択してコピーできます。",
   destinationTitle: "そのサークルにはこの依頼を送れません",
   destinationBody: "何も送信されていません。サークルを選び直してください。",
-  offline:
-    "Otagaiに接続できませんでした。依頼が送信されていない可能性があります。もう一度試す前に「家族」を確認してください。",
+  unconfirmedTitle: "依頼が送信されたか確認できませんでした",
+  checkFamily: "もう一度試す前に「家族」で本人の依頼を確認してください。",
+  checkWithMember: (name) =>
+    `もう一度試す前に、${name}に自分の依頼を確認してもらってください。`,
   session: "もう一度ログインしてください。何も送信されていません。",
   failed:
     "送信できませんでした。何も送信されていません。もう一度お試しください。",
@@ -167,10 +176,13 @@ const bn: AskCopy = {
   revokedTitle: (name) => `আপনি আর ${name}-এর হয়ে পোস্ট করতে পারবেন না`,
   keptBody: "কিছুই পাঠানো হয়নি। আপনার লেখা রয়ে গেছে, চাইলে কপি করুন।",
   copyWording: "লেখা কপি বা শেয়ার করুন",
+  shareFailed: "শেয়ার করার পর্দা খোলা যায়নি। লেখাটি নির্বাচন করে কপি করতে পারবেন।",
   destinationTitle: "ওই সার্কেল এই অনুরোধ নিতে পারবে না",
   destinationBody: "কিছুই পাঠানো হয়নি। আবার সার্কেল বেছে নিয়ে চেষ্টা করুন।",
-  offline:
-    "Otagai-তে পৌঁছানো যায়নি। অনুরোধটি হয়তো পাঠানো হয়নি। আবার চেষ্টা করার আগে পরিবার দেখে নিন।",
+  unconfirmedTitle: "অনুরোধটি পাঠানো হয়েছে কি না নিশ্চিত করা যায়নি",
+  checkFamily: "আবার চেষ্টা করার আগে পরিবারে এই ব্যক্তির অনুরোধগুলো দেখুন।",
+  checkWithMember: (name) =>
+    `আবার চেষ্টা করার আগে ${name}-কে নিজের অনুরোধগুলো দেখতে বলুন।`,
   session: "চালিয়ে যেতে আবার সাইন ইন করুন। কিছুই পাঠানো হয়নি।",
   failed: "পাঠানো যায়নি। কিছুই পাঠানো হয়নি। আবার চেষ্টা করুন।",
 };

@@ -141,6 +141,13 @@ test("changes list each scope that flips, in a stable order", () => {
   );
 });
 
+test("saving an edited scope preserves a different scope changed during refresh", () => {
+  const refreshed = scopesOf(grant({ can_chat: false }));
+  assert.deepEqual(scopeChanges(refreshed, { can_view_activity: false }), [
+    { scope: "can_view_activity", enabled: false },
+  ]);
+});
+
 test("access can be offered only to accepted links without a grant", () => {
   const candidates = grantCandidates(
     [
@@ -222,7 +229,9 @@ test("send failures map to what the caretaker can do next", () => {
   assert.equal(classifySendFailure(403), "revoked");
   assert.equal(classifySendFailure(400), "destination");
   assert.equal(classifySendFailure(404), "failed");
-  assert.equal(classifySendFailure(0), "offline");
+  assert.equal(classifySendFailure(0), "unconfirmed");
+  assert.equal(classifySendFailure(408), "unconfirmed");
   assert.equal(classifySendFailure(401), "session");
-  assert.equal(classifySendFailure(500), "failed");
+  assert.equal(classifySendFailure(500), "unconfirmed");
+  assert.equal(classifySendFailure(502), "unconfirmed");
 });

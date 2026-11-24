@@ -9,8 +9,8 @@ import { Button, ErrorText } from "@/components/ui";
 import { assistantError } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { requestCopy } from "@/lib/request-demo-copy";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { requestCopy } from "@/lib/request-copy";
 import { activityCopy } from "@/lib/activity-copy";
 import { neighbourCopy } from "@/lib/neighbour-copy";
 import { type IncomingRequest, requestsApi } from "@/lib/requests-api";
@@ -20,6 +20,7 @@ type Feed = "mine" | "incoming";
 const feeds: Feed[] = ["mine", "incoming"];
 
 export default function RequestsScreen() {
+  const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   const copy = requestCopy[locale];
   const live = liveRequestCopy[locale];
@@ -94,7 +95,7 @@ export default function RequestsScreen() {
   const label = localizedType("field-label", locale);
 
   return (
-    <CommunityScreen title={copy.requests} showDemoPreview={false}>
+    <CommunityScreen title={copy.requests}>
       <Button
         label={activityCopy[locale].loans}
         labelStyle={localizedType("button", locale)}

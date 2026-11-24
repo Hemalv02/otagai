@@ -175,7 +175,7 @@ async def create_request(
 async def create_request_in_session(
     session: AsyncSession, actor: Actor, new_request: NewRequest
 ) -> HelpRequest:
-    actor.require(ProxyScope.POST_REQUESTS)
+    await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
     requester_id = actor.subject_id
     now = datetime.now(UTC)
     if new_request.needed_until is not None and new_request.needed_until <= now:
@@ -371,7 +371,7 @@ async def get_request(
 
 
 async def _load_own_request_for_update(
-    session, actor: Actor, request_id: uuid.UUID
+    session: AsyncSession, actor: Actor, request_id: uuid.UUID
 ) -> HelpRequest:
     request = await RequestRepository(session).get_for_update(request_id)
     if request is None:
@@ -384,8 +384,8 @@ async def _load_own_request_for_update(
 async def update_request(
     database: Database, actor: Actor, request_id: uuid.UUID, changes: dict
 ) -> HelpRequest:
-    actor.require(ProxyScope.POST_REQUESTS)
     async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
         request = await _load_own_request_for_update(session, actor, request_id)
         now = datetime.now(UTC)
         if request.status != RequestStatus.OPEN.value or request.expires_at <= now:
@@ -403,15 +403,20 @@ async def update_request(
                 "expires_at": expires_at,
                 "next_widen_at": schedule_after(request, now, expires_at),
             }
+        if (
+            changes.get("raw_text", request.raw_text) != request.raw_text
+            or changes.get("polite_text", request.polite_text) != request.polite_text
+        ):
+            changes = {**changes, "translations": {}}
         return await RequestRepository(session).update(request, changes)
 
 
 async def cancel_request(
     database: Database, actor: Actor, request_id: uuid.UUID
 ) -> HelpRequest:
-    actor.require(ProxyScope.POST_REQUESTS)
     now = datetime.now(UTC)
     async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
         request = await _load_own_request_for_update(session, actor, request_id)
         if request.status in (
             RequestStatus.CANCELLED.value,
@@ -471,8 +476,8 @@ async def widen_request(
     *,
     expected_stage: RippleStage | None = None,
 ) -> HelpRequest:
-    actor.require(ProxyScope.POST_REQUESTS)
     async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
         request = await _load_own_request_for_update(session, actor, request_id)
         now = datetime.now(UTC)
         if request.status == RequestStatus.EXPIRED.value or (
@@ -725,8 +730,8 @@ async def accept_response(
     request_id: uuid.UUID,
     response_id: uuid.UUID,
 ) -> RequestResponse:
-    actor.require(ProxyScope.POST_REQUESTS)
     async with database.session() as session:
+        await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
         request = await _load_own_request_for_update(session, actor, request_id)
         now = datetime.now(UTC)
         if request.status not in (

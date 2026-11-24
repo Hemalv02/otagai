@@ -25,10 +25,13 @@ class UserRepository:
             User, user_id, with_for_update=True, populate_existing=True
         )
 
-    async def get_by_auth_user_id(self, auth_user_id: uuid.UUID) -> User | None:
-        return await self._session.scalar(
-            select(User).where(User.auth_user_id == auth_user_id)
-        )
+    async def get_by_auth_user_id(
+        self, auth_user_id: uuid.UUID, *, for_update: bool = False
+    ) -> User | None:
+        statement = select(User).where(User.auth_user_id == auth_user_id)
+        if for_update:
+            statement = statement.with_for_update(key_share=True)
+        return await self._session.scalar(statement)
 
     async def create(self, values: dict[str, Any]) -> User:
         user = User(**values)

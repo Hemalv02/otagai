@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from app.database.models import Report, User
 from app.database.models.enums import ReportReason, ReportStatus, ReportTargetType
@@ -82,6 +82,19 @@ def _parse_report_statuses(raw: str | None) -> tuple[str, ...]:
         if value not in allowed:
             raise ValueError("Unknown report status.")
     return tuple(dict.fromkeys(values))
+
+
+class CircleReportsQuery(PageQuery):
+    status: str | None = Field(default=None, max_length=120)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        _parse_report_statuses(value)
+        return value
+
+    def statuses(self) -> tuple[str, ...]:
+        return _parse_report_statuses(self.status)
 
 
 @blocks_router.post("", status_code=status.HTTP_201_CREATED)
@@ -164,12 +177,11 @@ async def my_reports(
 @circle_reports_router.get("/{circle_id}/reports")
 async def circle_reports(
     circle_id: uuid.UUID,
-    query: Annotated[PageQuery, Query()],
+    query: Annotated[CircleReportsQuery, Query()],
     user: CurrentUserDep,
     database: DatabaseDep,
-    status_filter: Annotated[str | None, Query(alias="status", max_length=120)] = None,
 ) -> Page[ReportModel]:
     result = await list_circle_reports(
-        database, user, circle_id, _parse_report_statuses(status_filter), query.page()
+        database, user, circle_id, query.statuses(), query.page()
     )
     return Page.build(result, ReportModel)

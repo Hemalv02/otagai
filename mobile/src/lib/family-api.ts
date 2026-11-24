@@ -60,11 +60,15 @@ export const familyApi = {
         signal,
       })
     ).items,
-  grants: async (as: "member" | "caretaker", signal?: AbortSignal) =>
+  grants: async (
+    as: "member" | "caretaker",
+    signal?: AbortSignal,
+    authUserId?: string,
+  ) =>
     (
       await request<{ items: ProxyGrant[] }>(
         `/users/me/proxy-grants?as=${as}`,
-        { signal },
+        { signal, authUserId },
       )
     ).items,
   createManagedMember: (body: NewManagedMember, write: Write) =>
@@ -129,11 +133,15 @@ export const familyApi = {
       undefined,
       write,
     ),
-  destinationsFor: async (memberId: string, signal?: AbortSignal) =>
+  destinationsFor: async (
+    memberId: string,
+    signal?: AbortSignal,
+    authUserId?: string,
+  ) =>
     (
       await request<{ items: DestinationCircle[] }>(
         "/users/me/request-destinations",
-        { headers: actingHeaders(memberId), signal },
+        { headers: actingHeaders(memberId), signal, authUserId },
       )
     ).items,
   postFor: (memberId: string, body: ActingRequestBody, write: Write) =>

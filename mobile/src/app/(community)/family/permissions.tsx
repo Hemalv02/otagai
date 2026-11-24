@@ -32,12 +32,13 @@ import {
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useFamilyPermissions } from "@/lib/use-family-permissions";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export default function FamilyPermissionsScreen() {
   const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const { sources, refresh, authUserId, selfId } = useFamilyPermissions();
   const [refreshing, setRefreshing] = useState(false);
@@ -80,7 +81,6 @@ export default function FamilyPermissionsScreen() {
       back
       title={copy.permissions.title}
       subtitle={copy.permissions.subtitle}
-      showDemoPreview={false}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -178,6 +178,7 @@ function GrantSection({
   rows: PermissionRow[];
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   return (
     <View style={styles.section}>
@@ -247,6 +248,7 @@ function LinkSection({
   onEnd: (link: ReviewedLink) => void;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const visible = links.filter(
     (link) => link.status !== "revoked" && link.other,

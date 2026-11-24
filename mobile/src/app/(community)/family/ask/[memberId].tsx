@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useLocalSearchParams, usePreventRemove } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, Share, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -23,7 +23,7 @@ import {
   type SendFailure,
   validateActingDraft,
 } from "@/lib/family-consent";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -31,7 +31,12 @@ type Load =
   | { status: "loading" }
   | { status: "error" }
   | { status: "not-allowed"; name: string }
-  | { status: "ready"; name: string; destinations: DestinationCircle[] };
+  | {
+      status: "ready";
+      name: string;
+      destinations: DestinationCircle[];
+      canViewActivity: boolean;
+    };
 
 type Step = "compose" | "review" | "sent";
 
@@ -42,16 +47,26 @@ function circleName(circle: DestinationCircle, locale: Language) {
 
 async function loadComposer(
   memberId: string,
+  authUserId: string,
   signal: AbortSignal,
 ): Promise<Load> {
-  const grants = await familyApi.grants("caretaker", signal);
+  const grants = await familyApi.grants("caretaker", signal, authUserId);
   const grant = grants.find((item) => item.member_user_id === memberId);
   const name = grant?.other?.display_name ?? "";
   if (!grant || !grant.can_post_requests)
     return { status: "not-allowed", name };
   try {
-    const destinations = await familyApi.destinationsFor(memberId, signal);
-    return { status: "ready", name, destinations };
+    const destinations = await familyApi.destinationsFor(
+      memberId,
+      signal,
+      authUserId,
+    );
+    return {
+      status: "ready",
+      name,
+      destinations,
+      canViewActivity: grant.can_view_activity,
+    };
   } catch (error) {
     if (error instanceof ApiError && error.status === 403) {
       return { status: "not-allowed", name };
@@ -62,10 +77,32 @@ async function loadComposer(
 
 export default function ActingRequestScreen() {
   const params = useLocalSearchParams<{ memberId: string }>();
-  const memberId = normalizeMemberId(params.memberId ?? "");
-  const { locale } = useOnboardingText();
-  const copy = familyAskCopy[locale];
+  const memberId =
+    typeof params.memberId === "string"
+      ? normalizeMemberId(params.memberId)
+      : null;
   const { session } = useSession();
+  const authUserId = session?.user.id;
+  if (!authUserId) return null;
+  return (
+    <ActingRequestComposer
+      key={`${authUserId}:${memberId ?? ""}`}
+      authUserId={authUserId}
+      memberId={memberId}
+    />
+  );
+}
+
+function ActingRequestComposer({
+  memberId,
+  authUserId,
+}: {
+  memberId: string | null;
+  authUserId: string;
+}) {
+  const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
+  const copy = familyAskCopy[locale];
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [reload, setReload] = useState(0);
   const [step, setStep] = useState<Step>("compose");
@@ -76,7 +113,9 @@ export default function ActingRequestScreen() {
   const [choosing, setChoosing] = useState(false);
   const [showProblems, setShowProblems] = useState(false);
   const [sending, setSending] = useState(false);
+  const submitting = useRef(false);
   const [failure, setFailure] = useState<SendFailure | null>(null);
+  const [shareFailed, setShareFailed] = useState(false);
   const [sentId, setSentId] = useState<string | null>(null);
   const label = localizedType("field-label", locale);
   const button = localizedType("button", locale);
@@ -86,7 +125,7 @@ export default function ActingRequestScreen() {
     if (!memberId) return;
     const controller = new AbortController();
     let active = true;
-    loadComposer(memberId, controller.signal).then(
+    loadComposer(memberId, authUserId, controller.signal).then(
       (next) => {
         if (active) setLoad(next);
       },
@@ -98,9 +137,26 @@ export default function ActingRequestScreen() {
       active = false;
       controller.abort();
     };
-  }, [memberId, reload]);
+  }, [authUserId, memberId, reload]);
+
+  const sendBlocked = failure === "revoked" || failure === "unconfirmed";
+  const allowLeave = usePreventRemove(step === "review", ({ repeat }) => {
+    if (submitting.current) return;
+    if (sendBlocked) {
+      allowLeave();
+      repeat();
+    } else {
+      editReview();
+    }
+  });
+
+  function editReview() {
+    setFailure(null);
+    setStep("compose");
+  }
 
   function exitToMine() {
+    allowLeave();
     router.dismissTo({
       pathname: "/family",
       params: { account: "self", at: String(Date.now()) },
@@ -116,7 +172,8 @@ export default function ActingRequestScreen() {
     load.status === "ready" || load.status === "not-allowed" ? load.name : "";
   const destinations = load.status === "ready" ? load.destinations : [];
   const circle =
-    destinations.find((item) => item.id === chosenCircle) ?? destinations[0];
+    destinations.find((item) => item.id === chosenCircle) ??
+    (failure === "destination" ? undefined : destinations[0]);
   const draft = { need, when, details, circleId: circle?.id ?? null };
   const problems = validateActingDraft(draft);
   const body = actingRequestBody(draft, locale, copy.whenPrefix);
@@ -133,8 +190,9 @@ export default function ActingRequestScreen() {
   ) : null;
 
   async function send() {
-    const authUserId = session?.user.id;
-    if (!memberId || !authUserId || problems.length > 0) return;
+    if (!memberId || sendBlocked || submitting.current || problems.length > 0)
+      return;
+    submitting.current = true;
     setSending(true);
     setFailure(null);
     try {
@@ -149,18 +207,21 @@ export default function ActingRequestScreen() {
       if (kind === "destination") {
         setStep("compose");
         setChosenCircle(null);
-        setReload((value) => value + 1);
+        setChoosing(true);
+        retryLoad();
       }
     } finally {
+      submitting.current = false;
       setSending(false);
     }
   }
 
   async function copyWording() {
+    setShareFailed(false);
     try {
       await Share.share({ message: body.raw_text });
     } catch {
-      setFailure("failed");
+      setShareFailed(true);
     }
   }
 
@@ -173,59 +234,44 @@ export default function ActingRequestScreen() {
     />
   );
 
+  const keepWording = hasDraft ? (
+    <View style={styles.card}>
+      <Text selectable style={[localizedType("body", locale), styles.ink]}>
+        {body.raw_text}
+      </Text>
+      <Button
+        label={copy.copyWording}
+        labelStyle={label}
+        variant="outline"
+        onPress={() => void copyWording()}
+      />
+      {shareFailed ? <ErrorText>{copy.shareFailed}</ErrorText> : null}
+    </View>
+  ) : null;
+
   if (!memberId || load.status === "not-allowed") {
     return (
-      <CommunityScreen
-        back
-        title={copy.title}
-        banner={banner}
-        showDemoPreview={false}
-      >
+      <CommunityScreen back title={copy.title} banner={banner}>
         <FamilyNotice
           title={name ? copy.notAllowedTitle(name) : copy.notAllowedGeneric}
           body={copy.notAllowedBody}
           locale={locale}
         />
-        {hasDraft ? (
-          <View style={styles.card}>
-            <Text
-              selectable
-              style={[localizedType("body", locale), styles.ink]}
-            >
-              {body.raw_text}
-            </Text>
-            <Button
-              label={copy.copyWording}
-              labelStyle={label}
-              variant="outline"
-              onPress={() => void copyWording()}
-            />
-          </View>
-        ) : null}
+        {keepWording}
         {switchAction}
       </CommunityScreen>
     );
   }
   if (load.status === "loading") {
     return (
-      <CommunityScreen
-        back
-        title={copy.title}
-        banner={banner}
-        showDemoPreview={false}
-      >
+      <CommunityScreen back title={copy.title} banner={banner}>
         <AccountSkeleton />
       </CommunityScreen>
     );
   }
   if (load.status === "error") {
     return (
-      <CommunityScreen
-        back
-        title={copy.title}
-        banner={banner}
-        showDemoPreview={false}
-      >
+      <CommunityScreen back title={copy.title} banner={banner}>
         <FamilyNotice
           tone="alert"
           title={copy.loadFailed}
@@ -233,6 +279,7 @@ export default function ActingRequestScreen() {
           onAction={retryLoad}
           locale={locale}
         />
+        {keepWording}
         {switchAction}
       </CommunityScreen>
     );
@@ -244,7 +291,6 @@ export default function ActingRequestScreen() {
         title={copy.sentTitle(name)}
         subtitle={copy.sentBody(name)}
         banner={banner}
-        showDemoPreview={false}
       >
         <View style={styles.card}>
           <Text style={[label, styles.ink]}>{copy.requestId}</Text>
@@ -261,15 +307,8 @@ export default function ActingRequestScreen() {
     );
   }
 
-  const failureMessage = failure
-    ? {
-        revoked: copy.keptBody,
-        destination: copy.destinationBody,
-        offline: copy.offline,
-        session: copy.session,
-        failed: copy.failed,
-      }[failure]
-    : null;
+  const failureMessage =
+    failure === "session" ? copy.session : failure === "failed" ? copy.failed : null;
   const failureNotice =
     failure === "revoked" ? (
       <FamilyNotice
@@ -287,6 +326,17 @@ export default function ActingRequestScreen() {
         body={copy.destinationBody}
         locale={locale}
       />
+    ) : failure === "unconfirmed" ? (
+      <FamilyNotice
+        tone="alert"
+        title={copy.unconfirmedTitle}
+        body={
+          load.canViewActivity ? copy.checkFamily : copy.checkWithMember(name)
+        }
+        actionLabel={copy.copyWording}
+        onAction={() => void copyWording()}
+        locale={locale}
+      />
     ) : failureMessage ? (
       <ErrorText>{failureMessage}</ErrorText>
     ) : null;
@@ -297,30 +347,44 @@ export default function ActingRequestScreen() {
         back
         title={copy.reviewTitle}
         banner={banner}
-        showDemoPreview={false}
         footer={
-          <>
+          sendBlocked ? (
             <Button
-              label={copy.send}
+              label={
+                failure === "revoked" ? copy.switchToMine : copy.backToFamily
+              }
               labelStyle={button}
-              busy={sending}
-              disabled={failure === "revoked" || problems.length > 0}
-              onPress={() => void send()}
-            />
-            <Button
-              label={copy.editRequest}
-              labelStyle={label}
-              variant="outline"
-              disabled={sending}
               onPress={() => {
-                setFailure(null);
-                setStep("compose");
+                if (failure === "revoked") {
+                  exitToMine();
+                } else {
+                  allowLeave();
+                  router.dismissTo("/family");
+                }
               }}
             />
-          </>
+          ) : (
+            <>
+              <Button
+                label={copy.send}
+                labelStyle={button}
+                busy={sending}
+                disabled={problems.length > 0}
+                onPress={() => void send()}
+              />
+              <Button
+                label={copy.editRequest}
+                labelStyle={label}
+                variant="outline"
+                disabled={sending}
+                onPress={editReview}
+              />
+            </>
+          )
         }
       >
         {failureNotice}
+        {shareFailed ? <ErrorText>{copy.shareFailed}</ErrorText> : null}
         <View style={styles.card}>
           <Text selectable style={[localizedType("body", locale), styles.ink]}>
             {body.raw_text}
@@ -332,7 +396,6 @@ export default function ActingRequestScreen() {
         <Text style={[supporting, styles.secondary]}>
           {copy.reviewNote(name)}
         </Text>
-        {failure === "revoked" ? switchAction : null}
       </CommunityScreen>
     );
   }
@@ -344,12 +407,11 @@ export default function ActingRequestScreen() {
       keyboard
       title={copy.title}
       banner={banner}
-      showDemoPreview={false}
       footer={
         <Button
           label={copy.review}
           labelStyle={button}
-          disabled={noCircle}
+          disabled={!circle}
           onPress={() => {
             setShowProblems(true);
             if (problems.length === 0) {
@@ -423,7 +485,7 @@ export default function ActingRequestScreen() {
           />
         </Pressable>
       ) : null}
-      {choosing && destinations.length > 1 ? (
+      {choosing && (destinations.length > 1 || (!circle && !noCircle)) ? (
         <View accessibilityRole="radiogroup" style={styles.list}>
           <Text style={[label, styles.ink]}>{copy.chooseCircle}</Text>
           {destinations.map((item) => (

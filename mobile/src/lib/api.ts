@@ -29,6 +29,7 @@ export type UserProfile = {
   id: string;
   kind: "self" | "managed";
   display_name: string;
+  avatar_media_id: string | null;
   preferred_language: Language;
   languages: Language[];
   region: Region;
@@ -36,6 +37,7 @@ export type UserProfile = {
   age_band: string | null;
   intro: string | null;
   happy_to_help_with: string | null;
+  profile_details_visible: boolean;
   accepts_money_orei: boolean;
   simple_mode: boolean;
   text_scale_percent: number;
@@ -46,6 +48,18 @@ export type UserProfile = {
   created_at: string;
 };
 
+export type UpdateMyProfile = Partial<
+  Pick<
+    UserProfile,
+    | "display_name"
+    | "intro"
+    | "happy_to_help_with"
+    | "avatar_media_id"
+    | "profile_details_visible"
+    | "text_scale_percent"
+  >
+>;
+
 export type NewProfile = {
   display_name: string;
   preferred_language: Language;
@@ -53,6 +67,7 @@ export type NewProfile = {
   languages?: Language[];
   age_band?: string;
   happy_to_help_with?: string;
+  intro?: string;
 };
 
 export type Circle = {
@@ -63,10 +78,40 @@ export type Circle = {
   name_translations: Partial<Record<Language, unknown>>;
 };
 
+export type CircleUnitType =
+  | "city"
+  | "association"
+  | "han"
+  | "para"
+  | "moholla"
+  | "building";
+
+export type MembershipRole = "member" | "leader" | "coordinator";
+
+export type CircleDetail = Circle & {
+  approx_lat: number | null;
+  approx_lng: number | null;
+  open_to_nearby: boolean;
+  status: string;
+  member_count: number;
+  my_status: string | null;
+  my_role: string | null;
+};
+
 export type CircleMembership = {
   circle_id: string;
+  role: MembershipRole;
   status: "pending" | "approved" | "rejected" | "removed" | "left";
   circle: Circle | null;
+};
+
+export type NewCircle = {
+  name: string;
+  unit_type: CircleUnitType;
+  region?: Region;
+  open_to_nearby?: boolean;
+  approx_lat?: number;
+  approx_lng?: number;
 };
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
@@ -366,6 +411,12 @@ export const api = {
     request<{ items: CategoryNode[] }>(`/categories?kind=${kind}`, options),
   uploadListingPhoto: (body: FormData, options?: ListingRequestOptions) =>
     request<Media>("/media", { ...options, method: "POST", body }),
+  uploadAvatar: (file: Blob, options?: ListingRequestOptions) => {
+    const body = new FormData();
+    body.append("purpose", "avatar");
+    body.append("file", file);
+    return request<Media>("/media", { ...options, method: "POST", body });
+  },
   getMedia: (id: string, options?: ListingRequestOptions) =>
     request<Media>(`/media/${encodeURIComponent(id)}`, options),
   createListing: (body: CreateListingBody, options?: ListingRequestOptions) =>
@@ -434,10 +485,41 @@ export const api = {
       method: "DELETE",
     }),
   getMyProfile: () => request<UserProfile>("/users/me"),
+  updateMyProfile: (fields: UpdateMyProfile, options: ListingRequestOptions) =>
+    request<UserProfile>("/users/me", {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    }),
+  deleteMyProfile: (options: ListingRequestOptions) =>
+    request<void>("/users/me", { ...options, method: "DELETE" }),
   updateNotificationPreferences: (preferences: NotificationPreferences) =>
     request<UserProfile>("/users/me", {
       method: "PATCH",
       body: JSON.stringify(preferences),
+    }),
+  draftIntroCard: (
+    body: { skills: string; happy_to_help_with?: string; language: Language },
+    options?: ListingRequestOptions,
+  ) =>
+    request<{ intro: string }>("/ai/intro-cards", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  draftExtension: (
+    body: {
+      intent: "extend" | "remind";
+      item?: string;
+      days?: number;
+      language: Language;
+    },
+    options?: ListingRequestOptions,
+  ) =>
+    request<{ message: string }>("/ai/extension-drafts", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   listOpenLoanExchanges: (cursor?: string | null) => {
     const query = pageQuery(cursor);
@@ -538,6 +620,11 @@ export const api = {
     request<CircleMembership>("/users/me/memberships", {
       method: "POST",
       body: JSON.stringify(target),
+    }),
+  createCircle: (body: NewCircle) =>
+    request<CircleDetail>("/circles", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   listMemberships: async () => {
     const items: CircleMembership[] = [];

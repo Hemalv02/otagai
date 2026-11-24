@@ -1,7 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import type { Language } from "@/lib/api";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function RequestNotice({
@@ -13,6 +13,7 @@ export function RequestNotice({
   detail: string;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View style={styles.notice}>
       <Text style={[localizedType("field-label", locale), styles.title]}>

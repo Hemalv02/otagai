@@ -24,7 +24,7 @@ import {
   type ThankYou,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -54,6 +54,7 @@ function LoanThankYou({
   profileId: string;
   culturePack: "japan" | "bangladesh";
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -88,6 +89,7 @@ function LoanThankYou({
     }, [api, authUserId, id, profileId]),
   );
   const [note, setNote] = useState("");
+  const [orei, setOrei] = useState<string | null>(null);
   const [review, setReview] = useState(false);
   const [suggested, setSuggested] = useState(false);
   const [busy, setBusy] = useState<"draft" | "send" | null>(null);
@@ -147,6 +149,7 @@ function LoanThankYou({
       );
       if (!result.note.trim()) throw new Error("Empty suggestion.");
       setNote(result.note.trim().slice(0, 1000));
+      setOrei(result.suggested_orei.trim().slice(0, 200) || null);
       setSuggested(true);
     } catch {
       setError("draft");
@@ -190,7 +193,6 @@ function LoanThankYou({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
@@ -296,6 +298,12 @@ function LoanThankYou({
                     });
                   }}
                 />
+                {suggested && orei ? (
+                  <NeighbourNotice>
+                    <ActivityText strong>{copy.oreiIdea}</ActivityText>
+                    <ActivityText>{orei}</ActivityText>
+                  </NeighbourNotice>
+                ) : null}
               </>
             )}
             {error ? (

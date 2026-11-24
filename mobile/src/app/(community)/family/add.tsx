@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -14,10 +14,11 @@ import {
   DEFAULT_SCOPES,
   explicitScopes,
   GRANT_SCOPES,
+  isUnconfirmedWrite,
   type ScopeChoice,
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -32,6 +33,7 @@ type Step = "details" | "review" | "done";
 
 export default function AddFamilyMemberScreen() {
   const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const { session, profile } = useSession();
   const [step, setStep] = useState<Step>("details");
@@ -44,6 +46,7 @@ export default function AddFamilyMemberScreen() {
   const [scopes, setScopes] = useState<ScopeChoice>(DEFAULT_SCOPES);
   const [nameMissing, setNameMissing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [failure, setFailure] = useState<"failed" | "unsure" | null>(null);
   const trimmed = name.trim();
   const label = localizedType("field-label", locale);
@@ -60,7 +63,8 @@ export default function AddFamilyMemberScreen() {
 
   async function create() {
     const authUserId = session?.user.id;
-    if (!authUserId) return;
+    if (!authUserId || submitting.current || failure === "unsure") return;
+    submitting.current = true;
     setBusy(true);
     setFailure(null);
     try {
@@ -80,9 +84,12 @@ export default function AddFamilyMemberScreen() {
       setStep("done");
     } catch (caught) {
       setFailure(
-        caught instanceof ApiError && caught.status === 0 ? "unsure" : "failed",
+        isUnconfirmedWrite(caught instanceof ApiError ? caught.status : 0)
+          ? "unsure"
+          : "failed",
       );
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -92,7 +99,6 @@ export default function AddFamilyMemberScreen() {
       <CommunityScreen
         title={copy.add.doneTitle(trimmed)}
         subtitle={copy.add.doneBody(trimmed)}
-        showDemoPreview={false}
       >
         <Button
           label={copy.backToFamily}
@@ -108,23 +114,32 @@ export default function AddFamilyMemberScreen() {
       <CommunityScreen
         title={copy.add.reviewTitle(trimmed)}
         subtitle={copy.add.reviewSubtitle(trimmed)}
-        showDemoPreview={false}
         footer={
           <>
             {failure ? <ErrorText>{copy.add[failure]}</ErrorText> : null}
-            <Button
-              label={copy.add.create}
-              labelStyle={button}
-              busy={busy}
-              onPress={() => void create()}
-            />
-            <Button
-              label={copy.add.editDetails}
-              labelStyle={label}
-              variant="outline"
-              disabled={busy}
-              onPress={() => setStep("details")}
-            />
+            {failure === "unsure" ? (
+              <Button
+                label={copy.backToFamily}
+                labelStyle={button}
+                onPress={() => router.dismissTo("/family")}
+              />
+            ) : (
+              <>
+                <Button
+                  label={copy.add.create}
+                  labelStyle={button}
+                  busy={busy}
+                  onPress={() => void create()}
+                />
+                <Button
+                  label={copy.add.editDetails}
+                  labelStyle={label}
+                  variant="outline"
+                  disabled={busy}
+                  onPress={() => setStep("details")}
+                />
+              </>
+            )}
           </>
         }
       >
@@ -151,7 +166,7 @@ export default function AddFamilyMemberScreen() {
               onChange={(value) =>
                 setScopes((current) => ({ ...current, [scope]: value }))
               }
-              disabled={busy}
+              disabled={busy || failure === "unsure"}
               locale={locale}
             />
           ))}
@@ -166,7 +181,6 @@ export default function AddFamilyMemberScreen() {
       keyboard
       title={copy.add.title}
       subtitle={copy.add.subtitle}
-      showDemoPreview={false}
       footer={
         <Button
           label={copy.add.reviewPermissions}

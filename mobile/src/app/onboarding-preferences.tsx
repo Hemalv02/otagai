@@ -8,7 +8,7 @@ import {
 } from "@/components/onboarding-screen";
 import { Button, Choice, ErrorText } from "@/components/ui";
 import { useOnboarding } from "@/lib/onboarding";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, spacing } from "@/theme/tokens.json";
 
 const languages = [
@@ -18,6 +18,7 @@ const languages = [
 ] as const;
 
 export default function OnboardingPreferences() {
+  const localizedType = useLocalizedType();
   const { state, saving, savePreferences } = useOnboarding();
   const [language, setLanguage] = useState(state.language);
   const [region, setRegion] = useState(state.region);

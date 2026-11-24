@@ -1,5 +1,9 @@
+import asyncio
 import uuid
 
+import pytest
+
+from app.routes.requests import route as request_routes
 from tests.integration.conftest import auth, join_circle, make_circle, make_user
 from tests.integration.family_fixtures import (
     acted_by,
@@ -127,6 +131,84 @@ async def test_proxy_grant_lifecycle(client):
         f"/proxy-grants/{grant_id}/revoke", headers=auth(caretaker)
     )
     assert revoked.status_code == 200
+
+
+async def test_revoked_grant_remains_private_and_can_be_revoked_again(client):
+    ctx = await pair(client)
+    outsider = await make_user(client)
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_post_requests",
+    )
+    path = f"/proxy-grants/{grant_id}/revoke"
+    revoked = await client.post(path, headers=auth(ctx["member"]))
+    assert revoked.status_code == 200, revoked.text
+
+    repeated = await client.post(path, headers=auth(ctx["caretaker"]))
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json() == revoked.json()
+
+    denied = await client.post(path, headers=auth(outsider))
+    assert denied.status_code == 404, denied.text
+
+
+@pytest.mark.parametrize("change", ["disable", "revoke", "replace"])
+async def test_proxy_cannot_publish_after_consent_changes(client, monkeypatch, change):
+    ctx = await pair(client)
+    await make_circle(client, ctx["member"])
+    grant_id = await give_grant(
+        client,
+        ctx["member"],
+        ctx["member_id"],
+        ctx["caretaker_id"],
+        "can_post_requests",
+    )
+    ready_to_publish = asyncio.Event()
+    continue_publication = asyncio.Event()
+    create_request = request_routes.create_request
+
+    async def wait_before_publication(database, actor, new_request):
+        ready_to_publish.set()
+        await continue_publication.wait()
+        return await create_request(database, actor, new_request)
+
+    monkeypatch.setattr(request_routes, "create_request", wait_before_publication)
+    posting = asyncio.create_task(
+        post_help(client, acting(ctx["caretaker"], ctx["member_id"]))
+    )
+    try:
+        await asyncio.wait_for(ready_to_publish.wait(), timeout=5)
+        member_auth = auth(ctx["member"])
+        if change == "disable":
+            changed = await client.patch(
+                f"/proxy-grants/{grant_id}",
+                headers=member_auth,
+                json={"can_post_requests": False},
+            )
+        else:
+            changed = await client.post(
+                f"/proxy-grants/{grant_id}/revoke", headers=member_auth
+            )
+        assert changed.status_code == 200, changed.text
+        if change == "replace":
+            await give_grant(
+                client,
+                ctx["member"],
+                ctx["member_id"],
+                ctx["caretaker_id"],
+                "can_post_requests",
+            )
+    finally:
+        continue_publication.set()
+        posted = await asyncio.wait_for(posting, timeout=5)
+
+    assert posted.status_code == 403, posted.text
+    requests = await client.get("/users/me/requests", headers=member_auth)
+    assert requests.status_code == 200, requests.text
+    assert requests.json()["items"] == []
 
 
 async def test_proxy_can_post_request_for_member(client):

@@ -67,7 +67,11 @@ export type ActingDraft = {
 export type ActingField = "need" | "when" | "details" | "circle";
 
 export type SendFailure =
-  "revoked" | "destination" | "offline" | "session" | "failed";
+  | "revoked"
+  | "destination"
+  | "unconfirmed"
+  | "session"
+  | "failed";
 
 export const LIMITS = { need: 200, when: 120, details: 1500 } as const;
 
@@ -95,11 +99,14 @@ export function scopesOf(grant: ProxyGrant): ScopeChoice {
 
 export function scopeChanges(
   before: ScopeChoice,
-  after: ScopeChoice,
+  edits: Partial<ScopeChoice>,
 ): { scope: GrantScope; enabled: boolean }[] {
-  return GRANT_SCOPES.filter((scope) => before[scope] !== after[scope]).map(
-    (scope) => ({ scope, enabled: after[scope] }),
-  );
+  return GRANT_SCOPES.flatMap((scope) => {
+    const enabled = edits[scope];
+    return enabled !== undefined && enabled !== before[scope]
+      ? [{ scope, enabled }]
+      : [];
+  });
 }
 
 function row(grant: ProxyGrant, iHelp: boolean): PermissionRow[] {
@@ -188,10 +195,14 @@ export function actingRequestBody(
   };
 }
 
+export function isUnconfirmedWrite(status: number) {
+  return status === 0 || status === 408 || status >= 500;
+}
+
 export function classifySendFailure(status: number): SendFailure {
   if (status === 403) return "revoked";
   if (status === 400) return "destination";
   if (status === 401) return "session";
-  if (status === 0) return "offline";
+  if (isUnconfirmedWrite(status)) return "unconfirmed";
   return "failed";
 }

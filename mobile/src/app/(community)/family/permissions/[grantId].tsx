@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -26,11 +26,14 @@ import {
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useFamilyPermissions } from "@/lib/use-family-permissions";
 import { colors, spacing } from "@/theme/tokens.json";
 
-type Sheet = "save" | "end" | null;
+type Sheet =
+  | { kind: "save"; changes: ReturnType<typeof scopeChanges> }
+  | { kind: "end" }
+  | null;
 
 function findGrant(
   grantId: string,
@@ -46,25 +49,27 @@ function findGrant(
 export default function GrantPermissionsScreen() {
   const { grantId } = useLocalSearchParams<{ grantId: string }>();
   const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const { sources, refresh, authUserId, selfName } = useFamilyPermissions();
-  const [draft, setDraft] = useState<ScopeChoice | null>(null);
+  const [draft, setDraft] = useState<Partial<ScopeChoice>>({});
   const [sheet, setSheet] = useState<Sheet>(null);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [noChanges, setNoChanges] = useState(false);
   const label = localizedType("field-label", locale);
 
   if (sources.status === "loading") {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <AccountSkeleton />
       </CommunityScreen>
     );
   }
   if (sources.status === "error") {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <FamilyNotice
           tone="alert"
           title={copy.actionFailed}
@@ -78,7 +83,7 @@ export default function GrantPermissionsScreen() {
   const found = findGrant(grantId, sources.asMember, sources.asCaretaker);
   if (!found || !found.grant.other) {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <FamilyNotice title={copy.grant.gone} locale={locale} />
         <Button
           label={copy.backToFamily}
@@ -98,24 +103,25 @@ export default function GrantPermissionsScreen() {
   const managed = !viewerIsMember && other.kind === "managed";
   const canEdit = viewerIsMember || grant.can_change_scopes === true;
   const saved = scopesOf(grant);
-  const current = draft ?? saved;
-  const changes = scopeChanges(saved, current);
+  const current = { ...saved, ...draft };
 
   async function save() {
-    if (!authUserId) return;
+    if (!authUserId || !canEdit || sheet?.kind !== "save" || submitting.current)
+      return;
+    submitting.current = true;
     setBusy(true);
     setProblem(null);
     try {
       await familyApi.updateScopes(
         grant.id,
         Object.fromEntries(
-          changes.map((change) => [change.scope, change.enabled]),
+          sheet.changes.map((change) => [change.scope, change.enabled]),
         ),
         { authUserId },
       );
       setSheet(null);
-      setDraft(null);
-      router.back();
+      setDraft({});
+      router.dismissTo("/family/permissions");
     } catch (caught) {
       const status = caught instanceof ApiError ? caught.status : 0;
       setProblem(
@@ -127,32 +133,36 @@ export default function GrantPermissionsScreen() {
       );
       if (status === 403 || status === 404) void refresh();
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
 
   async function endAccess() {
-    if (!authUserId) return;
+    if (!authUserId || submitting.current) return;
+    submitting.current = true;
     setBusy(true);
     setProblem(null);
     try {
       await familyApi.endAccess(grant.id, { authUserId });
       setSheet(null);
-      router.back();
+      router.dismissTo("/family/permissions");
     } catch {
       setProblem(copy.actionFailed);
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
 
   function confirm() {
+    const changes = scopeChanges(saved, draft);
     if (changes.length === 0) {
       setNoChanges(true);
       return;
     }
     setProblem(null);
-    setSheet("save");
+    setSheet({ kind: "save", changes });
   }
 
   return (
@@ -172,7 +182,6 @@ export default function GrantPermissionsScreen() {
               : copy.grant.delegatedSubtitle(memberName)
             : copy.grant.caretakerSubtitle(memberName)
       }
-      showDemoPreview={false}
       footer={
         canEdit ? (
           <Button
@@ -211,7 +220,12 @@ export default function GrantPermissionsScreen() {
             value={current[scope]}
             onChange={(value) => {
               setNoChanges(false);
-              setDraft({ ...current, [scope]: value });
+              setDraft((previous) => {
+                const next = { ...previous };
+                if (value === saved[scope]) delete next[scope];
+                else next[scope] = value;
+                return next;
+              });
             }}
             disabled={!canEdit || busy}
             locale={locale}
@@ -237,31 +251,34 @@ export default function GrantPermissionsScreen() {
         variant="text"
         onPress={() => {
           setProblem(null);
-          setSheet("end");
+          setSheet({ kind: "end" });
         }}
       />
       <ConfirmSheet
-        visible={sheet === "save"}
+        visible={sheet?.kind === "save"}
         title={copy.grant.confirmTitle}
         confirmLabel={copy.grant.save}
         cancelLabel={copy.cancel}
         onConfirm={() => void save()}
         onCancel={() => setSheet(null)}
         busy={busy}
+        disabled={!canEdit}
         locale={locale}
       >
         <SheetLine locale={locale}>
           {`${memberName} → ${caretakerName}`}
         </SheetLine>
-        {changes.map((change) => (
-          <SheetLine key={change.scope} locale={locale}>
-            {`• ${copy.effects[change.scope](caretakerName, memberName, change.enabled)}`}
-          </SheetLine>
-        ))}
+        {sheet?.kind === "save"
+          ? sheet.changes.map((change) => (
+              <SheetLine key={change.scope} locale={locale}>
+                {`• ${copy.effects[change.scope](caretakerName, memberName, change.enabled)}`}
+              </SheetLine>
+            ))
+          : null}
         {problem ? <ErrorText>{problem}</ErrorText> : null}
       </ConfirmSheet>
       <ConfirmSheet
-        visible={sheet === "end"}
+        visible={sheet?.kind === "end"}
         title={
           viewerIsMember
             ? copy.grant.endMemberTitle(caretakerName)

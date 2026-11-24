@@ -234,7 +234,7 @@ const en: ConsentCopy = {
       `You can help ${name} with the permissions you chose. Before you can post requests for them, a circle leader needs to approve ${name} in a neighbourhood circle. That is a separate step.`,
     failed: "Could not create the account. Your details are still here.",
     unsure:
-      "Could not reach Otagai. The account may have been created, so check Family before trying again.",
+      "We couldn’t confirm whether the account was created. Check Family before trying again.",
   },
   link: {
     title: "Link an existing account",
@@ -434,7 +434,7 @@ const ja: ConsentCopy = {
       `選んだ許可の範囲で${name}を手伝えます。${name}の依頼を出すには、別の手続きとして、サークルのリーダーに地域のサークルで承認してもらう必要があります。`,
     failed: "アカウントを作成できませんでした。入力内容は残っています。",
     unsure:
-      "Otagaiに接続できませんでした。アカウントが作成された可能性があるため、もう一度試す前に「家族」を確認してください。",
+      "アカウントが作成されたか確認できませんでした。もう一度試す前に「家族」を確認してください。",
   },
   link: {
     title: "既存のアカウントとつながる",
@@ -635,7 +635,7 @@ const bn: ConsentCopy = {
       `আপনার বেছে নেওয়া অনুমতি দিয়ে ${name}-কে সাহায্য করতে পারবেন। তাদের হয়ে অনুরোধ পোস্ট করার আগে একজন সার্কেল লিডারকে ${name}-কে কোনো পাড়ার সার্কেলে অনুমোদন দিতে হবে। এটি আলাদা একটি ধাপ।`,
     failed: "অ্যাকাউন্ট তৈরি করা যায়নি। আপনার দেওয়া তথ্য রয়ে গেছে।",
     unsure:
-      "Otagai-তে পৌঁছানো যায়নি। অ্যাকাউন্টটি হয়তো তৈরি হয়ে গেছে, তাই আবার চেষ্টা করার আগে পরিবার দেখে নিন।",
+      "অ্যাকাউন্টটি তৈরি হয়েছে কি না নিশ্চিত করা যায়নি। আবার চেষ্টা করার আগে পরিবার দেখে নিন।",
   },
   link: {
     title: "বিদ্যমান অ্যাকাউন্ট যুক্ত করুন",

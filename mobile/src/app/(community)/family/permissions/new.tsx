@@ -24,12 +24,13 @@ import {
 } from "@/lib/family-consent";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useFamilyPermissions } from "@/lib/use-family-permissions";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export default function GiveAccessScreen() {
   const { locale } = useOnboardingText();
+  const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
   const { sources, refresh, authUserId, selfId, selfName } =
     useFamilyPermissions();
@@ -43,14 +44,14 @@ export default function GiveAccessScreen() {
 
   if (sources.status === "loading" || !selfId) {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <AccountSkeleton />
       </CommunityScreen>
     );
   }
   if (sources.status === "error") {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <FamilyNotice
           tone="alert"
           title={copy.actionFailed}
@@ -80,7 +81,7 @@ export default function GiveAccessScreen() {
         { authUserId },
       );
       setConfirming(false);
-      router.back();
+      router.dismissTo("/family/permissions");
     } catch (caught) {
       const status = caught instanceof ApiError ? caught.status : 0;
       setProblem(status === 409 ? copy.give.exists : copy.actionFailed);
@@ -96,7 +97,6 @@ export default function GiveAccessScreen() {
         back
         title={copy.give.title}
         subtitle={copy.give.subtitle}
-        showDemoPreview={false}
       >
         <FamilyNotice title={copy.give.noCandidates} locale={locale} />
       </CommunityScreen>
@@ -110,7 +110,6 @@ export default function GiveAccessScreen() {
       subtitle={
         person ? copy.give.reviewSubtitle(person.name) : copy.give.subtitle
       }
-      showDemoPreview={false}
       footer={
         <>
           {person && enabled.length === 0 ? (

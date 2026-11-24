@@ -2,6 +2,8 @@ import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import ProxyGrant, User
 from app.database.models.enums import UserStatus
@@ -52,6 +54,16 @@ class Actor:
 
     def require(self, scope: ProxyScope) -> None:
         if self.grant is not None and not getattr(self.grant, scope.value):
+            raise ProxyScopeError(SCOPE_MESSAGES[scope])
+
+    async def require_for_write(self, session: AsyncSession, scope: ProxyScope) -> None:
+        if self.grant is None:
+            return
+        # Hold the exact grant until the write commits or rolls back.
+        grant = await ProxyGrantRepository(session).get_for_update(self.grant.id)
+        if grant is None or grant.revoked_at is not None:
+            raise ProxyNotAllowedError
+        if not getattr(grant, scope.value):
             raise ProxyScopeError(SCOPE_MESSAGES[scope])
 
 

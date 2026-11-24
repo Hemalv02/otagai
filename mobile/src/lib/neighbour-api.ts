@@ -4,10 +4,14 @@ import {
   type Exchange,
   type Language,
   type Page,
+  type RequestSummary,
 } from "@/lib/api";
+
+export { isUuid } from "@/lib/uuid";
 
 type Person = { id: string; display_name: string };
 export type PublicNeighbour = Person & {
+  avatar_url: string | null;
   languages: Language[];
   intro: string | null;
   happy_to_help_with: string | null;
@@ -29,7 +33,7 @@ export type ThankYou = {
   created_at: string;
 };
 export type ReportTarget = "user" | "listing" | "message" | "request";
-export type ReportReason = "harassment" | "other";
+export type ReportReason = "harassment" | "spam" | "unsafe" | "scam" | "other";
 type HistoryExchange = Exchange & { completed_at: string | null };
 type NeighbourListing = {
   id: string;
@@ -42,13 +46,6 @@ type NeighbourListing = {
 
 export function isUnavailable(error: unknown) {
   return error instanceof ApiError && [403, 404].includes(error.status);
-}
-
-export function isUuid(value: unknown): value is string {
-  return (
-    typeof value === "string" &&
-    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value)
-  );
 }
 
 export function partnerFor(exchange: Exchange, profileId: string) {
@@ -96,6 +93,12 @@ export function neighbourApi(authUserId: string) {
       get<Page<NeighbourListing>>(
         pagePath(`/users/${encodeURIComponent(id)}/listings`),
       ),
+    openRequests: (id: string) =>
+      get<Page<RequestSummary>>(
+        pagePath(`/users/${encodeURIComponent(id)}/requests`, {
+          status: "open",
+        }),
+      ),
     request: (id: string) =>
       get<{ polite_text: string }>(`/requests/${encodeURIComponent(id)}`),
     thankYou: (id: string) =>
@@ -122,7 +125,7 @@ export function neighbourApi(authUserId: string) {
       language: Language,
       culturePack: "japan" | "bangladesh",
     ) =>
-      post<{ note: string }>("/ai/thank-you-drafts", {
+      post<{ note: string; suggested_orei: string }>("/ai/thank-you-drafts", {
         helped_with: helpedWith,
         language,
         culture_pack: culturePack,

@@ -1,9 +1,11 @@
 import { createInstance } from "i18next";
+import { createContext, useCallback, useContext } from "react";
 import { useTranslation } from "react-i18next";
 
 import { accountCopy } from "@/lib/account-copy";
 import type { Language } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
+import { scaleTypographyMetrics } from "@/lib/text-size";
 import { fonts, typography } from "@/theme/tokens.json";
 
 const en = {
@@ -54,6 +56,13 @@ const en = {
   bangladeshCountry: "Bangladesh",
   helpWith: "Happy to help with (optional)",
   helpWithExample: "Gardening, carrying shopping, Japanese forms",
+  introLabel: "Introduction (optional)",
+  introHint: "Neighbours see this on your profile.",
+  suggestIntro: "Suggest an intro",
+  suggestAnotherIntro: "Suggest another",
+  introPlaceholder: "A warm hello to your neighbours…",
+  addSkillsFirst: "Add what you’re happy to help with, then we can suggest one.",
+  introDraftError: "Couldn’t draft an intro. You can still write your own.",
   continue: "Continue",
   signOut: "Sign out",
 };
@@ -106,6 +115,13 @@ const ja: typeof en = {
   bangladeshCountry: "バングラデシュ",
   helpWith: "お手伝いできること（任意）",
   helpWithExample: "園芸、買い物袋を運ぶこと、書類の記入",
+  introLabel: "自己紹介（任意）",
+  introHint: "ご近所の方のプロフィールに表示されます。",
+  suggestIntro: "自己紹介を提案",
+  suggestAnotherIntro: "別の案を提案",
+  introPlaceholder: "ご近所の方への一言…",
+  addSkillsFirst: "お手伝いできることを書くと、自己紹介を提案できます。",
+  introDraftError: "自己紹介を作成できませんでした。ご自身で書くこともできます。",
   continue: "続ける",
   signOut: "ログアウト",
 };
@@ -156,6 +172,13 @@ const bn: typeof en = {
   bangladeshCountry: "বাংলাদেশ",
   helpWith: "যে কাজে সাহায্য করতে চান (ঐচ্ছিক)",
   helpWithExample: "বাগান করা, বাজারের ব্যাগ বহন করা, ফর্ম পূরণ",
+  introLabel: "পরিচিতি (ঐচ্ছিক)",
+  introHint: "প্রতিবেশীরা এটি আপনার প্রোফাইলে দেখতে পাবেন।",
+  suggestIntro: "একটি পরিচিতি প্রস্তাব করুন",
+  suggestAnotherIntro: "আরেকটি প্রস্তাব করুন",
+  introPlaceholder: "প্রতিবেশীদের জন্য উষ্ণ অভিবাদন…",
+  addSkillsFirst: "যে কাজে সাহায্য করতে চান লিখুন, তাহলে পরিচিতি প্রস্তাব করা যাবে।",
+  introDraftError: "পরিচিতি তৈরি করা যায়নি। আপনি নিজেই লিখতে পারেন।",
   continue: "এগিয়ে যান",
   signOut: "সাইন আউট",
 };
@@ -184,11 +207,22 @@ export function useOnboardingText(language?: Language) {
 export function localizedType(
   role: Exclude<keyof typeof typography, "wordmark">,
   locale: Language,
+  percent?: number,
 ) {
   const spec = typography[role];
   return {
     fontFamily: fonts[locale][spec.weight as keyof typeof fonts.en],
-    fontSize: spec.size,
-    lineHeight: spec.lineHeight[locale],
+    ...scaleTypographyMetrics(spec.size, spec.lineHeight[locale], percent),
   };
+}
+
+export const TextSizeContext = createContext(100);
+
+export function useLocalizedType() {
+  const percent = useContext(TextSizeContext);
+  return useCallback(
+    (role: Parameters<typeof localizedType>[0], locale: Language) =>
+      localizedType(role, locale, percent),
+    [percent],
+  );
 }

@@ -33,7 +33,7 @@ import {
   type Review,
 } from "@/lib/assistant-conversation";
 import { assistantCopy } from "@/lib/assistant-copy";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import {
   rippleCopy,
   rippleScopes,
@@ -118,6 +118,7 @@ export function UserBubble({
   children,
   locale,
 }: PropsWithChildren<{ locale: Language }>) {
+  const localizedType = useLocalizedType();
   return (
     <View style={styles.userBubble}>
       {typeof children === "string" ? (
@@ -169,6 +170,7 @@ export function ResultWidget({
   onOpen: () => void;
   onChoose?: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = assistantCopy[locale];
   const tool = card.type === "tool";
   const title = tool ? card.listing.title : card.owner.display_name;
@@ -260,6 +262,7 @@ export function ConversationTurn({
   draftDisabled?: boolean;
   openRequest: (id: string) => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = assistantCopy[locale];
   const body = localizedType("body", locale);
   const label = localizedType("field-label", locale);
@@ -415,6 +418,7 @@ export function AssistantSheet({
   close: () => void;
   footer?: ReactNode;
 }>) {
+  const localizedType = useLocalizedType();
   const copy = assistantCopy[locale];
   return (
     <Modal
@@ -470,6 +474,7 @@ export function ReviewSheet({
   close: () => void;
   confirm: (body: ConfirmRequest) => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = assistantCopy[locale];
   const [description, setDescription] = useState(review.text);
   const [when, setWhen] = useState(review.when);

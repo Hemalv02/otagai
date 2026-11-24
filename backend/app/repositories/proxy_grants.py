@@ -26,15 +26,20 @@ class ProxyGrantRepository:
         )
 
     async def get_active(
-        self, *, member_user_id: uuid.UUID, caretaker_user_id: uuid.UUID
+        self,
+        *,
+        member_user_id: uuid.UUID,
+        caretaker_user_id: uuid.UUID,
+        for_update: bool = False,
     ) -> ProxyGrant | None:
-        return await self._session.scalar(
-            select(ProxyGrant).where(
-                ProxyGrant.member_user_id == member_user_id,
-                ProxyGrant.caretaker_user_id == caretaker_user_id,
-                ProxyGrant.revoked_at.is_(None),
-            )
+        statement = select(ProxyGrant).where(
+            ProxyGrant.member_user_id == member_user_id,
+            ProxyGrant.caretaker_user_id == caretaker_user_id,
+            ProxyGrant.revoked_at.is_(None),
         )
+        if for_update:
+            statement = statement.with_for_update()
+        return await self._session.scalar(statement)
 
     async def create(self, values: dict[str, Any]) -> ProxyGrant:
         grant = ProxyGrant(**values)

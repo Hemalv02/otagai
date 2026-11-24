@@ -1,15 +1,19 @@
-import { Image } from "expo-image";
 import type { PropsWithChildren } from "react";
-import { Modal, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ActivityToggle } from "@/components/activity-toggle";
 import { Button } from "@/components/ui";
 import type { Language } from "@/lib/api";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
-
-const markerOn = require("../../assets/images/community/ask-choice-empty.svg");
-const markerOff = require("../../assets/images/community/ask-choice-selected.svg");
 
 export function SelectionCard({
   title,
@@ -26,6 +30,7 @@ export function SelectionCard({
   disabled?: boolean;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <Pressable
       accessibilityRole="radio"
@@ -39,11 +44,9 @@ export function SelectionCard({
         (pressed || disabled) && styles.dimmed,
       ]}
     >
-      <Image
-        source={selected ? markerOn : markerOff}
-        style={styles.marker}
-        accessible={false}
-      />
+      <View style={[styles.marker, selected && styles.markerOn]}>
+        {selected ? <View style={styles.markerDot} /> : null}
+      </View>
       <View style={styles.copy}>
         <Text style={[localizedType("field-label", locale), styles.ink]}>
           {title}
@@ -73,6 +76,7 @@ export function ScopeToggleRow({
   disabled?: boolean;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View style={styles.toggleRow}>
       <View style={styles.copy}>
@@ -83,15 +87,12 @@ export function ScopeToggleRow({
           {detail}
         </Text>
       </View>
-      <Switch
-        accessibilityLabel={title}
-        accessibilityHint={detail}
+      <ActivityToggle
+        label={title}
+        hint={detail}
         value={value}
-        onValueChange={onChange}
+        onChange={onChange}
         disabled={disabled}
-        trackColor={{ false: colors.control, true: colors.action }}
-        thumbColor={colors.canvas}
-        ios_backgroundColor={colors.control}
       />
     </View>
   );
@@ -106,6 +107,7 @@ export function ActingBanner({
   detail: string;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View style={styles.bannerWrap}>
       <View
@@ -151,46 +153,51 @@ export function ConfirmSheet({
   onSecondary?: () => void;
   locale: Language;
 }>) {
+  const localizedType = useLocalizedType();
   const label = localizedType("field-label", locale);
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={busy ? undefined : onCancel}
+      onRequestClose={() => {
+        if (!busy) onCancel();
+      }}
     >
       <SafeAreaView style={styles.scrim}>
         <View accessibilityViewIsModal style={styles.sheet}>
-          <Text
-            accessibilityRole="header"
-            style={[localizedType("section-heading", locale), styles.ink]}
-          >
-            {title}
-          </Text>
-          {children}
-          <Button
-            label={confirmLabel}
-            labelStyle={localizedType("button", locale)}
-            busy={busy}
-            disabled={disabled}
-            onPress={onConfirm}
-          />
-          {secondaryLabel && onSecondary ? (
+          <ScrollView bounces={false} contentContainerStyle={styles.sheetContent}>
+            <Text
+              accessibilityRole="header"
+              style={[localizedType("section-heading", locale), styles.ink]}
+            >
+              {title}
+            </Text>
+            {children}
             <Button
-              label={secondaryLabel}
-              labelStyle={label}
-              variant="outline"
-              disabled={busy}
-              onPress={onSecondary}
+              label={confirmLabel}
+              labelStyle={localizedType("button", locale)}
+              busy={busy}
+              disabled={disabled}
+              onPress={onConfirm}
             />
-          ) : null}
-          <Button
-            label={cancelLabel}
-            labelStyle={label}
-            variant="text"
-            disabled={busy}
-            onPress={onCancel}
-          />
+            {secondaryLabel && onSecondary ? (
+              <Button
+                label={secondaryLabel}
+                labelStyle={label}
+                variant="outline"
+                disabled={busy}
+                onPress={onSecondary}
+              />
+            ) : null}
+            <Button
+              label={cancelLabel}
+              labelStyle={label}
+              variant="text"
+              disabled={busy}
+              onPress={onCancel}
+            />
+          </ScrollView>
         </View>
       </SafeAreaView>
     </Modal>
@@ -201,6 +208,7 @@ export function SheetLine({
   children,
   locale,
 }: PropsWithChildren<{ locale: Language }>) {
+  const localizedType = useLocalizedType();
   return (
     <Text style={[localizedType("body", locale), styles.secondary]}>
       {children}
@@ -222,7 +230,22 @@ const styles = StyleSheet.create({
   selectionOn: { borderColor: colors.action, backgroundColor: colors.wash },
   selectionOff: { borderColor: colors.control, backgroundColor: colors.canvas },
   dimmed: { opacity: 0.6 },
-  marker: { width: 22, height: 22 },
+  marker: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: colors.control,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  markerOn: { borderColor: colors.action },
+  markerDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.action,
+  },
   copy: { flex: 1, gap: 2 },
   toggleRow: {
     flexDirection: "row",
@@ -253,11 +276,14 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     maxWidth: 500,
     width: "100%",
+    flexShrink: 1,
     backgroundColor: colors.canvas,
-    padding: spacing["screen-gutter"],
-    gap: spacing["card-inset"],
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+  },
+  sheetContent: {
+    padding: spacing["screen-gutter"],
+    gap: spacing["card-inset"],
   },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },

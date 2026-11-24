@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { lendingCopy } from "@/lib/lending-copy";
 import type { KindFilter } from "@/lib/listing-workflow";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls } from "@/theme/tokens.json";
 
 const kinds = ["all", "tool", "skill"] as const;
@@ -15,6 +15,7 @@ export function ListingKindFilter({
   disabled?: boolean;
   onChange: (value: KindFilter) => void;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = lendingCopy[locale];
   const label = localizedType("field-label", locale);

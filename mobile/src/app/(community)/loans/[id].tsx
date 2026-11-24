@@ -9,6 +9,7 @@ import { ApiError, api, type Exchange, type LoanExtension } from "@/lib/api";
 import {
   activityCopy,
   extensionDate,
+  extensionDraftDays,
   formatActivityDate,
   localDateInput,
 } from "@/lib/activity-copy";
@@ -21,10 +22,11 @@ import {
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
 import { partnerFor } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
+import { stageLoanMessageDraft } from "@/lib/exchange-conversation";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
 import { livePickupCopy } from "@/lib/live-pickup";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -78,6 +80,7 @@ type LoanAction =
   | { advance: ExchangeAction };
 
 export default function LoanDetailsScreen() {
+  const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
   const { profile } = useSession();
@@ -108,7 +111,7 @@ export default function LoanDetailsScreen() {
   const next =
     stage === "return" || stage === "confirm" ? progression[stage] : null;
   const itemName = title || copy.unnamedLoan;
-  const messageAction = (
+  const messageAction = (draft?: string | null) => (
     <Button
       label={exchangeMessageCopy[locale].messagePartner(
         partnerName || exchangeMessageCopy[locale].neighbour,
@@ -116,9 +119,12 @@ export default function LoanDetailsScreen() {
       variant="text"
       labelStyle={localizedType("field-label", locale)}
       disabled={busy || loan.loading || loan.error}
-      onPress={() =>
-        router.push({ pathname: "/loans/[id]/messages", params: { id } })
-      }
+      onPress={() => {
+        if (profileId && draft?.trim()) {
+          stageLoanMessageDraft(profileId, id, draft);
+        }
+        router.push({ pathname: "/loans/[id]/messages", params: { id } });
+      }}
     />
   );
   const heading =
@@ -171,7 +177,6 @@ export default function LoanDetailsScreen() {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
@@ -294,10 +299,17 @@ export default function LoanDetailsScreen() {
               busy={busy}
               disabled={loan.loading || loan.error}
               onSend={(request) => act({ request })}
+              messageAction={messageAction()}
+            />
+          ) : lender && active ? (
+            <ReminderDraft
+              key={`${exchange.id}:reminder:${locale}`}
+              itemName={itemName}
+              busy={busy || loan.loading || loan.error}
               messageAction={messageAction}
             />
           ) : (
-            messageAction
+            messageAction()
           )}
           {history.length ? (
             <View style={styles.history}>
@@ -466,6 +478,7 @@ function ExtensionDraft({
   onSend: (request: ExtensionRequest) => void;
   messageAction: ReactNode;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];
@@ -480,6 +493,8 @@ function ExtensionDraft({
   const [editedMessage, setEditedMessage] = useState<string | null>(null);
   const [messageHeight, setMessageHeight] = useState(112);
   const [invalid, setInvalid] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiFailed, setAiFailed] = useState(false);
   const reference = new Date(exchange.due_at ?? now);
   const selected = extensionDate(date, reference);
   const draft = selected
@@ -491,6 +506,29 @@ function ExtensionDraft({
       )
     : "";
   const message = editedMessage ?? draft;
+
+  async function suggestWithAi() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setAiFailed(false);
+    try {
+      const result = await api.draftExtension({
+        intent: "extend",
+        item: itemName.slice(0, 200),
+        days: extensionDraftDays(selected, reference, now),
+        language: locale,
+      });
+      if (result.message.trim()) {
+        setEditedMessage(result.message.trim().slice(0, 1000));
+      } else {
+        setAiFailed(true);
+      }
+    } catch {
+      setAiFailed(true);
+    } finally {
+      setAiBusy(false);
+    }
+  }
   return (
     <View style={styles.extension}>
       <Text
@@ -522,6 +560,15 @@ function ExtensionDraft({
           ]}
         />
       </View>
+      <Button
+        label={screen.suggestWithAi}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        busy={aiBusy}
+        disabled={busy}
+        onPress={suggestWithAi}
+      />
+      {aiFailed ? <ErrorText>{screen.aiDraftError}</ErrorText> : null}
       {expanded ? (
         <View style={styles.extension}>
           <Field
@@ -584,6 +631,81 @@ function ExtensionDraft({
         </View>
       )}
       {expanded ? messageAction : null}
+    </View>
+  );
+}
+
+function ReminderDraft({
+  itemName,
+  busy,
+  messageAction,
+}: {
+  itemName: string;
+  busy: boolean;
+  messageAction: (draft: string | null) => ReactNode;
+}) {
+  const localizedType = useLocalizedType();
+  const { locale } = useOnboardingText();
+  const screen = activityScreenCopy[locale];
+  const [text, setText] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiFailed, setAiFailed] = useState(false);
+
+  async function draft() {
+    if (aiBusy) return;
+    setAiBusy(true);
+    setAiFailed(false);
+    try {
+      const result = await api.draftExtension({
+        intent: "remind",
+        item: itemName.slice(0, 200),
+        language: locale,
+      });
+      if (result.message.trim()) setText(result.message.trim().slice(0, 1000));
+      else setAiFailed(true);
+    } catch {
+      setAiFailed(true);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  return (
+    <View style={styles.extension}>
+      <Text
+        accessibilityRole="header"
+        style={[localizedType("section-heading", locale), styles.ink]}
+      >
+        {screen.reminderTitle}
+      </Text>
+      {text !== null ? (
+        <View style={styles.draft}>
+          <Text style={[localizedType("field-label", locale), styles.ink]}>
+            {screen.reminderSuggested}
+          </Text>
+          <TextInput
+            accessibilityLabel={screen.reminderSuggested}
+            value={text}
+            onChangeText={setText}
+            multiline
+            maxLength={1000}
+            editable={!busy}
+            underlineColorAndroid="transparent"
+            scrollEnabled={false}
+            style={[localizedType("body", locale), styles.draftInput]}
+          />
+        </View>
+      ) : null}
+      <Button
+        label={screen.draftReminder}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        busy={aiBusy}
+        disabled={busy}
+        onPress={draft}
+      />
+      {aiFailed ? <ErrorText>{screen.aiDraftError}</ErrorText> : null}
+      {messageAction(text)}
     </View>
   );
 }

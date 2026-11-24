@@ -30,7 +30,7 @@ import {
   type KindFilter,
 } from "@/lib/listing-workflow";
 import { myListingsCopy } from "@/lib/my-listings-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -38,6 +38,7 @@ type StatusFilter = "all" | ListingStatus;
 type DetailError = "titleRequired" | "conflict" | "offline" | "error";
 
 export default function MyListingsScreen() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = myListingsCopy[locale];
   const { session, profile } = useSession();
@@ -387,7 +388,7 @@ export default function MyListingsScreen() {
   ) : null;
 
   return (
-    <CommunityScreen title={copy.title} back keyboard showDemoPreview={false}>
+    <CommunityScreen title={copy.title} back keyboard>
       <ListingKindFilter
         value={kind}
         onChange={(next) => changeFilters(next, status)}

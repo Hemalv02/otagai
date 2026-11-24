@@ -11,7 +11,7 @@ import {
   formatNeededWindow,
   type StatusLinkRow,
 } from "@/lib/family-state";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type Tone = "action" | "clay" | "secondary";
@@ -32,6 +32,7 @@ export function Thumbnail({
   shape: "round" | "square";
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View
       accessible={false}
@@ -68,6 +69,7 @@ export function ListRow({
   locale: Language;
   children?: ReactNode;
 }) {
+  const localizedType = useLocalizedType();
   const supporting = localizedType("supporting", locale);
   return (
     <View style={styles.row}>
@@ -106,6 +108,7 @@ export function AccountList({
   onReviewLink: (link: StatusLinkRow) => void;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   const copy = familyCopy[locale];
   const consent = familyConsentCopy[locale];
 
@@ -212,6 +215,7 @@ export function FamilyRequestRow({
   request: RequestSummary;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   const [expanded, setExpanded] = useState(false);
   const copy = familyCopy[locale];
   const supporting = localizedType("supporting", locale);
@@ -318,11 +322,12 @@ export function FamilyNotice({
   tone?: "calm" | "alert";
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View
       accessibilityRole={tone === "alert" ? "alert" : undefined}
       accessibilityLiveRegion={tone === "alert" ? "assertive" : "none"}
-      style={[styles.notice, tone === "alert" && styles.noticeAlert]}
+      style={styles.notice}
     >
       <Text style={[localizedType("field-label", locale), styles.ink]}>
         {title}
@@ -385,7 +390,6 @@ const styles = StyleSheet.create({
     borderRadius: controls.radius,
     backgroundColor: colors.paper,
   },
-  noticeAlert: { borderLeftWidth: 4, borderLeftColor: colors.clay },
   noticeAction: { marginTop: 4 },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },

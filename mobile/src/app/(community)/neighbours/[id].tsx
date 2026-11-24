@@ -18,7 +18,7 @@ import {
   partnerFor,
 } from "@/lib/neighbour-api";
 import { neighbourCopy, shortExchangeDate } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, fonts, spacing } from "@/theme/tokens.json";
 
@@ -44,6 +44,7 @@ function NeighbourProfile({
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -70,6 +71,13 @@ function NeighbourProfile({
       return page?.items.find((item) => item.status === "active") ?? null;
     }, [api, authUserId, id, profileId]),
   );
+  const openRequests = useLiveResource(
+    useCallback(async () => {
+      if (!authUserId || !isUuid(id) || id === profileId) return [];
+      const page = await optionalVisible(api.openRequests(id));
+      return page?.items ?? [];
+    }, [api, authUserId, id, profileId]),
+  );
   const data = resource.data?.status === "ready" ? resource.data : null;
   const available = listing.data;
   const name = data?.person.display_name;
@@ -79,7 +87,6 @@ function NeighbourProfile({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={name ?? copy.profile}
@@ -99,6 +106,14 @@ function NeighbourProfile({
       ) : null}
       {data && name && !resource.error ? (
         <>
+          {data.person.avatar_url ? (
+            <Image
+              source={data.person.avatar_url}
+              style={styles.avatar}
+              cachePolicy="none"
+              accessible={false}
+            />
+          ) : null}
           {data.person.intro ? (
             <View>
               <ActivityText strong>{copy.intro}</ActivityText>
@@ -107,13 +122,15 @@ function NeighbourProfile({
           ) : null}
           {data.person.happy_to_help_with ? (
             <View style={styles.row}>
-              <View style={styles.avatar} accessible={false} aria-hidden>
-                <Text
-                  style={[localizedType("field-label", locale), styles.green]}
-                >
-                  {Array.from(name.trim())[0]?.toLocaleUpperCase(locale)}
-                </Text>
-              </View>
+              {!data.person.avatar_url ? (
+                <View style={styles.avatar} accessible={false} aria-hidden>
+                  <Text
+                    style={[localizedType("field-label", locale), styles.green]}
+                  >
+                    {Array.from(name.trim())[0]?.toLocaleUpperCase(locale)}
+                  </Text>
+                </View>
+              ) : null}
               <View style={styles.text}>
                 <ActivityText strong>{copy.happyToHelp}</ActivityText>
                 <ActivityText>{data.person.happy_to_help_with}</ActivityText>
@@ -166,6 +183,37 @@ function NeighbourProfile({
               label={copy.receivedHelp(name)}
             />
           </View>
+          <NeighbourHeading>{copy.openRequests}</NeighbourHeading>
+          <ActivityText>{copy.openRequestsHint}</ActivityText>
+          {openRequests.data?.map((item) => (
+            <View key={item.id} style={styles.row}>
+              <View style={styles.text}>
+                <ActivityText strong>{item.polite_text}</ActivityText>
+              </View>
+              <Button
+                label={copy.offerHelp}
+                accessibilityLabel={`${copy.offerHelp}: ${item.polite_text}`}
+                variant="text"
+                labelStyle={localizedType("field-label", locale)}
+                onPress={() =>
+                  router.push({
+                    pathname: "/requests/[id]",
+                    params: { id: item.id },
+                  })
+                }
+              />
+            </View>
+          ))}
+          {openRequests.data?.length === 0 &&
+          !openRequests.loading &&
+          !openRequests.error ? (
+            <ActivityText>{copy.noOpenRequests}</ActivityText>
+          ) : null}
+          <ActivityStatus
+            loading={openRequests.loading}
+            error={openRequests.error}
+            retry={openRequests.reload}
+          />
           <NeighbourHeading>{copy.history}</NeighbourHeading>
           <PairHistory
             authUserId={authUserId}
@@ -192,6 +240,7 @@ function NeighbourProfile({
 }
 
 function Count({ value, label }: { value: number; label: string }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <View style={styles.count}>
@@ -216,6 +265,7 @@ function PairHistory({
   partnerName: string;
   lastExchangeAt: string | null;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const history = usePagedResource(

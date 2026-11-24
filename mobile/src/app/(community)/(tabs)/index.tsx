@@ -34,7 +34,7 @@ import {
   type BrowseState,
 } from "@/lib/listing-workflow";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -159,6 +159,7 @@ async function loadToday(me: string) {
 }
 
 function CircleHome({ circleName }: { circleName: string }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { session, profile, reloadProfile } = useSession();
   const account = session?.user.id ?? null;
@@ -252,7 +253,6 @@ function CircleHome({ circleName }: { circleName: string }) {
       eyebrow={circleName}
       titleAction={<NotificationBell />}
       inlineTitleAction
-      showDemoPreview={false}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
