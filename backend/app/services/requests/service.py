@@ -2,15 +2,15 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import Database
-from app.database.models import HelpRequest, RequestRecipient, RequestResponse
+from app.database.models import HelpRequest, Listing, RequestRecipient, RequestResponse
 from app.database.models.enums import (
     ConversationKind,
     ExchangeMode,
     ExchangeStatus,
-    ListingStatus,
     MediaPurpose,
     MessageKind,
     NotificationType,
@@ -26,6 +26,7 @@ from app.database.models.enums import (
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
 from app.repositories.circles import CircleRepository
+from app.repositories.errors import violates
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
@@ -33,6 +34,7 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.request_ripple import RippleRepository
 from app.repositories.requests import (
+    OPEN_LISTING_INDEX,
     LiveResponseExistsError,
     RecipientRepository,
     RequestRepository,
@@ -47,6 +49,10 @@ from app.services.errors import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.services.listings.service import (
+    requestable_listing,
+    visible_listing,
+)
 from app.services.requests.ripple import (
     RippleReceipt,
     advance_ripple,
@@ -54,7 +60,7 @@ from app.services.requests.ripple import (
     delivery_receipt,
     initial_stage,
     next_stage,
-    reopen_after_match,
+    reopen_after_match_safely,
     schedule_after,
 )
 
@@ -107,6 +113,12 @@ class AlreadyAcceptedError(ConflictError):
         super().__init__("Another helper has already been chosen.")
 
 
+class OpenListingRequestExistsError(ConflictError):
+    def __init__(self, request_id: uuid.UUID) -> None:
+        super().__init__("You already have an open request for this listing.")
+        self.details = {"code": "open_request_exists", "request_id": str(request_id)}
+
+
 @dataclass(frozen=True)
 class NewRequest:
     kind: str
@@ -132,6 +144,7 @@ class RequestDetail:
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
+    listing: Listing | None = None
 
 
 @dataclass(frozen=True)
@@ -183,16 +196,24 @@ async def create_request_in_session(
 
     media_ids = await _validated_media(session, requester_id, new_request.media_ids)
     target_id = new_request.direct_to_user_id
-    if new_request.listing_id is not None:
+    category_id = new_request.category_id
+    if new_request.listing_id is not None and target_id is None:
         listing = await ListingRepository(session).get(new_request.listing_id)
-        if listing is None or listing.status != ListingStatus.ACTIVE.value:
-            raise RecipientUnreachableError
-        if target_id is not None and target_id != listing.owner_user_id:
+        if listing is None:
             raise RecipientUnreachableError
         target_id = listing.owner_user_id
     if target_id is not None:
         if not await audiences.can_send_direct(requester_id, target_id):
             raise RecipientUnreachableError
+        if new_request.listing_id is not None:
+            listing = await requestable_listing(
+                session,
+                requester_id,
+                new_request.listing_id,
+                target_id,
+                new_request.kind,
+            )
+            category_id = listing.category_id
         ripple_max = ripple_stage = RippleStage.DIRECT
     else:
         ripple_max = RippleStage(new_request.ripple_max_stage)
@@ -203,7 +224,7 @@ async def create_request_in_session(
         "acted_by_user_id": actor.user.id,
         "region": lineage[0].region,
         "kind": new_request.kind,
-        "category_id": new_request.category_id,
+        "category_id": category_id,
         "listing_id": new_request.listing_id,
         "direct_to_user_id": target_id,
         "raw_text": new_request.raw_text,
@@ -218,7 +239,57 @@ async def create_request_in_session(
         "status": RequestStatus.OPEN.value,
         "expires_at": new_request.needed_until or now + DEFAULT_EXPIRY,
     }
-    request = await RequestRepository(session).create(values, media_ids)
+    requests = RequestRepository(session)
+    if new_request.listing_id is None:
+        request = await requests.create(values, media_ids)
+    else:
+        request = None
+        for attempt in range(2):
+            try:
+                async with session.begin_nested():
+                    request = await requests.create(values, media_ids)
+                break
+            except IntegrityError as error:
+                if not violates(error, OPEN_LISTING_INDEX):
+                    raise
+                existing = await requests.get_open_for_listing(
+                    requester_id, new_request.listing_id, lock=True
+                )
+                if existing is None:
+                    if attempt == 1:
+                        raise
+                    continue
+                if existing.expires_at > now:
+                    if (
+                        any(
+                            getattr(existing, field) != values[field]
+                            for field in (
+                                "kind",
+                                "raw_text",
+                                "polite_text",
+                                "tone",
+                                "lang",
+                                "needed_from",
+                                "needed_until",
+                            )
+                        )
+                        or (
+                            new_request.home_circle_id is not None
+                            and existing.home_circle_id != new_request.home_circle_id
+                        )
+                        or await requests.media_ids(existing.id) != media_ids
+                    ):
+                        raise OpenListingRequestExistsError(existing.id) from error
+                    return existing
+                if attempt == 1:
+                    raise
+                await requests.update(
+                    existing,
+                    {"status": RequestStatus.EXPIRED.value, "next_widen_at": None},
+                )
+        if request is None:
+            raise RuntimeError("Listing request was not created.")
+
     return await deliver_from(session, request, ripple_stage, lineage, now)
 
 
@@ -281,8 +352,14 @@ async def get_request(
             exchange = await ExchangeRepository(session).active_for_request(
                 request_id, lock=False
             )
+        listing = (
+            await visible_listing(session, actor, request.listing_id)
+            if request.listing_id
+            else None
+        )
         return RequestDetail(
             request=request,
+            listing=listing,
             my_role="requester" if owns_request else "recipient",
             my_response_status=live.status if live else None,
             my_response_id=live.id if live else None,
@@ -401,15 +478,47 @@ async def widen_request(
         if request.status == RequestStatus.EXPIRED.value or (
             request.status == RequestStatus.OPEN.value and request.expires_at <= now
         ):
-            expires_at = now + DEFAULT_EXPIRY
-            return await RequestRepository(session).update(
-                request,
-                {
-                    "status": RequestStatus.OPEN.value,
-                    "expires_at": expires_at,
-                    "next_widen_at": schedule_after(request, now, expires_at),
-                },
-            )
+            requests = RequestRepository(session)
+            if request.listing_id is not None:
+                if request.direct_to_user_id is not None:
+                    await requestable_listing(
+                        session,
+                        request.requester_user_id,
+                        request.listing_id,
+                        request.direct_to_user_id,
+                        request.kind,
+                    )
+                sibling = await requests.get_open_for_listing(
+                    request.requester_user_id, request.listing_id, lock=True
+                )
+                if sibling is not None and sibling.id != request.id:
+                    if sibling.expires_at > now:
+                        raise OpenListingRequestExistsError(sibling.id)
+                    await requests.update(
+                        sibling,
+                        {"status": RequestStatus.EXPIRED.value, "next_widen_at": None},
+                    )
+            try:
+                async with session.begin_nested():
+                    return await requests.update(
+                        request,
+                        {
+                            "status": RequestStatus.OPEN.value,
+                            "expires_at": now + DEFAULT_EXPIRY,
+                            "next_widen_at": schedule_after(
+                                request, now, now + DEFAULT_EXPIRY
+                            ),
+                        },
+                    )
+            except IntegrityError as error:
+                if not violates(error, OPEN_LISTING_INDEX):
+                    raise
+                existing = await requests.get_open_for_listing(
+                    request.requester_user_id, request.listing_id
+                )
+                if existing is None:
+                    raise
+                raise OpenListingRequestExistsError(existing.id) from error
         if request.status != RequestStatus.OPEN.value:
             raise RequestNotOpenError
         if request.direct_to_user_id is not None:
@@ -601,9 +710,7 @@ async def withdraw_response(
                     },
                 )
             if request is not None and request.status == RequestStatus.MATCHED.value:
-                await RequestRepository(session).update(
-                    request, reopen_after_match(request, datetime.now(UTC))
-                )
+                await reopen_after_match_safely(session, request, datetime.now(UTC))
                 await NotificationRepository(session).create(
                     request.requester_user_id,
                     NotificationType.RESPONSE_SUPERSEDED.value,

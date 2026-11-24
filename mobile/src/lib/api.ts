@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from "expo/fetch";
 import { Platform } from "react-native";
 
+import type { HomeView } from "@/lib/home-today";
 import { supabase } from "@/lib/supabase";
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -13,6 +14,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly code?: string,
+    readonly requestId?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -219,15 +222,23 @@ export async function request<T>(
 
   if (!response.ok) {
     let message = "Something went wrong. Please try again.";
+    let code: string | undefined;
+    let requestId: string | undefined;
     try {
-      const body = (await response.json()) as { message?: unknown };
+      const body = (await response.json()) as {
+        message?: unknown;
+        code?: unknown;
+        request_id?: unknown;
+      };
       if (typeof body.message === "string") {
         message = body.message;
       }
+      if (typeof body.code === "string") code = body.code;
+      if (typeof body.request_id === "string") requestId = body.request_id;
     } catch {
       message = `Request failed (${response.status}).`;
     }
-    throw new ApiError(response.status, message);
+    throw new ApiError(response.status, message, code, requestId);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -455,6 +466,7 @@ export const api = {
         body: JSON.stringify({ mark_read: true }),
       },
     ),
+  getHome: () => request<HomeView>("/users/me/home"),
   getPublicProfile: (id: string) =>
     request<{ id: string; display_name: string }>(
       `/users/${encodeURIComponent(id)}`,

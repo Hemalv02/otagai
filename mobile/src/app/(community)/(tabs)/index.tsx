@@ -1,7 +1,13 @@
 import { router, useFocusEffect } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
@@ -9,8 +15,10 @@ import { NotificationBell } from "@/components/notification-bell";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
-import { useCommunityDemo } from "@/lib/community-demo";
+import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
+import { todayPeople, todayRows } from "@/lib/home-today";
 import { lendingCopy } from "@/lib/lending-copy";
+import { useLiveResource } from "@/lib/live-resource";
 import { listingReadCopy, requestApiError } from "@/lib/listing-read";
 import {
   canRetry,
@@ -33,16 +41,22 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 const homeCopy = {
   en: {
     greet: (name: string) => `Hello, ${name}`,
+    greetFallback: "Hello",
+    lentItem: "Lent item",
     ask: "Ask",
     lend: "Lend",
     family: "Family",
     browse: "Browse tools and skills",
     nearby: "Available nearby",
     today: "Today",
-    empty: "There are no open requests in your circle.",
-    demo: "Demo activity",
-    preview: (name: string) => `Preview as ${name}`,
-    backToYou: "Return to my view",
+    empty: "Nothing needs you today.",
+    todayError: "Could not load today's activity.",
+    someone: "A neighbour",
+    kinds: {
+      borrow: "Wants to borrow",
+      help: "Asks for help",
+      borrow_with_help: "Borrow with help",
+    },
     nearbyEmptyTitle: "Nothing nearby yet",
     nearbyEmptyDetail:
       "Ask for something you need or lend a tool to get started.",
@@ -50,32 +64,44 @@ const homeCopy = {
   },
   ja: {
     greet: (name: string) => `こんにちは、${name}`,
+    greetFallback: "こんにちは",
+    lentItem: "貸しているもの",
     ask: "お願いする",
     lend: "貸す",
     family: "家族",
     browse: "道具とスキルを探す",
     nearby: "近所で借りられるもの",
     today: "今日",
-    empty: "サークルに募集中の依頼はありません。",
-    demo: "デモのアクティビティ",
-    preview: (name: string) => `${name}の画面を見る`,
-    backToYou: "自分の画面に戻る",
+    empty: "今日対応することはありません。",
+    todayError: "今日のアクティビティを読み込めませんでした。",
+    someone: "近所の人",
+    kinds: {
+      borrow: "借りたい",
+      help: "手伝ってほしい",
+      borrow_with_help: "手伝い付きで借りたい",
+    },
     nearbyEmptyTitle: "近所にはまだ何もありません",
     nearbyEmptyDetail: "必要なものをお願いするか、道具を貸して始めましょう。",
     nearbyError: "近所の掲載を読み込めませんでした。",
   },
   bn: {
     greet: (name: string) => `স্বাগতম, ${name}`,
+    greetFallback: "স্বাগতম",
+    lentItem: "ধার দেওয়া জিনিস",
     ask: "সাহায্য চাই",
     lend: "ধার দিন",
     family: "পরিবার",
     browse: "জিনিসপত্র ও সাহায্য দেখুন",
     nearby: "কাছাকাছি পাওয়া যাচ্ছে",
     today: "আজ",
-    empty: "আপনার দলে কোনো খোলা অনুরোধ নেই।",
-    demo: "ডেমো কার্যকলাপ",
-    preview: (name: string) => `${name} হিসেবে দেখুন`,
-    backToYou: "নিজের ভিউতে ফিরুন",
+    empty: "আজ আপনার জন্য কিছু নেই।",
+    todayError: "আজকের কার্যকলাপ লোড করা যায়নি।",
+    someone: "একজন প্রতিবেশী",
+    kinds: {
+      borrow: "ধার চান",
+      help: "সাহায্য চান",
+      borrow_with_help: "সাহায্যসহ ধার চান",
+    },
     nearbyEmptyTitle: "কাছাকাছি এখনো কিছু নেই",
     nearbyEmptyDetail:
       "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
@@ -104,10 +130,37 @@ export default function Home() {
   );
 }
 
+async function loadToday(me: string) {
+  const rows = todayRows(await api.getHome(), me);
+  const listingIds = new Set(
+    rows.flatMap((row) =>
+      row.type === "due" && row.listingId ? [row.listingId] : [],
+    ),
+  );
+  const [people, titles] = await Promise.all([
+    Promise.all(
+      todayPeople(rows).map(async (id) => {
+        const person = await api.getPublicProfile(id).catch(() => null);
+        return [id, person?.display_name] as const;
+      }),
+    ),
+    Promise.all(
+      [...listingIds].map(async (id) => {
+        const listing = await api.getListing(id).catch(() => null);
+        return [id, listing?.title] as const;
+      }),
+    ),
+  ]);
+  return {
+    rows,
+    people: Object.fromEntries(people),
+    titles: Object.fromEntries(titles),
+  };
+}
+
 function CircleHome({ circleName }: { circleName: string }) {
   const { locale } = useOnboardingText();
-  const { actor, people, requests, switchActor } = useCommunityDemo();
-  const { session, profile } = useSession();
+  const { session, profile, reloadProfile } = useSession();
   const account = session?.user.id ?? null;
   const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = homeCopy[locale];
@@ -117,9 +170,17 @@ function CircleHome({ circleName }: { circleName: string }) {
   const supporting = localizedType("supporting", locale);
   const listingCopy = lendingCopy[locale];
   const readCopy = listingReadCopy[locale];
+  const activity = activityCopy[locale];
+  const today = useLiveResource(
+    useCallback(() => {
+      if (!profileId) throw new Error("Profile is not ready.");
+      return loadToday(profileId);
+    }, [profileId]),
+  );
   const [nearby, setNearby] = useState<BrowseState>(initialBrowseState);
   const [nearbyRequests] = useState(createLatestRequest);
   const [tick, setTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const focusedOnce = useRef(false);
   const key = account ?? "";
   const view = visibleBrowseState(nearby, key);
@@ -162,6 +223,18 @@ function CircleHome({ circleName }: { circleName: string }) {
     setTick((current) => current + 1);
   }
 
+  async function refreshHome() {
+    if (refreshing) return;
+    setRefreshing(true);
+    retryNearby();
+    try {
+      if (profile.status === "ready") await today.reload();
+      else await reloadProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const retryButton = (
     <Button
       label={listingCopy.retry}
@@ -170,63 +243,63 @@ function CircleHome({ circleName }: { circleName: string }) {
       onPress={retryNearby}
     />
   );
-  const openRequests = requests.filter(
-    (request) => request.createdBy !== actor && request.status === "open",
-  );
+  const displayName =
+    profile.status === "ready" ? profile.profile.display_name : "";
 
   return (
     <CommunityScreen
-      title={copy.greet(people[actor].name)}
+      title={displayName ? copy.greet(displayName) : copy.greetFallback}
       eyebrow={circleName}
       titleAction={<NotificationBell />}
       inlineTitleAction
+      showDemoPreview={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void refreshHome()}
+          tintColor={colors.action}
+          colors={[colors.action]}
+        />
+      }
     >
       <View style={styles.actions}>
         <Button
           label={copy.ask}
           labelStyle={button}
           style={styles.action}
-          onPress={() =>
-            actor === "member"
-              ? router.navigate("/assistant")
-              : router.push("/ask")
-          }
+          onPress={() => router.navigate("/assistant")}
         />
-        {actor === "member" ? (
-          <Button
-            label={copy.lend}
-            labelStyle={[button, styles.green]}
-            style={[styles.action, styles.secondaryButton]}
-            variant="secondary"
-            onPress={() => router.push("/tools/add")}
-          />
-        ) : null}
+        <Button
+          label={copy.lend}
+          labelStyle={[button, styles.green]}
+          style={[styles.action, styles.secondaryButton]}
+          variant="secondary"
+          onPress={() => router.push("/tools/add")}
+        />
       </View>
-      {actor === "member" ? (
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={copy.family}
-          onPress={() => router.push("/family")}
-          android_ripple={{ color: colors.wash }}
-          style={styles.family}
-        >
-          <SymbolView
-            name={{ ios: "person.2", android: "group", web: "group" }}
-            size={20}
-            tintColor={colors.action}
-          />
-          <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
-          <SymbolView
-            name={{
-              ios: "chevron.forward",
-              android: "chevron_right",
-              web: "chevron_right",
-            }}
-            size={18}
-            tintColor={colors.action}
-          />
-        </Pressable>
-      ) : null}
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={copy.family}
+        onPress={() => router.push("/family")}
+        android_ripple={{ color: colors.wash }}
+        style={styles.family}
+      >
+        <SymbolView
+          name={{ ios: "person.2", android: "group", web: "group" }}
+          size={20}
+          tintColor={colors.action}
+        />
+        <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
+        <SymbolView
+          name={{
+            ios: "chevron.forward",
+            android: "chevron_right",
+            web: "chevron_right",
+          }}
+          size={18}
+          tintColor={colors.action}
+        />
+      </Pressable>
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
@@ -297,43 +370,78 @@ function CircleHome({ circleName }: { circleName: string }) {
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.today}
         </Text>
-        {openRequests.length ? (
-          openRequests.map((request) => (
-            <ListingRow
-              key={request.id}
-              title={request.title}
-              description={people[request.createdBy].name}
-              detail={request.timing}
-              photo={
-                request.id === "carry-rice"
-                  ? require("../../../../assets/images/lending-tanaka-thumbnail.png")
-                  : undefined
-              }
-              portrait
+        {profile.status === "loading" ||
+        (profile.status === "ready" && today.loading && !today.data) ? (
+          <View
+            accessible
+            accessibilityState={{ busy: true }}
+            accessibilityRole="progressbar"
+            accessibilityLabel={activity.loading}
+          >
+            <ListingRowSkeleton />
+          </View>
+        ) : profile.status !== "ready" || today.error ? (
+          <View style={styles.section}>
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[supporting, styles.secondary]}
+            >
+              {copy.todayError}
+            </Text>
+            <Button
+              label={listingCopy.retry}
+              labelStyle={label}
+              variant="text"
               onPress={() =>
-                router.push({
-                  pathname: "/requests/[id]",
-                  params: { id: request.id },
-                })
+                void (profile.status === "ready"
+                  ? today.reload()
+                  : reloadProfile())
               }
             />
-          ))
+          </View>
+        ) : today.data?.rows.length ? (
+          today.data.rows.map((row) =>
+            row.type === "due" ? (
+              <ListingRow
+                key={`due-${row.id}`}
+                accessibilityRole="link"
+                title={
+                  (row.listingId && today.data?.titles[row.listingId]) ||
+                  (row.borrowing ? activity.unnamedLoan : copy.lentItem)
+                }
+                description={`${today.data?.people[row.partnerId] ?? copy.someone} · ${activity.due}: ${formatActivityDate(row.dueAt, locale)}`}
+                onPress={() =>
+                  router.push({
+                    pathname: "/loans/[id]",
+                    params: { id: row.id },
+                  })
+                }
+              />
+            ) : (
+              <ListingRow
+                key={`request-${row.id}`}
+                accessibilityRole="link"
+                title={row.text}
+                titleLines={2}
+                description={today.data?.people[row.personId] ?? copy.someone}
+                detail={copy.kinds[row.kind]}
+                portrait
+                onPress={() =>
+                  router.push({
+                    pathname: "/requests/[id]",
+                    params: { id: row.id },
+                  })
+                }
+              />
+            ),
+          )
         ) : (
-          <Text style={[supporting, styles.secondary]}>{copy.empty}</Text>
+          <RequestNotice
+            title={copy.today}
+            detail={copy.empty}
+            locale={locale}
+          />
         )}
-      </View>
-      <View style={styles.demo}>
-        <Text style={[supporting, styles.secondary]}>{copy.demo}</Text>
-        <Button
-          variant="text"
-          label={
-            actor === "member"
-              ? copy.preview(people.neighbour.name)
-              : copy.backToYou
-          }
-          labelStyle={label}
-          onPress={switchActor}
-        />
       </View>
     </CommunityScreen>
   );
@@ -359,9 +467,4 @@ const styles = StyleSheet.create({
   secondary: { color: colors.secondary },
   green: { color: colors.action },
   section: { gap: spacing["related-gap"] },
-  demo: {
-    borderTopWidth: 1,
-    borderColor: colors.rule,
-    paddingTop: spacing["related-gap"],
-  },
 });

@@ -26,6 +26,8 @@ from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
+OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
+
 
 class LiveResponseExistsError(Exception):
     pass
@@ -50,6 +52,31 @@ class RequestRepository:
     async def get_for_update(self, request_id: uuid.UUID) -> HelpRequest | None:
         return await self._session.get(
             HelpRequest, request_id, with_for_update=True, populate_existing=True
+        )
+
+    async def get_open_for_listing(
+        self,
+        requester_id: uuid.UUID,
+        listing_id: uuid.UUID,
+        *,
+        lock: bool = False,
+    ) -> HelpRequest | None:
+        statement = select(HelpRequest).where(
+            HelpRequest.requester_user_id == requester_id,
+            HelpRequest.listing_id == listing_id,
+            HelpRequest.status == "open",
+        )
+        if lock:
+            statement = statement.with_for_update()
+        return await self._session.scalar(statement)
+
+    async def media_ids(self, request_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(
+            await self._session.scalars(
+                select(RequestMedia.media_id)
+                .where(RequestMedia.request_id == request_id)
+                .order_by(RequestMedia.sort_order)
+            )
         )
 
     async def due_for_ripple(
@@ -155,6 +182,8 @@ class RequestRepository:
         *,
         direct_only: bool,
         page: PageRequest,
+        statuses: tuple[str, ...] = (),
+        expires_after: datetime | None = None,
     ) -> PageResult[RequestRecipient]:
         statement = (
             select(RequestRecipient)
@@ -166,6 +195,10 @@ class RequestRepository:
         )
         if direct_only:
             statement = statement.where(HelpRequest.direct_to_user_id == user_id)
+        if statuses:
+            statement = statement.where(HelpRequest.status.in_(statuses))
+        if expires_after is not None:
+            statement = statement.where(HelpRequest.expires_at > expires_after)
         if exclude_owner_ids:
             statement = statement.where(
                 HelpRequest.requester_user_id.not_in(exclude_owner_ids)

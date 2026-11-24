@@ -160,7 +160,7 @@ def service_error_response(error: ServiceError) -> JSONResponse:
                 headers = {"Retry-After": str(error.retry_after_seconds)}
             return JSONResponse(
                 status_code=status_code,
-                content={"message": str(error)},
+                content={"message": str(error), **getattr(error, "details", {})},
                 headers=headers,
             )
     if isinstance(error, ServiceConfigurationError):

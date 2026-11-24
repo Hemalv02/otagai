@@ -1,6 +1,12 @@
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { AssistantSheet } from "@/components/assistant-widgets";
 import { CommunityScreen } from "@/components/community-screen";
@@ -11,6 +17,7 @@ import { Button, ErrorText } from "@/components/ui";
 import { ApiError, type Page } from "@/lib/api";
 import { assistantError, assistantApi } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
+import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestCopy } from "@/lib/request-demo-copy";
@@ -264,6 +271,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     .join(" – ");
   const requesterName = names[detail.requester_user_id];
   const disabled = loading || working;
+  const linkedListing = detail.listing;
 
   function startForm(kind: ResponseKind) {
     setActionError(undefined);
@@ -328,6 +336,23 @@ function LiveRequestDetail({ id }: { id: string }) {
           />
         ) : null}
       </View>
+      {linkedListing ? (
+        <Pressable
+          accessibilityRole="link"
+          onPress={() =>
+            router.push({
+              pathname: "/tools/[id]",
+              params: { id: linkedListing.id },
+            })
+          }
+        >
+          <RequestNotice
+            title={listingRequestCopy[locale].requestedListing}
+            detail={linkedListing.title}
+            locale={locale}
+          />
+        </Pressable>
+      ) : null}
       {error ? (
         <>
           <ErrorText>{assistantError(error, locale)}</ErrorText>

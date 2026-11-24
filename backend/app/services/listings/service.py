@@ -48,6 +48,22 @@ class ListingLentOutError(ConflictError):
         super().__init__("You can't change a listing while it is lent out.")
 
 
+class ListingUnavailableError(ConflictError):
+    def __init__(self) -> None:
+        super().__init__("This listing is no longer available.")
+
+
+class ListingRequestMismatchError(BadRequestError):
+    pass
+
+
+ALLOWED_REQUEST_KINDS = {
+    LendMode.HELP_ONLY.value: {"help"},
+    LendMode.LEND.value: {"borrow", "borrow_with_help"},
+    LendMode.LEND_OR_HELP.value: {"borrow", "borrow_with_help", "help"},
+}
+
+
 @dataclass(frozen=True)
 class Photo:
     media_id: uuid.UUID
@@ -300,21 +316,58 @@ async def get_listing(
         listing = await ListingRepository(session).get(listing_id)
         if listing is None:
             raise ListingNotFoundError
-        await _require_visible(session, actor, listing)
+        await _require_visible(session, actor.subject_id, listing)
         return await _detail_view(session, storage, settings, listing)
 
 
-async def _require_visible(session, actor: Actor, listing: Listing) -> None:
-    if listing.owner_user_id == actor.subject_id:
+async def visible_listing(
+    session, actor: Actor, listing_id: uuid.UUID
+) -> Listing | None:
+    listing = await ListingRepository(session).get(listing_id)
+    if listing is None:
+        return None
+    try:
+        await _require_visible(session, actor.subject_id, listing)
+    except ListingNotFoundError:
+        return None
+    return listing
+
+
+async def _require_visible(session, viewer_id: uuid.UUID, listing: Listing) -> None:
+    if listing.owner_user_id == viewer_id:
         return
     if await BlockRepository(session).is_blocked_either_way(
-        actor.subject_id, listing.owner_user_id
+        viewer_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
     if not await CircleRepository(session).share_approved_circle(
-        actor.subject_id, listing.owner_user_id
+        viewer_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
+
+
+async def requestable_listing(
+    session,
+    requester_id: uuid.UUID,
+    listing_id: uuid.UUID,
+    recipient_id: uuid.UUID,
+    kind: str,
+) -> Listing:
+    listing = await ListingRepository(session).get_for_share(listing_id)
+    if listing is None:
+        raise ListingNotFoundError
+    await _require_visible(session, requester_id, listing)
+    if recipient_id != listing.owner_user_id:
+        raise ListingRequestMismatchError(
+            "The recipient must own the selected listing."
+        )
+    if listing.status != ListingStatus.ACTIVE.value:
+        raise ListingUnavailableError
+    if kind not in ALLOWED_REQUEST_KINDS.get(listing.lend_mode, set()):
+        raise ListingRequestMismatchError(
+            "This listing doesn't offer that kind of request."
+        )
+    return listing
 
 
 async def _validate_media(
@@ -381,7 +434,7 @@ async def _load_owned_for_update(
     if listing is None:
         raise ListingNotFoundError
     if listing.owner_user_id != actor.subject_id:
-        await _require_visible(session, actor, listing)
+        await _require_visible(session, actor.subject_id, listing)
         raise ListingNotFoundError
     actor.require(ProxyScope.MANAGE_LISTINGS)
     return listing

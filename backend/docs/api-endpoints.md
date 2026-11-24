@@ -166,6 +166,12 @@ Every error body has the same shape:
 { "message": "This request is no longer open." }
 ```
 
+A service error can add machine-readable fields, so a client can branch without parsing the message. `code` is a stable string, and `request_id` is the id of an existing record the caller owns:
+
+```json
+{ "message": "You already have an open request for this listing.", "code": "open_request_exists", "request_id": "0b9e4c1e-6a1c-4c53-9a63-1f3f8f2d5b11" }
+```
+
 A 422 also lists each field:
 
 ```json
@@ -396,13 +402,13 @@ With Redis configured, repeated text prompts can reuse their interpretation for 
 
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
-| `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients | 201 | 14, 15 | MVP |
+| `POST /requests` | Send a request: from an ask session or directly (`listing_id`, `direct_to_user_id`, times, ripple maximum, `media_ids`). Creates the first ripple of recipients. With `listing_id`, an omitted `direct_to_user_id` defaults to the listing owner; an explicitly supplied recipient must be the owner. The listing must be visible and active, and the kind must match its lend mode (`help_only` → `help`; `lend` → `borrow` or `borrow_with_help`). Paused or lent-out listings return 409. A member has at most one open request per listing: sending the same request again returns the existing open request (same id, still 201) with no new notification. A request with different content returns 409 with `code: "open_request_exists"` and the existing `request_id` | 201 | 14, 15 | MVP |
 | `GET /users/me/requests?status=` | My requests: open, matched, in progress, done, cancelled, expired. `status` takes a comma-separated list; an unknown status or query parameter returns 422. With `X-Acting-For: <member_id>`, lists that member's requests and needs `can_view_activity` (403 without it, or when the grant is missing or revoked) | 200 | 16, 33 | MVP |
 | `GET /requests/{request_id}` | Request detail includes the viewer's role and their response. The matched participants also get `exchange_id` | 200 | 17, 18 | MVP |
 | `GET /requests/{request_id}/receipt` | Requester-only delivery timeline. Returns current and maximum stages, next scheduled widening and expiry, plus status and actual inbox recipient count per stage. Acting for the requester requires `can_view_activity` | 200 | 15, 17 | MVP |
 | `PATCH /requests/{request_id}` | Edit the time or wording. 409 unless the request is open | 200 | 17 | MVP |
 | `POST /requests/{request_id}/cancel` | Cancel. Notifies anyone with a pending or accepted response | 200 | 17 | MVP |
-| `POST /requests/{request_id}/widen` | Advance a due stage. For immediate widening, pass the observed `expected_stage` so retries can't advance another stage. On an expired request, this explicitly reopens the request under its existing cap | 200 | 15, 16 | MVP |
+| `POST /requests/{request_id}/widen` | Advance a due stage, pass the observed `expected_stage` for immediate widening, or reopen an expired request under its existing cap. Reopening a listing request re-runs the listing checks: a paused or lent-out listing returns 409, and a hidden listing, a mismatched recipient or a kind the lend mode no longer allows returns the same error as `POST /requests`. A stale open request for the same listing is expired first. A live open request for the same listing returns 409 with `code: "open_request_exists"` and its `request_id` | 200 | 15, 16 | MVP |
 | `GET /requests/{request_id}/responses` | Offers, questions and other suggested times. Only the requester sees all of them | 200 | 17 | MVP |
 | `POST /requests/{request_id}/responses/{response_id}/accept` | Accept an offer or suggested time to create the exchange and chat and supersede the other responses. Retrying the same match returns the accepted response. Choosing a different response after matching returns 409 | 200 | 17 | MVP |
 
