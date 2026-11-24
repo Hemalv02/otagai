@@ -47,6 +47,12 @@
         {
           "locationWhenInUsePermission": "Allow Otagai to find neighbourhood circles near you."
         }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Otagai to scan a circle’s invite QR code."
+        }
       ]
     ],
     "experiments": {

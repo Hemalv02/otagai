@@ -1,6 +1,9 @@
+import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Location from "expo-location";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Text, View } from "react-native";
+import { AppState, Modal, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
   OnboardingLink,
@@ -8,9 +11,19 @@ import {
 } from "@/components/onboarding-screen";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Circle, type CircleJoin } from "@/lib/api";
+import { circleCopy } from "@/lib/circle-copy";
 import { useMemberships } from "@/lib/memberships";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { colors, spacing } from "@/theme/tokens.json";
+
+function codeFromScan(raw: string) {
+  const trimmed = raw.trim();
+  const segment = trimmed.includes("/")
+    ? (trimmed.split(/[/?#]/).filter(Boolean).pop() ?? trimmed)
+    : trimmed.split(/[?#]/)[0];
+  return segment.length >= 8 && segment.length <= 32 ? segment : null;
+}
 
 type Method = "invite" | "nearby";
 type Match = { circle: Circle; target: CircleJoin };
@@ -35,7 +48,12 @@ export default function FindCircle() {
   const [busy, setBusy] = useState<"search" | "join" | null>(null);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   const [error, setError] = useState<ErrorKey | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [cameraDenied, setCameraDenied] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
   const working = useRef(false);
+  const scanLock = useRef(false);
+  const circleText = circleCopy[locale];
 
   const waiting = access === "pending";
   const rejected = access === "rejected" && !searchingAgain;
@@ -63,7 +81,34 @@ export default function FindCircle() {
     setError(null);
   }
 
-  async function search(more = false) {
+  async function startScan() {
+    setCameraDenied(false);
+    setError(null);
+    if (!permission?.granted) {
+      const result = await requestPermission();
+      if (!result.granted) {
+        setCameraDenied(true);
+        return;
+      }
+    }
+    scanLock.current = false;
+    setScanning(true);
+  }
+
+  function onScanned(data: string) {
+    if (scanLock.current) return;
+    scanLock.current = true;
+    const scanned = codeFromScan(data);
+    setScanning(false);
+    if (!scanned) {
+      setError("invalidInvite");
+      return;
+    }
+    setCode(scanned);
+    void search(false, scanned);
+  }
+
+  async function search(more = false, codeOverride?: string) {
     if (working.current) return;
     working.current = true;
     setBusy("search");
@@ -74,8 +119,9 @@ export default function FindCircle() {
     }
     try {
       if (method === "invite") {
-        const { circle } = await api.previewCircleInvite(invite);
-        setMatches([{ circle, target: { invite_code: invite } }]);
+        const lookup = (codeOverride ?? invite).trim();
+        const { circle } = await api.previewCircleInvite(lookup);
+        setMatches([{ circle, target: { invite_code: lookup } }]);
         return;
       }
       let current = position;
@@ -288,8 +334,20 @@ export default function FindCircle() {
               }
               onPress={() => search()}
             />
+            {method === "invite" ? (
+              <Button
+                label={circleText.scanQr}
+                variant="outline"
+                labelStyle={button}
+                disabled={busy !== null}
+                onPress={startScan}
+              />
+            ) : null}
           </View>
           {error ? <ErrorText>{t(error)}</ErrorText> : null}
+          {cameraDenied ? (
+            <ErrorText>{circleText.cameraDenied}</ErrorText>
+          ) : null}
           {method === "nearby" && matches?.length === 0 ? (
             <Text className="text-secondary" style={body}>
               {t("noNearby")}
@@ -329,8 +387,49 @@ export default function FindCircle() {
               onPress={() => search(true)}
             />
           ) : null}
+          <OnboardingLink
+            label={circleText.startCircleLink}
+            disabled={busy !== null}
+            onPress={() => router.push("/start-circle")}
+          />
         </>
       )}
+      <Modal
+        visible={scanning}
+        animationType="slide"
+        onRequestClose={() => setScanning(false)}
+      >
+        <SafeAreaView style={styles.scanner}>
+          <CameraView
+            style={styles.camera}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+            onBarcodeScanned={
+              scanning ? ({ data }) => onScanned(data) : undefined
+            }
+          />
+          <View style={styles.scannerBar}>
+            <Text style={[body, styles.scannerText]}>{circleText.scanHint}</Text>
+            <Button
+              label={circleText.closeScanner}
+              variant="secondary"
+              labelStyle={button}
+              onPress={() => setScanning(false)}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </OnboardingScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  scanner: { flex: 1, backgroundColor: "#000000" },
+  camera: { flex: 1 },
+  scannerBar: {
+    padding: spacing["card-inset"],
+    gap: spacing["control-gap"],
+    backgroundColor: colors.canvas,
+  },
+  scannerText: { color: colors.ink },
+});

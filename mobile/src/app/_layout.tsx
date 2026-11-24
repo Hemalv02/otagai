@@ -100,6 +100,7 @@ function RootNavigator() {
         </Stack.Protected>
         <Stack.Protected guard={launchRoute === "find-circle"}>
           <Stack.Screen name="find-circle" />
+          <Stack.Screen name="start-circle" />
         </Stack.Protected>
         <Stack.Protected guard={launchRoute === "index" && !canUseCommunity}>
           <Stack.Screen name="account-status" />
