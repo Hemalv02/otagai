@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
+import { ScopedActingBanner } from "@/components/family-forms";
 import { TranslationOption } from "@/components/translation-option";
 import { Button, ErrorText } from "@/components/ui";
 import { api, ApiError, type Conversation } from "@/lib/api";
@@ -83,6 +84,7 @@ export function ExchangeMessagesScreen({ mode }: { mode: "loan" | "help" }) {
     <ChatFrame
       onBack={back}
       title={partnerName}
+      actingFor={actingFor}
       refreshing={thread.loading}
       refresh={thread.reload}
     >
@@ -117,12 +119,14 @@ function ChatFrame({
   children,
   onBack,
   title,
+  actingFor,
   refreshing,
   refresh,
 }: {
   children: ReactNode;
   onBack: () => void;
   title: string;
+  actingFor?: string;
   refreshing: boolean;
   refresh: () => void;
 }) {
@@ -169,6 +173,9 @@ function ChatFrame({
           )}
         </Pressable>
       </View>
+      {actingFor ? (
+        <ScopedActingBanner key={actingFor} memberId={actingFor} />
+      ) : null}
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -229,7 +236,13 @@ function ExchangeChat({
   useEffect(() => {
     if (loanId) clearLoanMessageDraft(profileId, loanId);
   }, [loanId, profileId]);
-  const [inputHeight, setInputHeight] = useState(48);
+  const inputType = localizedType("body", locale);
+  const minInputHeight = Math.ceil(inputType.lineHeight + 22);
+  const [contentHeight, setContentHeight] = useState(0);
+  const inputHeight = Math.max(
+    minInputHeight,
+    Math.min(contentHeight, Math.max(120, minInputHeight * 2)),
+  );
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState(false);
   const pending = useRef<{ body: string; id: string } | null>(null);
@@ -261,7 +274,7 @@ function ExchangeChat({
       if (!mounted.current) return;
       pending.current = null;
       setDraft("");
-      setInputHeight(48);
+      setContentHeight(0);
       await messages.reload();
     } catch (error) {
       if (!mounted.current) return;
@@ -290,6 +303,7 @@ function ExchangeChat({
     <ChatFrame
       onBack={onBack}
       title={partnerName}
+      actingFor={actingFor}
       refreshing={messages.loading}
       refresh={messages.reload}
     >
@@ -411,7 +425,7 @@ function ExchangeChat({
             <TextInput
               accessibilityLabel={copy.message}
               style={[
-                localizedType("body", locale),
+                inputType,
                 styles.input,
                 { height: inputHeight },
               ]}
@@ -423,12 +437,7 @@ function ExchangeChat({
               placeholder={copy.writeMessage}
               placeholderTextColor={colors.control}
               onContentSizeChange={(event) => {
-                setInputHeight(
-                  Math.max(
-                    48,
-                    Math.min(event.nativeEvent.contentSize.height, 120),
-                  ),
-                );
+                setContentHeight(event.nativeEvent.contentSize.height);
               }}
               multiline
               maxLength={4000}

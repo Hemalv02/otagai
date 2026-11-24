@@ -259,6 +259,7 @@ function ExchangeThankYou({
     <CommunityScreen
       design
       back
+      actingFor={actingFor}
       keyboard
       title={saved ? copy.sent : context ? copy.thank(name) : copy.sayThanks}
       subtitle={
@@ -339,6 +340,7 @@ function ExchangeThankYou({
                     <Pressable
                       key={value}
                       accessibilityRole="radio"
+                      aria-checked={choice === value}
                       accessibilityState={{
                         checked: choice === value,
                         disabled: Boolean(busy),

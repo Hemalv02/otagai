@@ -1,4 +1,3 @@
-import { Button as ExpoButton, Host } from "@expo/ui";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -254,14 +253,6 @@ export default function BrowseToolsScreen() {
   return (
     <CommunityScreen
       title={copy[heading === "explore" ? "exploreTitle" : heading]}
-      titleAction={
-        <Host matchContents seedColor={colors.action}>
-          <ExpoButton
-            label={copy.addListing}
-            onPress={() => router.push("/tools/add")}
-          />
-        </Host>
-      }
       keyboard
     >
       <View style={styles.search}>
@@ -317,6 +308,7 @@ export default function BrowseToolsScreen() {
                   key={item.id}
                   accessibilityRole="radio"
                   accessibilityLabel={categoryName(item, locale)}
+                  aria-checked={selected}
                   accessibilityState={{ checked: selected }}
                   style={[styles.category, selected && styles.selectedCategory]}
                   onPress={() =>
@@ -336,12 +328,20 @@ export default function BrowseToolsScreen() {
             })}
           </ScrollView>
         ) : null}
-        <Button
-          label={copy.mine}
-          labelStyle={labelType}
-          variant="text"
-          onPress={() => router.push("/my-listings")}
-        />
+        <View style={styles.listingActions}>
+          <Button
+            label={copy.mine}
+            labelStyle={labelType}
+            variant="text"
+            onPress={() => router.push("/my-listings")}
+          />
+          <Button
+            label={copy.addListing}
+            labelStyle={labelType}
+            variant="outline"
+            onPress={() => router.push("/tools/add")}
+          />
+        </View>
       </View>
       <View>
         {view.status === "loading" ? (
@@ -472,6 +472,13 @@ export default function BrowseToolsScreen() {
 const styles = StyleSheet.create({
   search: { gap: spacing["related-gap"] },
   filters: { gap: spacing["related-gap"] },
+  listingActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing["related-gap"],
+  },
   categories: { gap: spacing["related-gap"] },
   category: {
     minHeight: controls["touch-target"],

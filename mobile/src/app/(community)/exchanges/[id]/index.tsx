@@ -98,6 +98,7 @@ export default function LiveExchangeScreen() {
   return (
     <CommunityScreen
       back
+      actingFor={actingFor}
       title={live.exchange}
       subtitle={
         summary

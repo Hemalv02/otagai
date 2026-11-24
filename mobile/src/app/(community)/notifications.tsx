@@ -72,10 +72,8 @@ export default function NotificationsScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={copy.preferences}
-          style={({ pressed }) => [
-            styles.preferencesButton,
-            pressed && styles.pressed,
-          ]}
+          className="active:bg-wash"
+          style={styles.preferencesButton}
           onPress={() => router.push("/notification-preferences")}
         >
           <Image
@@ -305,7 +303,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: controls.radius,
   },
-  pressed: { backgroundColor: colors.wash },
   preferencesIcon: { width: 24, height: 24 },
   toolbar: {
     flexDirection: "row",

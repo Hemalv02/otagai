@@ -60,7 +60,7 @@ export default function NotificationPreferencesScreen() {
     <CommunityScreen
       design
       back
-      title={copy.notifications}
+      title={copy.preferences}
       subtitle={screen.preferencesBody}
     >
       <ActivityStatus

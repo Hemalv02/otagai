@@ -212,7 +212,7 @@ function GrantSection({
                   params: { grantId: row.grantId },
                 })
               }
-              style={({ pressed }) => pressed && styles.pressed}
+              className="active:opacity-70"
             >
               <ListRow
                 thumbnail={
@@ -287,7 +287,7 @@ function LinkSection({
                   ? onReview({ id: link.id, name })
                   : onEnd({ id: link.id, name })
               }
-              style={({ pressed }) => pressed && styles.pressed}
+              className="active:opacity-70"
             >
               <ListRow
                 thumbnail={
@@ -313,7 +313,6 @@ function LinkSection({
 
 const styles = StyleSheet.create({
   section: { gap: spacing["card-inset"] },
-  pressed: { opacity: 0.7 },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },
 });

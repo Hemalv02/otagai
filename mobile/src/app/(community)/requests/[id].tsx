@@ -242,7 +242,11 @@ function LiveRequestDetail({
     const unavailable =
       error instanceof ApiError && [403, 404].includes(error.status);
     return (
-      <CommunityScreen back title={unavailable ? copy.notFound : copy.requests}>
+      <CommunityScreen
+        back
+        actingFor={actingFor}
+        title={unavailable ? copy.notFound : copy.requests}
+      >
         {loading ? (
           <ActivityIndicator
             accessibilityLabel={words.loading}
@@ -300,6 +304,7 @@ function LiveRequestDetail({
   return (
     <CommunityScreen
       back
+      actingFor={actingFor}
       title={copy.requests}
       subtitle={live.status[detail.status]}
       footer={

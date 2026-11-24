@@ -27,6 +27,7 @@ export function ListingKindFilter({
           <Pressable
             key={kind}
             accessibilityRole="radio"
+            aria-checked={selected}
             accessibilityState={{ checked: selected, disabled }}
             disabled={disabled}
             style={[styles.segment, selected && styles.selectedSegment]}

@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from "react";
+import { type PropsWithChildren, useCallback } from "react";
 import {
   Modal,
   Pressable,
@@ -7,12 +7,14 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ActivityToggle } from "@/components/activity-toggle";
 import { Button } from "@/components/ui";
-import type { Language } from "@/lib/api";
-import { useLocalizedType } from "@/lib/onboarding-i18n";
+import { api, type Language } from "@/lib/api";
+import { familyAskCopy } from "@/lib/family-ask-copy";
+import { useLiveResource } from "@/lib/live-resource";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function SelectionCard({
@@ -34,14 +36,16 @@ export function SelectionCard({
   return (
     <Pressable
       accessibilityRole="radio"
-      accessibilityState={{ selected, disabled }}
+      aria-checked={selected}
+      accessibilityState={{ checked: selected, disabled }}
       accessibilityLabel={detail ? `${title}, ${detail}` : title}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [
+      className="active:opacity-60"
+      style={[
         styles.selection,
         selected ? styles.selectionOn : styles.selectionOff,
-        (pressed || disabled) && styles.dimmed,
+        disabled && styles.dimmed,
       ]}
     >
       <View style={[styles.marker, selected && styles.markerOn]}>
@@ -104,7 +108,7 @@ export function ActingBanner({
   locale,
 }: {
   title: string;
-  detail: string;
+  detail?: string;
   locale: Language;
 }) {
   const localizedType = useLocalizedType();
@@ -113,17 +117,37 @@ export function ActingBanner({
       <View
         accessible
         accessibilityRole="summary"
-        accessibilityLabel={`${title}. ${detail}`}
+        accessibilityLabel={detail ? `${title}. ${detail}` : title}
         style={styles.banner}
       >
         <Text style={[localizedType("field-label", locale), styles.ink]}>
           {title}
         </Text>
-        <Text style={[localizedType("supporting", locale), styles.secondary]}>
-          {detail}
-        </Text>
+        {detail ? (
+          <Text style={[localizedType("supporting", locale), styles.secondary]}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
     </View>
+  );
+}
+
+export function ScopedActingBanner({ memberId }: { memberId: string }) {
+  const { locale } = useOnboardingText();
+  const copy = familyAskCopy[locale];
+  const { data: name } = useLiveResource(
+    useCallback(async () => {
+      const grants = await api.listCaretakerGrants();
+      return grants.find((grant) => grant.member_user_id === memberId)?.other
+        ?.display_name;
+    }, [memberId]),
+  );
+  return (
+    <ActingBanner
+      title={name ? copy.bannerTitle(name) : copy.bannerFallback}
+      locale={locale}
+    />
   );
 }
 
@@ -153,6 +177,7 @@ export function ConfirmSheet({
   onSecondary?: () => void;
   locale: Language;
 }>) {
+  const { bottom } = useSafeAreaInsets();
   const localizedType = useLocalizedType();
   const label = localizedType("field-label", locale);
   return (
@@ -164,8 +189,11 @@ export function ConfirmSheet({
         if (!busy) onCancel();
       }}
     >
-      <SafeAreaView style={styles.scrim}>
-        <View accessibilityViewIsModal style={styles.sheet}>
+      <View style={styles.scrim}>
+        <View
+          accessibilityViewIsModal
+          style={[styles.sheet, { paddingBottom: bottom }]}
+        >
           <ScrollView bounces={false} contentContainerStyle={styles.sheetContent}>
             <Text
               accessibilityRole="header"
@@ -199,7 +227,7 @@ export function ConfirmSheet({
             />
           </ScrollView>
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }

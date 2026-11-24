@@ -1,6 +1,6 @@
 import { Host, Picker } from "@expo/ui";
 import { Image } from "expo-image";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import {
   Fragment,
@@ -13,6 +13,7 @@ import {
 import { StyleSheet, Text, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
 import { ListingKindFilter } from "@/components/listing-kind-filter";
+import { ListingRowSkeleton } from "@/components/listing-row";
 import { Button, ErrorText, Field } from "@/components/ui";
 import {
   api,
@@ -29,6 +30,7 @@ import {
   reconcileListingRows,
   type KindFilter,
 } from "@/lib/listing-workflow";
+import { lendingCopy } from "@/lib/lending-copy";
 import { myListingsCopy } from "@/lib/my-listings-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
@@ -129,6 +131,9 @@ export default function MyListingsScreen() {
     if (working.current || (nextKind === kind && nextStatus === status)) return;
     contextRef.current = `${account}:${ownerId}:${nextKind}:${nextStatus}`;
     requests.cancel();
+    setRows([]);
+    setCursor(null);
+    setState("loading");
     setKind(nextKind);
     setStatus(nextStatus);
   }
@@ -410,7 +415,16 @@ export default function MyListingsScreen() {
           </Picker>
         </Host>
       </View>
-      {state === "loading" ? <Text style={body}>{copy.loading}</Text> : null}
+      {state === "loading" ? (
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel={copy.loading}
+        >
+          <ListingRowSkeleton />
+          <ListingRowSkeleton />
+        </View>
+      ) : null}
       {!detailId ? listError : null}
       {detailId && !rows.some((row) => row.id === detailId)
         ? detailPanel
@@ -469,6 +483,12 @@ export default function MyListingsScreen() {
           onPress={() => void load(cursor)}
         />
       ) : null}
+      <Button
+        label={lendingCopy[locale].addListing}
+        variant="outline"
+        disabled={busy}
+        onPress={() => router.push("/tools/add")}
+      />
     </CommunityScreen>
   );
 }

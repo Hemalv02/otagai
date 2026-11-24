@@ -35,6 +35,7 @@ export default function RequestDeliveryScreen() {
     <CommunityScreen
       back
       design
+      actingFor={isUuid(actingFor) ? actingFor : undefined}
       title={copy.delivery}
       subtitle={
         data ? liveRequestCopy[locale].status[data.request_status] : undefined

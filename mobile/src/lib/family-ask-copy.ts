@@ -2,6 +2,7 @@ import type { Language } from "./api";
 
 type AskCopy = {
   bannerTitle: (name: string) => string;
+  bannerFallback: string;
   bannerDetail: (name: string, circle: string | null) => string;
   title: string;
   switchToMine: string;
@@ -45,6 +46,7 @@ type AskCopy = {
 
 const en: AskCopy = {
   bannerTitle: (name) => `Acting for ${name}`,
+  bannerFallback: "Acting for a family member",
   bannerDetail: (name, circle) => (circle ? `${name} · ${circle}` : name),
   title: "Ask for help",
   switchToMine: "Switch to my account",
@@ -93,6 +95,7 @@ const en: AskCopy = {
 
 const ja: AskCopy = {
   bannerTitle: (name) => `${name}の代わりに操作中`,
+  bannerFallback: "家族の代わりに操作中",
   bannerDetail: (name, circle) => (circle ? `${name}・${circle}` : name),
   title: "手助けを頼む",
   switchToMine: "自分のアカウントに戻る",
@@ -142,6 +145,7 @@ const ja: AskCopy = {
 
 const bn: AskCopy = {
   bannerTitle: (name) => `${name}-এর হয়ে কাজ করছেন`,
+  bannerFallback: "পরিবারের একজন সদস্যের হয়ে কাজ করছেন",
   bannerDetail: (name, circle) => (circle ? `${name} · ${circle}` : name),
   title: "সাহায্য চান",
   switchToMine: "আমার অ্যাকাউন্টে ফিরুন",

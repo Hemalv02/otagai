@@ -215,6 +215,7 @@ function LivePickup({
     <CommunityScreen
       design
       back
+      actingFor={actingFor}
       eyebrow={title}
       title={copy.title}
       subtitle={copy.intro}

@@ -17,7 +17,8 @@ export function NotificationBell() {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      className="active:bg-wash"
+      style={styles.button}
       onPress={() => router.push("/notifications")}
     >
       <Image
@@ -49,7 +50,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: controls.radius,
   },
-  pressed: { backgroundColor: colors.wash },
   icon: { width: 32, height: 32 },
   badge: {
     position: "absolute",

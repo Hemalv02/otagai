@@ -3,6 +3,7 @@ import { useState } from "react";
 import { RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { ActingBanner } from "@/components/family-forms";
 import {
   LinkReviewSheet,
   type ReviewedLink,
@@ -16,6 +17,7 @@ import {
 } from "@/components/family-ui";
 import { Button, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
+import { familyAskCopy } from "@/lib/family-ask-copy";
 import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
 import { type FamilyAccount, statusLinks } from "@/lib/family-state";
@@ -53,6 +55,14 @@ export default function FamilyScreen() {
       title={copy.title}
       subtitle={copy.subtitle}
       back
+      banner={
+        state.status === "ready" && !state.selected.isSelf ? (
+          <ActingBanner
+            title={familyAskCopy[locale].bannerTitle(state.selected.name)}
+            locale={locale}
+          />
+        ) : undefined
+      }
       refreshControl={
         <RefreshControl
           refreshing={family.refreshing}

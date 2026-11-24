@@ -138,10 +138,11 @@ export function AccountList({
             <Pressable
               key={account.id}
               accessibilityRole="radio"
-              accessibilityState={{ selected }}
+              aria-checked={selected}
+              accessibilityState={{ checked: selected }}
               accessibilityLabel={`${account.name}, ${detail}`}
               onPress={() => onSelect(account.id)}
-              style={({ pressed }) => pressed && styles.pressed}
+              className="active:opacity-70"
             >
               <ListRow
                 thumbnail={
@@ -194,7 +195,7 @@ export function AccountList({
                 accessibilityRole="button"
                 accessibilityLabel={`${label}, ${consent.home.review}`}
                 onPress={() => onReviewLink(link)}
-                style={({ pressed }) => pressed && styles.pressed}
+                className="active:opacity-70"
               >
                 {row}
               </Pressable>
@@ -241,7 +242,7 @@ export function FamilyRequestRow({
         accessibilityState={{ expanded }}
         accessibilityHint={expanded ? copy.hideDetails : copy.showDetails}
         onPress={() => setExpanded((value) => !value)}
-        style={({ pressed }) => pressed && styles.pressed}
+        className="active:opacity-70"
       >
         <ListRow
           thumbnail={
@@ -396,7 +397,6 @@ const styles = StyleSheet.create({
   },
   round: { borderRadius: THUMBNAIL_SIZE / 2 },
   square: { borderRadius: controls.radius },
-  pressed: { opacity: 0.7 },
   bone: {
     height: 16,
     borderRadius: 4,

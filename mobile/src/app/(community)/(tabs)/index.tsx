@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { SymbolView } from "expo-symbols";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -109,6 +109,17 @@ const homeCopy = {
     nearbyError: "কাছাকাছির তালিকা লোড করা যায়নি।",
   },
 };
+
+const homeLinks = [
+  {
+    href: "/family",
+    icon: { ios: "person.2", android: "group", web: "group" },
+  },
+  {
+    href: "/thank-you-wall",
+    icon: { ios: "heart", android: "favorite_border", web: "favorite_border" },
+  },
+] as const satisfies readonly { href: string; icon: SymbolViewProps["name"] }[];
 
 export default function Home() {
   const { state } = useMemberships();
@@ -278,35 +289,6 @@ function CircleHome({ circleName }: { circleName: string }) {
           onPress={() => router.push("/tools/add")}
         />
       </View>
-      <Pressable
-        accessibilityRole="link"
-        accessibilityLabel={copy.family}
-        onPress={() => router.push("/family")}
-        android_ripple={{ color: colors.wash }}
-        style={styles.family}
-      >
-        <SymbolView
-          name={{ ios: "person.2", android: "group", web: "group" }}
-          size={20}
-          tintColor={colors.action}
-        />
-        <Text style={[label, styles.familyLabel]}>{copy.family}</Text>
-        <SymbolView
-          name={{
-            ios: "chevron.forward",
-            android: "chevron_right",
-            web: "chevron_right",
-          }}
-          size={18}
-          tintColor={colors.action}
-        />
-      </Pressable>
-      <Button
-        label={recognitionCopy[locale].title}
-        variant="secondary"
-        labelStyle={label}
-        onPress={() => router.push("/thank-you-wall")}
-      />
       <View style={styles.section}>
         <Text accessibilityRole="header" style={[sectionTitle, styles.ink]}>
           {copy.nearby}
@@ -443,12 +425,46 @@ function CircleHome({ circleName }: { circleName: string }) {
             ),
           )
         ) : (
-          <RequestNotice
-            title={copy.today}
-            detail={copy.empty}
-            locale={locale}
-          />
+          <Text style={[supporting, styles.secondary]}>{copy.empty}</Text>
         )}
+      </View>
+      <View style={styles.links}>
+        {homeLinks.map(({ href, icon }) => {
+          const title =
+            href === "/family" ? copy.family : recognitionCopy[locale].title;
+          return (
+            <Pressable
+              key={href}
+              accessibilityRole="link"
+              accessibilityLabel={title}
+              onPress={() => router.push(href)}
+              android_ripple={{ color: colors.wash }}
+              className="active:bg-wash"
+              style={[
+                styles.link,
+                href === "/family" && styles.linkDivider,
+              ]}
+            >
+              <SymbolView
+                name={icon}
+                size={20}
+                tintColor={colors.action}
+                accessible={false}
+              />
+              <Text style={[label, styles.linkLabel]}>{title}</Text>
+              <SymbolView
+                name={{
+                  ios: "chevron.forward",
+                  android: "chevron_right",
+                  web: "chevron_right",
+                }}
+                size={15}
+                tintColor={colors.action}
+                accessible={false}
+              />
+            </Pressable>
+          );
+        })}
       </View>
     </CommunityScreen>
   );
@@ -458,18 +474,22 @@ const styles = StyleSheet.create({
   actions: { flexDirection: "row", gap: spacing["control-gap"] },
   action: { flex: 1 },
   secondaryButton: { borderColor: colors.control },
-  family: {
-    minHeight: controls["touch-target"],
-    flexDirection: "row",
-    alignItems: "center",
+  links: {
     borderWidth: 1,
     borderColor: colors.rule,
     borderRadius: controls.radius,
+    overflow: "hidden",
+  },
+  link: {
+    minHeight: controls["touch-target"],
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing["control-gap"],
     paddingHorizontal: spacing["control-gap"],
     paddingVertical: spacing["related-gap"],
   },
-  familyLabel: { flex: 1, color: colors.action },
+  linkDivider: { borderBottomWidth: 1, borderBottomColor: colors.rule },
+  linkLabel: { flex: 1, color: colors.action },
   ink: { color: colors.ink },
   secondary: { color: colors.secondary },
   green: { color: colors.action },

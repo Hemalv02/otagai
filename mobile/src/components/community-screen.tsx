@@ -20,8 +20,9 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ScopedActingBanner } from "@/components/family-forms";
 import { Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
@@ -48,6 +49,7 @@ type CommunityScreenProps = PropsWithChildren<{
   scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
   onContentSizeChange?: (width: number, height: number) => void;
   banner?: ReactNode;
+  actingFor?: string;
   fixedTitle?: boolean;
   compactTitle?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
@@ -129,6 +131,7 @@ export function CommunityScreen({
   scrollRef,
   onContentSizeChange,
   banner,
+  actingFor,
   fixedTitle = false,
   compactTitle = false,
   refreshControl,
@@ -136,6 +139,7 @@ export function CommunityScreen({
   design = false,
   renderList,
 }: CommunityScreenProps) {
+  const { bottom } = useSafeAreaInsets();
   const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
@@ -274,6 +278,9 @@ export function CommunityScreen({
         </View>
       </View>
       {banner}
+      {actingFor ? (
+        <ScopedActingBanner key={actingFor} memberId={actingFor} />
+      ) : null}
       {fixedTitle ? heading : null}
       <KeyboardAvoidingView
         style={styles.flex}
@@ -311,8 +318,14 @@ export function CommunityScreen({
         animationType="fade"
         onRequestClose={closeOptions}
       >
-        <SafeAreaView style={styles.scrim}>
-          <View accessibilityViewIsModal style={styles.sheet}>
+        <View style={styles.scrim}>
+          <View
+            accessibilityViewIsModal
+            style={[
+              styles.sheet,
+              { paddingBottom: bottom + spacing["control-gap"] },
+            ]}
+          >
             <View style={styles.sheetHeader}>
               <Text
                 accessibilityRole="header"
@@ -423,6 +436,7 @@ export function CommunityScreen({
                     options={languages}
                     value={locale}
                     onChange={chooseLanguage}
+                    labelStyle={(language) => localizedType("body", language)}
                     disabled={saving}
                   />
                   {saveFailed ? <ErrorText>{t("saveError")}</ErrorText> : null}
@@ -430,7 +444,7 @@ export function CommunityScreen({
               )}
             </ScrollView>
           </View>
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -528,7 +542,8 @@ const styles = StyleSheet.create({
   designHeading: { gap: 6 },
   headerButton: {
     minHeight: controls["touch-target"],
-    minWidth: 32,
+    minWidth: controls["touch-target"],
+    alignItems: "center",
     justifyContent: "center",
   },
   content: { padding: spacing["screen-gutter"], gap: spacing["card-inset"] },
@@ -579,7 +594,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.canvas,
     paddingHorizontal: spacing["screen-gutter"],
     paddingTop: spacing["related-gap"],
-    paddingBottom: spacing["control-gap"],
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
   },

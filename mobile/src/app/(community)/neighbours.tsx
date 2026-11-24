@@ -52,7 +52,8 @@ function Neighbours({ authUserId }: { authUserId: string }) {
             accessibilityHint={
               date ? `${copy.lastExchange} · ${date}` : undefined
             }
-            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+            className="active:bg-paper"
+            style={styles.row}
             onPress={() =>
               router.push({
                 pathname: "/neighbours/[id]",
@@ -110,5 +111,4 @@ const styles = StyleSheet.create({
   },
   detail: { flex: 1, paddingTop: 4, paddingBottom: 5 },
   green: { color: colors.action },
-  pressed: { backgroundColor: colors.paper },
 });

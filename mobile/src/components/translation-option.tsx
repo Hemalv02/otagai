@@ -1,7 +1,8 @@
+import { Host, Picker } from "@expo/ui";
 import { useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { Button, Choice, ErrorText } from "@/components/ui";
+import { Button, ErrorText } from "@/components/ui";
 import type { ContentLanguage, Language } from "@/lib/api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { useLocalizedType } from "@/lib/onboarding-i18n";
@@ -43,11 +44,10 @@ export function TranslationOption({
   chooseLanguage?: boolean;
 }) {
   const style = useLocalizedType();
-  const [choosing, setChoosing] = useState(false);
-  const [target, setTarget] = useState<ContentLanguage>(
-    locale === source ? "en" : locale,
-  );
-  const [result, setResult] = useState<string>();
+  const [result, setResult] = useState<{
+    text: string;
+    language: ContentLanguage;
+  }>();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const running = useRef(false);
@@ -62,8 +62,7 @@ export function TranslationOption({
     setFailed(false);
     try {
       const value = await load(language);
-      setResult(value.translated);
-      setChoosing(false);
+      setResult({ text: value.translated, language });
     } catch {
       setFailed(true);
     } finally {
@@ -77,50 +76,51 @@ export function TranslationOption({
       {result !== undefined ? (
         <>
           <Text style={[style("supporting", locale), styles.label]}>
-            {labels.translated} ·{" "}
-            {draftLanguageNames[chooseLanguage ? target : locale]}
+            {labels.translated} · {draftLanguageNames[result.language]}
           </Text>
           <Text
             selectable
-            style={[
-              style("body", chooseLanguage ? target : locale),
-              styles.text,
-            ]}
+            style={[style("body", result.language), styles.text]}
           >
-            {result}
+            {result.text}
           </Text>
-        </>
-      ) : null}
-      {choosing && result === undefined ? (
-        <>
-          <Text style={[style("field-label", locale), styles.label]}>
-            {labels.choose}
-          </Text>
-          <Choice
-            options={draftLanguages
-              .filter((value) => value !== source)
-              .map((value) => ({ value, label: draftLanguageNames[value] }))}
-            value={target}
-            onChange={setTarget}
-          />
         </>
       ) : null}
       {failed ? <ErrorText>{labels.error}</ErrorText> : null}
-      <Button
-        variant="text"
-        label={result !== undefined ? labels.hide : words.translate}
-        labelStyle={style("field-label", locale)}
-        busy={busy}
-        onPress={() => {
-          if (result !== undefined) setResult(undefined);
-          else if (chooseLanguage && !choosing) {
-            setTarget(
-              source === locale ? (source === "en" ? "ja" : "en") : locale,
-            );
-            setChoosing(true);
-          } else void translate(chooseLanguage ? target : locale);
-        }}
-      />
+      {chooseLanguage && !result && !busy ? (
+        <Host matchContents seedColor={colors.action}>
+          <Picker<ContentLanguage | "">
+            appearance="menu"
+            accessibilityLabel={labels.choose}
+            selectedValue=""
+            onValueChange={(language) => {
+              if (language) void translate(language);
+            }}
+          >
+            <Picker.Item value="" label={words.translate} />
+            {draftLanguages
+              .filter((language) => language !== source)
+              .map((language) => (
+                <Picker.Item
+                  key={language}
+                  value={language}
+                  label={draftLanguageNames[language]}
+                />
+              ))}
+          </Picker>
+        </Host>
+      ) : (
+        <Button
+          variant="text"
+          label={result ? labels.hide : words.translate}
+          labelStyle={style("field-label", locale)}
+          busy={busy}
+          onPress={() => {
+            if (result) setResult(undefined);
+            else void translate(locale);
+          }}
+        />
+      )}
     </View>
   );
 }

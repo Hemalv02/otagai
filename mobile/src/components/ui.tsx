@@ -172,6 +172,7 @@ export function Choice<T extends string>({
   const body = type("body", locale);
   return (
     <View
+      accessibilityRole="radiogroup"
       className={
         stacked ? "gap-related-gap" : "flex-row flex-wrap gap-related-gap"
       }
@@ -182,10 +183,11 @@ export function Choice<T extends string>({
           <Pressable
             key={option.value}
             accessibilityRole="radio"
-            accessibilityState={{ selected, disabled }}
+            aria-checked={selected}
+            accessibilityState={{ checked: selected, disabled }}
             disabled={disabled}
             onPress={() => onChange(option.value)}
-            className={`min-h-touch-target justify-center rounded-control border px-card-inset ${
+            className={`min-h-touch-target max-w-full justify-center rounded-control border px-card-inset ${
               selected ? "border-action bg-wash" : "border-rule bg-canvas"
             }`}
           >

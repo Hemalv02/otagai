@@ -202,6 +202,7 @@ export default function LoanDetailsScreen() {
     <CommunityScreen
       design
       back
+      actingFor={actingFor}
       keyboard
       title={heading}
       subtitle={exchange ? `${itemName} · ${relationship}` : undefined}

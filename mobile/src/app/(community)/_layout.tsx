@@ -5,7 +5,7 @@ import { listenForRequestNotification } from "@/lib/device-push";
 
 import { colors } from "@/theme/tokens.json";
 
-export const unstable_settings = { initialRouteName: "(tabs)" };
+export const unstable_settings = { anchor: "(tabs)" };
 
 export default function CommunityLayout() {
   const navigationKey = useRootNavigationState()?.key;
