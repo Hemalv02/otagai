@@ -50,6 +50,7 @@ class Settings(BaseSettings):
         default=None, pattern=r"^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
     )
     s3_endpoint_url: AnyHttpUrl | None = None
+    s3_public_endpoint_url: AnyHttpUrl | None = None
     s3_region: str = "us-east-1"
     s3_access_key: SecretStr | None = None
     s3_secret_key: SecretStr | None = None
@@ -118,6 +119,11 @@ class Settings(BaseSettings):
             raise ValueError("Set both S3 credentials.")
         if self.s3_endpoint_url and not (self.s3_bucket and self.s3_access_key):
             raise ValueError("Set the bucket and credentials for a custom S3 endpoint.")
+        if self.s3_public_endpoint_url and (
+            self.s3_public_endpoint_url.scheme != "https"
+            and self.s3_public_endpoint_url.host not in ("localhost", "127.0.0.1")
+        ):
+            raise ValueError("Use HTTPS for S3_PUBLIC_ENDPOINT_URL.")
         if self.s3_create_bucket and not self.s3_bucket:
             raise ValueError("Set S3_BUCKET before enabling bucket creation.")
         if self.smtp_host and not self.smtp_from:

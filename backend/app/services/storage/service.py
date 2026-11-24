@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from typing import Any, Self
 
 from aiobotocore.config import AioConfig
@@ -33,10 +33,17 @@ DOWNLOAD_ATTEMPTS = 3
 
 
 class Storage:
-    def __init__(self, client: Any, bucket: str, region: str) -> None:
+    def __init__(
+        self,
+        client: Any,
+        bucket: str,
+        region: str,
+        presign_client: Any | None = None,
+    ) -> None:
         self._client = client
         self._bucket = bucket
         self._region = region
+        self._presign_client = presign_client if presign_client is not None else client
 
     @classmethod
     @asynccontextmanager
@@ -51,21 +58,32 @@ class Storage:
                 "aws_secret_access_key": settings.s3_secret_key.get_secret_value(),
             }
 
-        async with get_session().create_client(
-            "s3",
-            endpoint_url=str(settings.s3_endpoint_url)
-            if settings.s3_endpoint_url
-            else None,
-            region_name=settings.s3_region,
-            config=AioConfig(
-                s3={"addressing_style": "path"} if settings.s3_endpoint_url else None,
-                connect_timeout=3,
-                read_timeout=10,
-                retries={"mode": "standard", "total_max_attempts": 3},
-            ),
-            **credentials,
-        ) as client:
-            yield cls(client, settings.s3_bucket, settings.s3_region)
+        def client_args(endpoint: object | None) -> dict[str, Any]:
+            return {
+                "endpoint_url": str(endpoint) if endpoint else None,
+                "region_name": settings.s3_region,
+                "config": AioConfig(
+                    s3={"addressing_style": "path"} if endpoint else None,
+                    connect_timeout=3,
+                    read_timeout=10,
+                    retries={"mode": "standard", "total_max_attempts": 3},
+                ),
+                **credentials,
+            }
+
+        session = get_session()
+        async with AsyncExitStack() as stack:
+            client = await stack.enter_async_context(
+                session.create_client("s3", **client_args(settings.s3_endpoint_url))
+            )
+            presign_client = client
+            if settings.s3_public_endpoint_url:
+                presign_client = await stack.enter_async_context(
+                    session.create_client(
+                        "s3", **client_args(settings.s3_public_endpoint_url)
+                    )
+                )
+            yield cls(client, settings.s3_bucket, settings.s3_region, presign_client)
 
     async def check(self) -> None:
         try:
@@ -159,7 +177,7 @@ class Storage:
         if not 1 <= expires_in <= 7 * 24 * 60 * 60:
             raise ValueError("Use a presigned URL lifetime of up to seven days.")
         try:
-            return await self._client.generate_presigned_url(
+            return await self._presign_client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=expires_in,
