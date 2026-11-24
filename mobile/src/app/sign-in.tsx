@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 
 import {
@@ -7,103 +7,223 @@ import {
   OnboardingScreen,
 } from "@/components/onboarding-screen";
 import { Button, ErrorText, Field } from "@/components/ui";
+import {
+  authErrorKey,
+  codeInput,
+  validCode,
+  validEmail,
+  validNewPassword,
+} from "@/lib/email-auth";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { supabase } from "@/lib/supabase";
+import { createTemporaryAuthClient, supabase } from "@/lib/supabase";
 
-function errorKey(code: string | undefined) {
-  switch (code) {
-    case "email_address_invalid":
-      return "invalidEmail";
-    case "invalid_credentials":
-      return "invalidCredentials";
-    case "email_not_confirmed":
-      return "emailUnconfirmed";
-    case "weak_password":
-      return "weakPassword";
-    case "user_already_exists":
-    case "email_exists":
-      return "accountExists";
-    case "over_email_send_rate_limit":
-    case "over_request_rate_limit":
-      return "authRateLimited";
-    default:
-      return "authFailed";
-  }
+const actions = {
+  login: { title: "signIn", submit: "signIn" },
+  signup: { title: "joinOtagai", submit: "createAccount" },
+  "confirm-email": { title: "checkEmail", submit: "verifyEmail" },
+  "forgot-password": { title: "resetPassword", submit: "sendResetCode" },
+  "confirm-recovery": { title: "checkEmail", submit: "verifyResetCode" },
+  "new-password": { title: "chooseNewPassword", submit: "savePassword" },
+} as const;
+
+type Step = keyof typeof actions;
+type Notice =
+  | "confirmationResent"
+  | "emailVerified"
+  | "resetCodeResent"
+  | "passwordUpdated";
+type Failure = ReturnType<typeof authErrorKey>;
+type TemporaryAuthClient = ReturnType<typeof createTemporaryAuthClient>;
+
+function discardTemporaryClient(client: TemporaryAuthClient, signedIn: boolean) {
+  const revoke = signedIn
+    ? client.auth.signOut({ scope: "local" })
+    : Promise.resolve();
+  void revoke.finally(() => client.auth.dispose()).catch(() => undefined);
 }
 
 export default function SignIn() {
   const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
-  const [register, setRegister] = useState(false);
+  const [step, setStep] = useState<Step>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmation, setConfirmation] = useState<string | null>(null);
-  const [resendSent, setResendSent] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [code, setCode] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<ReturnType<typeof errorKey> | null>(null);
+  const [error, setError] = useState<Failure | null>(null);
   const submitting = useRef(false);
+  const recovery = useRef<TemporaryAuthClient | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (recovery.current) discardTemporaryClient(recovery.current, true);
+      recovery.current = null;
+    };
+  }, []);
 
   const address = email.trim();
-  const valid =
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) &&
-    password.length >= (register ? 8 : 1);
+  const enteringCode = step === "confirm-email" || step === "confirm-recovery";
+  const enteringEmail =
+    step === "login" || step === "signup" || step === "forgot-password";
+  const newPassword = step === "signup" || step === "new-password";
+  const showPassword = step === "login" || newPassword;
+  const passwordsDiffer =
+    step === "new-password" && confirmation.length > 0 && password !== confirmation;
+  const valid = {
+    login: validEmail(address) && Boolean(password),
+    signup: validEmail(address) && validNewPassword(password),
+    "confirm-email": validCode(code),
+    "forgot-password": validEmail(address),
+    "confirm-recovery": validCode(code),
+    "new-password": validNewPassword(password, confirmation),
+  }[step];
+
   const body = localizedType("body", locale);
   const button = localizedType("button", locale);
   const label = localizedType("field-label", locale);
 
-  function switchForm(next: boolean) {
-    if (submitting.current) return;
-    setRegister(next);
-    setConfirmation(null);
-    setResendSent(false);
-    setError(null);
+  function show(next: Step) {
+    setStep(next);
     setPassword("");
+    setConfirmation("");
+    setCode("");
+    setNotice(null);
+    setError(null);
+    if (next !== "new-password" && recovery.current) {
+      discardTemporaryClient(recovery.current, true);
+      recovery.current = null;
+    }
   }
 
-  async function submit() {
-    if (!valid || submitting.current) return;
+  async function run(action: () => Promise<void>) {
+    if (submitting.current) return;
     submitting.current = true;
     setBusy(true);
     setError(null);
+    setNotice(null);
     try {
-      const credentials = { email: address, password };
-      const { data, error: failure } = register
-        ? await supabase.auth.signUp(credentials)
-        : await supabase.auth.signInWithPassword(credentials);
+      await action();
+    } catch {
+      setError("authFailed");
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
+  }
+
+  function sendCode(kind: "signup" | "recovery") {
+    return kind === "signup"
+      ? supabase.auth.resend({ type: "signup", email: address })
+      : supabase.auth.resetPasswordForEmail(address);
+  }
+
+  function resend(kind: "signup" | "recovery", fromLogin = false) {
+    if (submitting.current) return;
+    if (fromLogin) show("confirm-email");
+    void run(async () => {
+      const { error: failure } = await sendCode(kind);
       if (failure) {
-        setError(errorKey(failure.code));
+        setError(authErrorKey(failure.code));
         return;
       }
-      setPassword("");
-      if (register && !data.session) setConfirmation(address);
-    } catch {
-      setError("authFailed");
-    } finally {
-      submitting.current = false;
-      setBusy(false);
-    }
+      setCode("");
+      setNotice(kind === "signup" ? "confirmationResent" : "resetCodeResent");
+    });
   }
 
-  async function resend() {
-    if (!confirmation || submitting.current) return;
-    submitting.current = true;
-    setBusy(true);
-    setError(null);
-    setResendSent(false);
-    try {
-      const { error: failure } = await supabase.auth.resend({
-        type: "signup",
-        email: confirmation,
-      });
-      if (failure) setError(errorKey(failure.code));
-      else setResendSent(true);
-    } catch {
-      setError("authFailed");
-    } finally {
-      submitting.current = false;
-      setBusy(false);
-    }
+  function submit() {
+    if (!valid) return;
+    void run(async () => {
+      switch (step) {
+        case "login": {
+          const { error: failure } = await supabase.auth.signInWithPassword({
+            email: address,
+            password,
+          });
+          if (failure) setError(authErrorKey(failure.code));
+          return;
+        }
+        case "signup": {
+          const { data, error: failure } = await supabase.auth.signUp({
+            email: address,
+            password,
+          });
+          if (failure) setError(authErrorKey(failure.code));
+          else if (!data.session) show("confirm-email");
+          return;
+        }
+        case "forgot-password": {
+          const { error: failure } = await sendCode("recovery");
+          if (failure) setError(authErrorKey(failure.code));
+          else show("confirm-recovery");
+          return;
+        }
+        case "confirm-email":
+        case "confirm-recovery": {
+          const client = createTemporaryAuthClient();
+          let signedIn = false;
+          try {
+            const { data, error: failure } = await client.auth.verifyOtp({
+              email: address,
+              token: code,
+              type: step === "confirm-email" ? "signup" : "recovery",
+            });
+            signedIn = Boolean(data.session);
+            if (!mounted.current) return;
+            if (failure || !signedIn) {
+              setError(authErrorKey(failure?.code));
+              return;
+            }
+            if (step === "confirm-email") {
+              show("login");
+              setNotice("emailVerified");
+            } else {
+              recovery.current = client;
+              show("new-password");
+            }
+          } finally {
+            if (recovery.current !== client) {
+              discardTemporaryClient(client, signedIn);
+            }
+          }
+          return;
+        }
+        case "new-password": {
+          const client = recovery.current;
+          if (!client) {
+            show("forgot-password");
+            return;
+          }
+          const { error: failure } = await client.auth.updateUser({ password });
+          if (failure) {
+            if (failure.status === 401 || failure.code === "session_not_found") {
+              show("forgot-password");
+              setError("invalidAuthCode");
+            } else {
+              setError(authErrorKey(failure.code));
+            }
+            return;
+          }
+          show("login");
+          setNotice("passwordUpdated");
+        }
+      }
+    });
   }
+
+  const detail =
+    step === "confirm-email"
+      ? t("confirmEmail", { email: address })
+      : step === "confirm-recovery"
+        ? t("resetEmail", { email: address })
+        : step === "forgot-password"
+          ? t("resetIntro")
+          : null;
 
   return (
     <OnboardingScreen
@@ -122,26 +242,23 @@ export default function SignIn() {
           className="text-ink"
           style={localizedType("screen-title", locale)}
         >
-          {t(confirmation ? "checkEmail" : register ? "joinOtagai" : "signIn")}
+          {t(actions[step].title)}
         </Text>
-        {confirmation ? (
+        {detail ? (
           <Text className="text-secondary" style={body}>
-            {t("confirmEmail", { email: confirmation })}
+            {detail}
           </Text>
         ) : null}
       </View>
-      {confirmation ? (
-        resendSent ? (
-          <Text accessibilityRole="alert" className="text-action" style={body}>
-            {t("confirmationResent")}
-          </Text>
-        ) : null
-      ) : (
-        <View className="gap-card-inset">
+      <View className="gap-card-inset">
+        {enteringEmail ? (
           <Field
             label={t("email")}
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (error) setError(null);
+            }}
             style={body}
             labelStyle={label}
             keyboardType="email-address"
@@ -152,22 +269,25 @@ export default function SignIn() {
             editable={!busy}
             placeholder="you@example.com"
           />
+        ) : null}
+        {showPassword ? (
           <View className="gap-related-gap">
             <Field
-              key={register ? "new-password" : "password"}
-              label={t("password")}
+              key={step}
+              label={t(step === "new-password" ? "newPassword" : "password")}
               value={password}
               onChangeText={setPassword}
               style={body}
               labelStyle={label}
               secureTextEntry
-              textContentType={register ? "newPassword" : "password"}
-              autoComplete={register ? "new-password" : "current-password"}
+              textContentType={newPassword ? "newPassword" : "password"}
+              autoComplete={newPassword ? "new-password" : "current-password"}
               autoCapitalize="none"
               autoCorrect={false}
               editable={!busy}
+              onSubmitEditing={step === "new-password" ? undefined : submit}
             />
-            {register ? (
+            {newPassword ? (
               <Text
                 className="text-secondary"
                 style={localizedType("supporting", locale)}
@@ -176,41 +296,100 @@ export default function SignIn() {
               </Text>
             ) : null}
           </View>
-        </View>
-      )}
-      {error ? <ErrorText>{t(error)}</ErrorText> : null}
+        ) : null}
+        {step === "new-password" ? (
+          <Field
+            label={t("confirmPassword")}
+            value={confirmation}
+            onChangeText={setConfirmation}
+            labelStyle={label}
+            secureTextEntry
+            textContentType="newPassword"
+            autoComplete="new-password"
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!busy}
+            onSubmitEditing={submit}
+          />
+        ) : null}
+        {enteringCode ? (
+          <Field
+            label={t("emailCode")}
+            value={code}
+            onChangeText={(value) => setCode(codeInput(value))}
+            labelStyle={label}
+            textContentType="oneTimeCode"
+            autoComplete="one-time-code"
+            keyboardType="number-pad"
+            editable={!busy}
+          />
+        ) : null}
+      </View>
+      {error || passwordsDiffer ? (
+        <ErrorText>{t(error ?? "passwordMismatch")}</ErrorText>
+      ) : null}
+      {notice ? (
+        <Text accessibilityRole="alert" className="text-action" style={body}>
+          {t(notice)}
+        </Text>
+      ) : null}
       <View className="gap-related-gap">
-        {confirmation ? (
+        <Button
+          label={t(actions[step].submit)}
+          labelStyle={button}
+          onPress={submit}
+          busy={busy}
+          disabled={!valid}
+        />
+        {step === "login" ? (
           <>
+            {error === "emailUnconfirmed" ? (
+              <Button
+                variant="text"
+                label={t("resendConfirmation")}
+                labelStyle={label}
+                disabled={busy || !validEmail(address)}
+                onPress={() => resend("signup", true)}
+              />
+            ) : null}
             <Button
-              label={t("backToSignIn")}
-              labelStyle={button}
+              variant="text"
+              label={t("forgotPassword")}
+              labelStyle={label}
               disabled={busy}
-              onPress={() => switchForm(false)}
+              onPress={() => show("forgot-password")}
             />
             <Button
               variant="text"
-              label={t("resendConfirmation")}
+              label={t("createAccount")}
               labelStyle={label}
               disabled={busy}
-              onPress={resend}
+              onPress={() => show("signup")}
             />
           </>
         ) : (
           <>
-            <Button
-              label={t(register ? "createAccount" : "signIn")}
-              labelStyle={button}
-              onPress={submit}
-              busy={busy}
-              disabled={!valid}
-            />
+            {enteringCode ? (
+              <Button
+                variant="text"
+                label={t(
+                  step === "confirm-email"
+                    ? "resendConfirmation"
+                    : "resendResetCode",
+                )}
+                labelStyle={label}
+                disabled={busy}
+                onPress={() =>
+                  resend(step === "confirm-email" ? "signup" : "recovery")
+                }
+              />
+            ) : null}
             <Button
               variant="text"
-              label={t(register ? "alreadyHaveAccount" : "createAccount")}
+              label={t(step === "signup" ? "alreadyHaveAccount" : "backToSignIn")}
               labelStyle={label}
-              onPress={() => switchForm(!register)}
               disabled={busy}
+              onPress={() => show("login")}
             />
           </>
         )}

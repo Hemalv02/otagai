@@ -56,7 +56,8 @@
           "cameraPermission": "Allow Otagai to scan a circle’s invite QR code.",
           "recordAudioAndroid": false
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true,
