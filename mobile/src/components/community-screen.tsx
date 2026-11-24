@@ -24,6 +24,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useOnboarding } from "@/lib/onboarding";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -292,6 +293,15 @@ export function CommunityScreen({
                   onPress={() => {
                     setOptions(null);
                     router.push("/notification-preferences");
+                  }}
+                />
+                <Button
+                  label={neighbourCopy[locale].blockedPeople}
+                  labelStyle={label}
+                  variant="text"
+                  onPress={() => {
+                    setOptions(null);
+                    router.push("/blocked-people");
                   }}
                 />
                 <Text style={[label, styles.secondary]}>{copy.language}</Text>

@@ -19,6 +19,8 @@ import {
   activityTime,
 } from "@/lib/activity-screen-copy";
 import { useCurrentTime, useLiveResource } from "@/lib/live-resource";
+import { partnerFor } from "@/lib/neighbour-api";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
 import { livePickupCopy } from "@/lib/live-pickup";
@@ -95,6 +97,9 @@ export default function LoanDetailsScreen() {
   const pending = history.find((item) => item.status === "pending");
   const overdue = exchange?.due_at && new Date(exchange.due_at).getTime() < now;
   const stage = exchange && loanStage(exchange, profileId);
+  const partnerId =
+    exchange && profileId ? partnerFor(exchange, profileId) : null;
+  const neighbour = neighbourCopy[locale];
   const active = stage === "return";
   const progression = {
     return: { label: screen.recordReturn, advance: "return" },
@@ -360,6 +365,35 @@ export default function LoanDetailsScreen() {
               labelStyle={localizedType("field-label", locale)}
               disabled={busy || loan.loading}
               onPress={loan.reload}
+            />
+          ) : null}
+          {stage === "completed" ? (
+            <Button
+              label={neighbour.sayThanks}
+              labelStyle={localizedType("button", locale)}
+              onPress={() =>
+                router.push({
+                  pathname: "/loans/[id]/thank-you",
+                  params: { id },
+                })
+              }
+            />
+          ) : null}
+          {partnerId ? (
+            <Button
+              label={neighbour.reportOrBlock}
+              variant="text"
+              labelStyle={localizedType("field-label", locale)}
+              onPress={() =>
+                router.push({
+                  pathname: "/report-or-block",
+                  params: {
+                    targetType: "user",
+                    targetId: partnerId,
+                    loanId: id,
+                  },
+                })
+              }
             />
           ) : null}
         </>
