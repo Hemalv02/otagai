@@ -1,5 +1,5 @@
 {
-  "duration": 170,
+  "duration": 165,
   "voice": "af_heart",
   "lang": "en-us",
   "cues": [
@@ -47,7 +47,7 @@
     {
       "start": 43.0,
       "end": 54.4,
-      "text": "Tanaka-san just says what she needs. Otagai writes it as a polite request. Nothing is sent until she taps send.",
+      "text": "Tanaka-san says what she needs. Otagai drafts a polite request. She chooses who can see it, then posts it.",
       "pronunciation": {
         "ˈɑːɾɐɡˌaɪ": "oʊtˈɑːɡaɪ",
         "tænˈɑːkəsˌæn": "tɑːnˈɑːkəsˌɑːn"
@@ -90,7 +90,7 @@
     {
       "start": 105.4,
       "end": 114.6,
-      "text": "With their permission, family can ask on someone's behalf. Even Rahim's mother, back home in Cumilla.",
+      "text": "Rahim can ask for help on behalf of his mother, Ammu, in Cumilla. They review permissions together first.",
       "pronunciation": {
         "ɹˈæhɪm": "ɹɑːhˈiːm",
         "kjuːmˈɪlə": "kʊmˈɪlə"
@@ -112,8 +112,8 @@
       "text": "AI suggests. People decide. Contact details stay private, and anyone can report or block."
     },
     {
-      "start": 153.2,
-      "end": 160.0,
+      "start": 155.1,
+      "end": 161.0,
       "text": "Nagasaki already has the helpers. Otagai is the connection.",
       "speed": 0.94,
       "pronunciation": {

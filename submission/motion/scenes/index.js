@@ -5,7 +5,7 @@ import { meet, rahimAsks, lend } from './v2c.js';
 import { thank, family, circle, disaster, trust, close, hud } from './v2d.js';
 
 export const scenes = [world2, hook, steps, enryo, helpers, turn, join, explore, ask, meet, rahimAsks, lend, thank, family, circle, disaster, trust, close, hud];
-export const DURATION = 170;
+export const DURATION = 165;
 export const BG = [[0, '#F8F5ED'], [124.9, '#F5EEE6', 0.4], [137.5, '#F8F5ED', 1.5]];
 export const WARP = null;
 export const GRAIN = 0.05;

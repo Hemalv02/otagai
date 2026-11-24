@@ -11,7 +11,6 @@ export function playHead(el, t, t0, out, opts = {}) {
   const vis = t > t0 - 0.1 && t < out + 0.8;
   el.style.display = vis ? '' : 'none';
   if (!vis) return;
-  el.style.setProperty('--bk', (seg(t, t0 - 0.3, t0 + 0.4) * (1 - seg(t, out, out + 0.6))).toFixed(3));
   const eb = el.querySelector('.eb');
   if (eb) riseWords(eb, t, t0 - 0.12, { stagger: 0.04, preset: 'default', out });
   riseWords(el.querySelector('.headline'), t, t0, { stagger: opts.stagger ?? 0.075, preset: 'heavy', out });

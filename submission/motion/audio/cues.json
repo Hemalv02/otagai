@@ -1,6 +1,6 @@
 {
  "bpm": 96,
- "duration": 170,
+ "duration": 165,
  "key": "D",
  "seed": 11,
  "progression": [
@@ -114,7 +114,7 @@
   },
   {
    "start": 162.5,
-   "end": 170,
+   "end": 165,
    "mood": "outro",
    "level": 1.0
   }
@@ -879,6 +879,11 @@
   },
   {
    "t": 49.0,
+   "type": "pop",
+   "gain": 0.75
+  },
+  {
+   "t": 51.4,
    "type": "pop",
    "gain": 0.75
   },

@@ -194,13 +194,13 @@ export const ask = {
     const sheetHTML = `<div class="scrim" style="position:absolute;inset:0;background:#303630;opacity:0"></div>
       <div class="sheet" style="position:absolute;left:0;right:0;top:56px;bottom:0;background:#fff;border-radius:20px 20px 0 0;display:flex;flex-direction:column;box-shadow:0 -10px 30px rgba(0,0,0,.08)">
         <div class="row" style="justify-content:space-between;padding:8px 12px 8px 20px;border-bottom:1px solid var(--rule)"><div style="${T.section}">Review request</div><span style="width:48px;height:48px;display:flex;align-items:center;justify-content:center">${sf('xmark', 20, 'var(--action)')}</span></div>
-        <div style="padding:20px;display:flex;flex-direction:column;gap:16px;flex:1;overflow:hidden">
+        <div style="padding:20px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow:hidden">
           <div style="background:var(--paper);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:5px"><div style="${T.label};color:var(--action)">Ask for help</div><div style="${T.card}">Help carrying rice up the steps</div><div style="${T.sup}">Send to · ${CIRCLE}</div></div>
-          ${field('Request details', `<span class="ja" style="font:400 17px/27px var(--ja)">${JA_REQ}</span>`, { min: 104 })}
+          ${field('Request details', `<span class="ja" style="font:400 17px/27px var(--ja)">${JA_REQ}</span>`, { min: 80 })}
           ${field('When · optional', 'Saturday morning')}
-          <div style="background:var(--paper);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:8px"><div style="${T.label}">Share up to</div>${choice([CIRCLE, 'Association', 'Nearby within 3 km'], 0)}<div style="${T.sup};font-size:15px;line-height:22px">Starts with family. If the request stays open, it can reach the groups you allow.</div></div>
+          <div style="background:var(--paper);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px"><div style="${T.label}">Share up to</div>${choice(['Your circle', 'Association', 'Nearby within 3 km'], 0, { cls: 'scope' })}<div style="${T.sup};font-size:15px;line-height:22px">Starts with family and only reaches the groups you allow.</div></div>
         </div>
-        <div class="row" style="gap:8px;padding:16px 20px 26px;border-top:1px solid var(--rule)">${btn('Cancel', 'secondary', { style: 'font-size:16px' })}${btn('Post request', 'primary', { cls: 'post', style: 'flex:1;font-size:16px' })}</div>
+        <div class="row" style="flex:none;gap:8px;padding:12px 20px 20px;border-top:1px solid var(--rule)">${btn('Cancel', 'secondary', { style: 'font-size:16px' })}${btn('Post request', 'primary', { cls: 'post', style: 'flex:1;font-size:16px' })}</div>
       </div>`;
     const stages = ['Family', 'Your circle', 'Association', 'Nearby within 3 km'];
     const deliv = screen(`
@@ -212,7 +212,7 @@ export const ask = {
       <div style="${T.label};color:var(--action)">Refresh delivery</div>`, { tab: 'Requests' });
     el.innerHTML = `<div class="rig">
       ${device(askScr + deliv + sheetHTML, { cls: 'dA' })}
-      <div class="callout cnote row" style="left:1430px;top:610px;gap:12px;${T.label};font-size:22px;color:var(--action-deep)">${sf('shield', 26, 'var(--action)')}Nothing is sent until you tap Send.</div>
+      <div class="callout cnote row" style="left:1430px;top:610px;gap:12px;${T.label};font-size:22px;color:var(--action-deep)">${sf('shield', 26, 'var(--action)')}Only shared when you post.</div>
       <div class="abs fly" style="width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:var(--action);box-shadow:0 0 0 10px rgba(83,114,87,.16);display:none"></div>
       ${headline(`${words('Say it simply.')}`, { x: 140, y: 330, size: 74, w: 640, eyebrow: '03 — Ask' })}
       ${headline(`<span class="em">${words('Otagai writes it')}</span><br><span class="em">${words('politely.')}</span>`, { x: 140, y: 480, size: 74, w: 640, cls: 'h2' })}
@@ -230,6 +230,7 @@ export const ask = {
     this.jt = q('.jt'); this.en = q('.en'); this.rev = q('.rev'); this.cin = q('.cin'); this.crec = q('.crec'); this.wv = [...this.dA.querySelectorAll('.wv i')];
     this.mic = F(this.dA, q('.mic')); this.snd = q('.snd'); this.spin = q('.spin');
     this.scrimEl = q('.scrim'); this.sheetEl = q('.sheet'); this.postBtn = F(this.dA, q('.post'));
+    this.scopes = [...this.sheetEl.querySelectorAll('.scope .a-choice')];
     this.stg = [...this.dA.querySelectorAll('.stg')];
     this.cnote = el.querySelector('.cnote'); this.fly = el.querySelector('.fly');
     this.rl = [...el.querySelectorAll('.rl')];
@@ -244,7 +245,7 @@ export const ask = {
     this.dA.style.transform = `translateY(${(dq * 1000).toFixed(1)}px)`;
     const m = measure(this, this.rig, { mic: this.mic, draft: this.draft, postBtn: this.postBtn });
     const comp = [m.mic[0] + 100, m.mic[1] - 30];
-    zoomRig(this.rig, t, [[0, [960, 540, 1]], [43.0, [...comp, 1.65]], [45.6, [960, 540, 1]], [46.9, [m.draft[0], m.draft[1] - 20, 1.45]], [48.8, [960, 540, 1]], [52.3, [...m.postBtn, 1.55]], [53.8, [960, 540, 1]]]);
+    zoomRig(this.rig, t, [[0, [960, 540, 1]], [43.0, [...comp, 1.65]], [45.6, [960, 540, 1]], [46.9, [m.draft[0], m.draft[1] - 20, 1.45]], [48.8, [960, 540, 1]], [50.8, [m.postBtn[0], m.postBtn[1] - 165, 1.4]], [53.8, [960, 540, 1]]]);
     swap(this.sc, t, [0, 54.3]);
     const rec = t > 43.3 && t < 44.9;
     this.cin.style.display = rec ? 'none' : '';
@@ -252,7 +253,7 @@ export const ask = {
     this.wv.forEach((w, i) => { w.style.height = (5 + 18 * Math.abs(Math.sin(t * 9 + i * 1.3) * 0.6 + Math.sin(t * 4.1 + i) * 0.4)).toFixed(1) + 'px'; });
     this.mic.style.background = rec ? 'var(--clay-soft)' : 'transparent';
     setText(this.cin, t > 44.9 && t < 45.5 ? 'Transcribing…' : 'Describe what you need…');
-    taps(this.tap, this.dA, t, [[43.2, this.mic], [44.8, this.mic], [49.0, this.rev], [53.2, this.postBtn]]);
+    taps(this.tap, this.dA, t, [[43.2, this.mic], [44.8, this.mic], [49.0, this.rev], [51.4, this.scopes[2]], [53.2, this.postBtn]]);
     const conv = t > 45.5;
     this.empty.style.display = conv ? 'none' : 'flex';
     show(this.ub1, t, 45.5, Infinity, { dy: 16 });
@@ -265,6 +266,7 @@ export const ask = {
     press(this.rev, t, 49.0);
     scrim(this.scrimEl, t, 49.1, 53.5);
     sheet(this.sheetEl, t, 49.1, 53.5);
+    this.scopes.forEach((choice, i) => cls(choice, 'on', i === (t >= 51.4 ? 2 : 0)));
     press(this.postBtn, t, 53.2);
     const cn = spring(t - 50.5, 'snappy'), cq = easeIn(seg(t, 53.6, 54.0));
     css(this.cnote, { o: clamp(cn * 1.5) * (1 - cq), y: (1 - cn) * 20, s: 0.9 + 0.1 * cn });

@@ -1,6 +1,6 @@
 # Otagai: Director's Brief (v2, "One Line")
 
-> **Note:** this is the original 2:00 brief. The final cut runs 2:50 and adds Join, Explore, Rahim asks, the circle board and disaster mode. `scenes/index.js` and the timeline in `README.md` are the source of truth for timings.
+> **Note:** this is the original 2:00 brief. The revised cut runs 2:45 and adds Join, Explore, Rahim asks, the circle board and disaster mode. `scenes/index.js` and the timeline in `README.md` are the source of truth for timings.
 
 > Runtime **2:00** (hard cap) · 16:9 1920×1080 master · **Kokoro `af_heart` voice-over** + synthesized score at **96 BPM** (1 bar = 2.5 s, 48 bars) · all light, in the app's own palette
 
@@ -162,7 +162,7 @@ Mono step labels hang on the line like street signs: `01 ASK`, `02 RIPPLE`, `03 
   - 1:35–1:52: lighter groove under the sea crossing.
   - 1:52.5: `outro`, final motif on the mark, then fade.
 - **SFX:** pen scratch under fast drawing, soft tick on the 34.9% counter, key clicks for typing and deleting, a chime on Send, a water "plip" + low swell for each ripple ring, pops on door glows, a shutter on the drill, a bell on each knot, and one soft boom on the pull-out reveal.
-- **VO mix:** the score ducks under the voice by sidechain (the `voiceover/README.md` filter). Target −14 to −16 LUFS integrated.
+- **VO mix:** `build.sh` levels the narration and uses it to duck the score. The delivery mix targets −14.5 LUFS integrated.
 - I can't hear audio. I check it by meter and spectrogram, and you listen.
 
 ## 7. Build notes

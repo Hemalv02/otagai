@@ -1,14 +1,14 @@
 # Otagai promo film
 
-A 2:50 promo for Otagai at 1920×1080, 30 fps. Everything is code: the app screens are rebuilt in HTML from the real `mobile/` layouts, Chromium renders the frames, the score is synthesised in Python, and the narration is the Kokoro `af_heart` voice.
+A 2:45 promo for Otagai at 1920×1080, 30 fps. The app screens are rebuilt in HTML from the `mobile/` layouts, Chromium renders the frames, Python synthesises the score, and Kokoro narrates in the `af_heart` voice.
 
-The video file is not in the repo (566 MB master). Download it from the release linked on the repo, or build it with the steps below.
+Use the build steps below to generate the master and a smaller share copy in `out/`.
 
 ## What's in here
 
 | Path | What it is |
 | --- | --- |
-| `scenes/index.js` | Timeline: duration (170 s), background colours and scene order |
+| `scenes/index.js` | Timeline: duration (165 s), background colours and scene order |
 | `scenes/v2a.js` … `v2d.js` | Scenes, in order (see the timeline below) |
 | `scenes/world2.js` | Background paper, contour lines, neighbour dots and the green line the camera follows |
 | `scenes/kit2.js` | Camera zoom (`zoomRig`), transitions, taps, screen swaps |
@@ -35,9 +35,9 @@ The video file is not in the repo (566 MB master). Download it from the release 
 | 1:55–2:05 | Circle board: translated notices and events |
 | 2:05–2:20 | Disaster mode: safety alert, "I'm safe" / "I need help", gentle check-ins |
 | 2:20–2:32 | Trust and privacy |
-| 2:32–2:50 | Logo and close |
+| 2:32–2:45 | Logo and close |
 
-Disaster mode, notices and events exist in the backend but not yet in the mobile app. Their screens are designed to match the backend behaviour. Payments are shown as disabled options.
+The film labels disaster mode, notices, and events as mobile concept previews. Their screen designs follow the backend behaviour. Payments are shown as disabled options.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ WORKERS=3 ./build.sh      # on machines with less RAM
 ./build.sh --vo           # also re-record the narration (needs Kokoro, see below)
 ```
 
-The full render takes about 30 minutes on 8 cores. The script also writes `out/otagai_v2_share.mp4`, an H.265 copy of about 115 MB that looks the same at normal viewing.
+The render prints a frame count and estimated time remaining. The script also writes `out/otagai_v2_share.mp4`, a smaller H.265 copy for sharing.
 
 The score uses a fixed random seed, so `score.py` produces the same music on every run.
 
@@ -69,7 +69,7 @@ The score uses a fixed random seed, so `score.py` produces the same music on eve
 
 ```bash
 node render.mjs --still 52.9,130.2          # single frames to out/stills/
-node render.mjs --sheet 0:170:2.5 --cols 9  # contact sheet, one frame every 2.5 s
+node render.mjs --sheet 0:165:2.5 --cols 9  # contact sheet, one frame every 2.5 s
 ```
 
 ## Voice-over with Kokoro (optional)

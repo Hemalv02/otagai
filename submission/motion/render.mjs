@@ -92,11 +92,19 @@ if (args.still) {
       const f0 = w * per, f1 = Math.min(total, f0 + per);
       if (f0 >= f1) return;
       const page = await openPage();
+      // The direct capture path is lossless at native resolution. Playwright applies device scaling.
+      const cdp = scale === 1 ? await page.context().newCDPSession(page) : null;
       const seg = path.join(tmp, `seg${w}.mp4`);
       const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-', '-c:v', 'libx264', '-preset', args.preset || 'medium', '-crf', String(args.crf || 16), '-pix_fmt', 'yuv420p', '-r', String(fps), seg]);
       for (let f = f0; f < f1; f++) {
         await page.evaluate((t) => window.seek(t), from + f / fps);
-        const buf = await page.screenshot({ type: 'png' });
+        let buf;
+        if (cdp) {
+          const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true });
+          buf = Buffer.from(data, 'base64');
+        } else {
+          buf = await page.screenshot({ type: 'png' });
+        }
         if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));
         done++;
         if (done % (fps * 2) === 0) {

@@ -1,4 +1,4 @@
-"""Writes audio/cues.json for the 170 s v2 cut (96 BPM, bar = 2.5 s). Times mirror scenes/v2*.js."""
+"""Writes audio/cues.json for the 165 s cut (96 BPM, bar = 2.5 s). Times mirror scenes/v2*.js."""
 import json, os
 
 E = []
@@ -29,7 +29,7 @@ for t, g in ((25, 1.1), (35, 0.6), (42.5, 0.7), (62.5, 0.9), (75, 0.6), (85, 0.6
     ev(t - 0.35, 'whoosh', dur=0.7, gain=0.55)
 
 # ---- app taps (from taps() keyframes in scenes)
-for t in (26.4, 27.2, 29.0, 31.6, 36.8, 38.3, 43.2, 44.8, 49.0, 53.2, 64.1, 78.6, 82.6, 85.4,
+for t in (26.4, 27.2, 29.0, 31.6, 36.8, 38.3, 43.2, 44.8, 49.0, 51.4, 53.2, 64.1, 78.6, 82.6, 85.4,
           91.9, 93.4, 95.6, 98.7, 106.1, 106.5, 107.3, 108.0, 110.2, 121.8, 129.8, 135.6,
           143.4, 145.8, 147.0):
     ev(t, 'pop', gain=0.75)
@@ -63,7 +63,7 @@ ev(130.0, 'chime')                         # I'm safe
 for i in range(6): ev(131.0 + i * 0.35, 'pop', gain=0.5, pan=-0.5 + 0.2 * i)   # replies arrive
 ev(135.0, 'whoosh', dur=0.6, gain=0.45); ev(135.7, 'chime')
 
-# ---- close (152–170)
+# ---- close (152–165)
 ev(150.2, 'riser', dur=2.3)
 ev(152.5, 'crash', gain=1.2); ev(152.5, 'boom', gain=0.5); ev(152.6, 'whoosh', dur=2.2, gain=0.6)
 ev(155.0, 'boom', gain=0.4); ev(155.1, 'chime')
@@ -71,7 +71,7 @@ ev(155.0, 'boom', gain=0.4); ev(155.1, 'chime')
 E.sort(key=lambda e: e['t'])
 HOOK = [["F#5", 0, 1], ["A5", 1, 1], ["B5", 2, 1], ["A5", 3, 1], ["D6", 4, 3]]
 cues = {
-    "bpm": 96, "duration": 170, "key": "D", "seed": 11,
+    "bpm": 96, "duration": 165, "key": "D", "seed": 11,
     "progression": ["I", "vi", "IV", "V"],
     "drive_progression": ["I", "V", "vi", "IV"],
     "sections": [
@@ -91,7 +91,7 @@ cues = {
         dict(start=140, end=150, mood="drive", level=0.85),
         dict(start=150, end=152.5, mood="brk", level=0.8),
         dict(start=152.5, end=162.5, mood="drive_full", level=1.0),
-        dict(start=162.5, end=170, mood="outro", level=1.0),
+        dict(start=162.5, end=165, mood="outro", level=1.0),
     ],
     "motifs": [
         dict(at=25.6, notes=HOOK, gain=0.85),

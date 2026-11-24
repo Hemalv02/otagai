@@ -107,7 +107,7 @@ export const family = {
     const rev = screen(`
       ${backRow()}${head({ title: 'Review permissions', sub: 'For Ammu · Cumilla, Bangladesh' })}
       <div class="pl" style="display:flex;flex-direction:column;gap:16px">${perms.map(([a, b, on]) => `<div class="row" style="gap:14px"><div style="flex:1"><div style="${T.label}">${a}</div><div style="${T.sup}">${b}</div></div><span class="tg" data-on="${on}">${toggle(false)}</span></div>`).join('')}</div>
-      <div class="given a-notice" style="background:var(--wash)"><div style="${T.label};color:var(--action-deep)">Permission given ✓</div><div style="${T.sup}">Ammu can remove it at any time.</div></div>`, { footer: btn('Give permission', 'primary', { cls: 'gv' }) });
+      <div class="given a-notice" style="background:var(--wash)"><div style="${T.label};color:var(--action-deep)">Ammu gave permission ✓</div><div style="${T.sup}">She can remove it at any time.</div></div>`, { footer: btn('Confirm together', 'primary', { cls: 'gv' }) });
     const home = screen(`
       ${backRow().replace('Back', 'ফিরে যান')}${head({ title: '<span class="bn">আপনার পরিবার</span>', sub: '<span class="bn" style="font-size:17px">আপনার বিশ্বস্ত কাউকে দৈনন্দিন অনুরোধে সাহায্য করুন।</span>' })}
       <div class="row" style="gap:14px;padding:12px 14px;border-radius:8px;box-shadow:0 0 0 1px var(--rule) inset">${avatarImg(RAHIM, 48)}<div style="flex:1"><div style="${T.label}">Rahim</div><div class="bn" style="${T.sup};font-family:var(--bn)">আপনার অ্যাকাউন্ট</div></div></div>
@@ -320,7 +320,7 @@ export const trust = {
       ${btn('Save text size', 'secondary')}`);
     el.innerHTML = `<div class="rig">${device(st, { cls: 'dS' })}
       ${TRUST.map(([ic, a, b], i) => `<div class="card tr hl" style="left:150px;top:${130 + i * 205}px;width:760px;height:180px;display:flex;align-items:center;gap:30px;padding:0 36px">
-        <div style="width:90px;height:90px;border-radius:22px;background:var(--wash);display:flex;align-items:center;justify-content:center;flex:none">${icon(ic, 44, 'var(--action)', 2.2)}</div>
+        <div style="width:90px;height:90px;border-radius:22px;background:var(--wash);display:flex;align-items:center;justify-content:center;flex:none">${(ic === 'flag' ? sf : icon)(ic, 44, 'var(--action)', 2.2)}</div>
         <div class="headline" style="font-size:46px;line-height:1.12">${a}<br><span class="em">${b}</span></div></div>`).join('')}</div>`;
     this.rig = el.querySelector('.rig'); this.dS = el.querySelector('.dev'); this.tap = tap1(this.dS);
     this.cards = [...el.querySelectorAll('.tr')]; this.tz = [...this.dS.querySelectorAll('.tz')]; this.prev = F(this.dS, this.dS.querySelector('.prev')); this.pv = this.dS.querySelector('.pv');
@@ -362,12 +362,12 @@ export const close = {
     this.tg = [...el.querySelectorAll('.tg')];
   },
   update(lt, t) {
-    riseWords(this.l1, t, 153.4, { stagger: 0.07 });
-    riseWords(this.l2, t, 155.4, { stagger: 0.08 });
+    riseWords(this.l1, t, 155.0, { stagger: 0.07 });
+    riseWords(this.l2, t, 157.3, { stagger: 0.08 });
     riseWords(this.wm, t, 157.0, { preset: 'heavy' });
     const p = spring(t - 157.5, 'default');
     css(this.sub, { o: clamp(p * 1.5), y: (1 - p) * 20 });
-    const Ts = [159.6, 161.8, 164.0];
+    const Ts = [159.5, 160.8, 162.1];
     this.tg.forEach((g, i) => {
       const tin = Ts[i], tout = i < 2 ? Ts[i + 1] : 999;
       g.style.display = t > tin - 0.1 && t < tout + 0.5 ? '' : 'none';
@@ -391,8 +391,10 @@ export const hud = {
   id: 'hud', start: 0, end: 171,
   build(el) {
     el.innerHTML = `<div class="abs clk mono halo" style="left:120px;top:64px;font-size:19px;letter-spacing:.16em;color:var(--control);text-transform:uppercase;display:flex;gap:16px;align-items:center">
-      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>`;
+      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>
+      <div class="abs mobile-preview mono" style="left:140px;bottom:74px;padding:10px 14px;background:var(--paper);border:1px solid var(--rule);border-radius:8px;color:var(--ink);font-size:20px">Mobile concept preview</div>`;
     this.clk = el.querySelector('.clk'); this.tm = el.querySelector('.tm'); this.pl = el.querySelector('.pl'); this.dot = el.querySelector('.dot');
+    this.preview = el.querySelector('.mobile-preview');
   },
   update(lt, t) {
     let i = -1;
@@ -407,5 +409,6 @@ export const hud = {
       this.tm.style.opacity = clamp(p * 1.4).toFixed(3);
     }
     this.dot.style.opacity = t > 125 && t < 137 ? (0.5 + 0.5 * Math.sin(t * 7)).toFixed(3) : '1';
+    this.preview.style.opacity = (seg(t, 114.8, 115.3) * (1 - seg(t, 139.5, 140.0))).toFixed(3);
   },
 };
