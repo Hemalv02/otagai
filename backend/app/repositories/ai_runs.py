@@ -1,6 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import AiRun
@@ -19,3 +21,9 @@ class AiRunRepository:
 
     async def get(self, run_id: uuid.UUID) -> AiRun | None:
         return await self._session.get(AiRun, run_id)
+
+    async def delete_created_before(self, cutoff: datetime) -> int:
+        result = await self._session.execute(
+            delete(AiRun).where(AiRun.created_at < cutoff)
+        )
+        return result.rowcount or 0

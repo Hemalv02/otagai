@@ -1,21 +1,26 @@
 import argparse
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime
 
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.database.connection import Database
+from app.services.ai.runner import purge_old_runs
 from app.services.requests.ripple import process_due_requests
 from app.settings import get_settings
 
 logger = logging.getLogger(__name__)
 POLL_SECONDS = 15
+PURGE_SECONDS = 3600
 
 
 async def run(*, once: bool, request_id: uuid.UUID | None, now: datetime | None):
-    database = Database(get_settings())
+    settings = get_settings()
+    database = Database(settings)
+    next_purge = 0.0
     try:
         if once:
             count = await process_due_requests(database, now=now, request_id=request_id)
@@ -28,6 +33,14 @@ async def run(*, once: bool, request_id: uuid.UUID | None, now: datetime | None)
                     logger.info("Processed %d due request(s).", count)
             except SQLAlchemyError as error:
                 logger.error("Request scheduler tick failed: %s", type(error).__name__)
+            if time.monotonic() >= next_purge:
+                try:
+                    purged = await purge_old_runs(database, settings)
+                    if purged:
+                        logger.info("Purged %d old AI run(s).", purged)
+                    next_purge = time.monotonic() + PURGE_SECONDS
+                except SQLAlchemyError as error:
+                    logger.error("AI run purge failed: %s", type(error).__name__)
             await asyncio.sleep(POLL_SECONDS)
     finally:
         await database.close()
