@@ -2,7 +2,9 @@
 
 **Otagai is a mobile app for borrowing tools, sharing skills, and asking for everyday help within trusted neighbourhood circles.**
 
-If you need a drill for an afternoon or a hand carrying groceries, the hardest part can be knowing whom to ask. Otagai gives residents a way to find tools and people nearby, ask a small group first, and arrange the exchange in one place. Family caregivers can also coordinate help for someone who lives in another neighbourhood.
+## Tsunagu — Update the Way We Connect
+
+Tsunagu (繋ぐ) means “to connect.” A neighbour may have a drill to lend or time to help carry groceries, but living nearby doesn’t always make it easy to ask. Otagai helps residents start with a trusted circle, agree on the details across languages, and thank the person who helped. With permission, relatives who live elsewhere can also connect a family member with help in their own neighbourhood.
 
 [How it works](#how-it-works) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Run locally](#run-locally)
 
