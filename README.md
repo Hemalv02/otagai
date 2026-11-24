@@ -92,6 +92,11 @@ Use Docker Compose v2, Node.js 24 with pnpm, and a Supabase project. Python 3.12
 
    Press `w` for the browser preview. Swagger UI is available at `http://127.0.0.1:8000/docs`.
 
+## CI/CD
+
+- **Pull request checks.** GitHub Actions tests the proposed merge commit when a PR opens, reopens, or receives new commits. It runs mobile lint, type checking, and tests, plus backend lint, formatting, and unit tests. The Alembic check validates the revision graph and requires a single head without connecting to a database. [CI workflow](.github/workflows/ci.yml)
+- **Backend deployment.** A push to `main` triggers deployment to Azure only when it changes files under `backend/`. Docker Compose builds the backend services and applies migrations. The workflow then checks the public `/ready` endpoint. [Deploy workflow](.github/workflows/deploy-backend.yml) · [Azure runbook](deploy/README.md)
+
 ## Developer documentation
 
 | Guide | What's inside |
@@ -101,7 +106,7 @@ Use Docker Compose v2, Node.js 24 with pnpm, and a Supabase project. Python 3.12
 | [API reference](backend/docs/api-endpoints.md) | Endpoint contracts for account, circles, listings, requests, chat, and exchanges. |
 | [Deployment](backend/docs/deployment.md) | Production configuration, release checks, and operations. |
 
-## Team
+## Team FnF
 
 - [Mominul Islam Hemal](https://github.com/Hemalv02)
 - [Nafis Shyan](https://github.com/shyan23)
