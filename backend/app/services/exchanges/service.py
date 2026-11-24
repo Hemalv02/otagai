@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app.database.connection import Database
-from app.database.models import Exchange, LoanExtension
+from app.database.models import Exchange, HelpRequest, LoanExtension
 from app.database.models.enums import (
     DecisionStatus,
     ExchangeMode,
@@ -86,6 +86,20 @@ async def get_exchange(
     async with database.session() as session:
         return await _load_participant_exchange(
             session, actor, exchange_id, for_update=False
+        )
+
+
+async def list_return_favours(
+    database: Database, user_id: uuid.UUID, exchange_id: uuid.UUID
+) -> list[HelpRequest]:
+    async with database.session() as session:
+        exchange = await ExchangeRepository(session).get(exchange_id)
+        if exchange is None or exchange.requester_user_id != user_id:
+            raise ExchangeNotFoundError
+        if exchange.status != ExchangeStatus.COMPLETED.value:
+            return []
+        return await RequestRepository(session).list_open_for_favour(
+            user_id, exchange.helper_user_id, datetime.now(UTC)
         )
 
 

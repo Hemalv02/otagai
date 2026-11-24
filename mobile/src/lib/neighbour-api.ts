@@ -40,7 +40,8 @@ export type ThankYou = {
   created_at: string;
 };
 export type WallThankYou = Pick<
-  ThankYou, "id" | "from_user_id" | "to_user_id" | "lang" | "created_at"
+  ThankYou,
+  "id" | "from_user_id" | "to_user_id" | "lang" | "created_at"
 > & { from_name: string; to_name: string; note: string };
 export type ReportTarget = "user" | "listing" | "message" | "request";
 export type ReportReason = "harassment" | "spam" | "unsafe" | "scam" | "other";
@@ -97,6 +98,10 @@ export function neighbourApi(authUserId: string, actingFor?: string) {
       get<Page<HistoryExchange>>(
         pagePath("/users/me/exchanges", { status: "completed" }, cursor),
       ),
+    returnFavours: (id: string) =>
+      get<{ items: RequestSummary[] }>(
+        `/exchanges/${encodeURIComponent(id)}/return-favours`,
+      ),
     exchange: (id: string) =>
       get<Exchange>(`/exchanges/${encodeURIComponent(id)}`, actingHeaders),
     listing: (id: string) =>
@@ -113,7 +118,8 @@ export function neighbourApi(authUserId: string, actingFor?: string) {
       ),
     request: (id: string) =>
       get<{ polite_text: string; region: Region }>(
-        `/requests/${encodeURIComponent(id)}`, actingHeaders,
+        `/requests/${encodeURIComponent(id)}`,
+        actingHeaders,
       ),
     thankYou: (id: string) =>
       get<ThankYou>(`/thank-yous/${encodeURIComponent(id)}`),

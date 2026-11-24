@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { AssistantSheet } from "@/components/assistant-widgets";
+import { ReturnFavourCard } from "@/components/return-favour-card";
 import { RequestNotice } from "@/components/request-notice";
 import { Button, ErrorText, Field } from "@/components/ui";
 import {
@@ -164,6 +165,9 @@ export function HelpExchangeActions({
               })
             }
           />
+          {!actingFor && authUserId && exchange.requester_user_id === viewerId ? (
+            <ReturnFavourCard exchangeId={exchange.id} authUserId={authUserId} />
+          ) : null}
         </>
       ) : null}
       {feedback && (!editing || !canEdit) ? (

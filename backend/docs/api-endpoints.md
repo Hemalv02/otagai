@@ -442,6 +442,7 @@ With `X-Acting-For`, request detail, response lists, and incoming requests requi
 |---|---|---|---|---|
 | `GET /users/me/exchanges?status=` | My scheduled, active and finished exchanges, as lender or borrower | 200 | 25 | MVP |
 | `GET /exchanges/{exchange_id}` | Detail: time, place note, due date, both confirmations | 200 | 23–27 | MVP |
+| `GET /exchanges/{exchange_id}/return-favours` | Up to three open requests from the person who helped, delivered to the requester and still available for a response | 200 | 27, 28 | MVP |
 | `PATCH /exchanges/{exchange_id}` | Set the agreed time, place note or due date | 200 | 23 | MVP |
 | `POST /exchanges/{exchange_id}/hand-over` | Move a scheduled exchange to active. Loans require a completed pickup checklist | 200 | 24 | MVP |
 | `POST /exchanges/{exchange_id}/return` | Mark the item as returned | 200 | 26 | MVP |

@@ -14,6 +14,7 @@ from app.database.models import (
     RequestMedia,
     RequestRecipient,
     RequestResponse,
+    User,
 )
 from app.database.models.enums import (
     CircleStatus,
@@ -21,6 +22,7 @@ from app.database.models.enums import (
     RequestStatus,
     ResponseStatus,
     RippleStage,
+    UserStatus,
 )
 from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
@@ -181,6 +183,43 @@ class RequestRepository:
         return await paginate(
             self._session, statement, page, HelpRequest.created_at, HelpRequest.id
         )
+
+    async def list_open_for_favour(
+        self, viewer_id: uuid.UUID, helper_id: uuid.UUID, now: datetime
+    ) -> list[HelpRequest]:
+        answered = (
+            select(RequestResponse.id)
+            .where(
+                RequestResponse.request_id == HelpRequest.id,
+                RequestResponse.responder_user_id == viewer_id,
+                RequestResponse.status.in_(
+                    (ResponseStatus.PENDING.value, ResponseStatus.ACCEPTED.value)
+                ),
+            )
+            .exists()
+        )
+        statement = (
+            select(HelpRequest)
+            .join(RequestRecipient, RequestRecipient.request_id == HelpRequest.id)
+            .join(User, User.id == HelpRequest.requester_user_id)
+            .where(
+                HelpRequest.requester_user_id == helper_id,
+                HelpRequest.status == RequestStatus.OPEN.value,
+                HelpRequest.expires_at > now,
+                or_(
+                    HelpRequest.direct_to_user_id.is_(None),
+                    HelpRequest.direct_to_user_id == viewer_id,
+                ),
+                RequestRecipient.user_id == viewer_id,
+                RequestRecipient.hidden_at.is_(None),
+                User.status == UserStatus.ACTIVE.value,
+                User.id.not_in(blocked_user_ids(viewer_id)),
+                ~answered,
+            )
+            .order_by(HelpRequest.created_at.desc(), HelpRequest.id.desc())
+            .limit(3)
+        )
+        return list(await self._session.scalars(statement))
 
     async def list_received(
         self,

@@ -10,6 +10,7 @@ import {
   NeighbourNotice,
   SelectionCopy,
 } from "@/components/neighbour-ui";
+import { ReturnFavourCard } from "@/components/return-favour-card";
 import { Button, ErrorText, Field } from "@/components/ui";
 import { activityCopy } from "@/lib/activity-copy";
 import { ApiError, type Exchange, type Region } from "@/lib/api";
@@ -297,6 +298,13 @@ function ExchangeThankYou({
               labelStyle={localizedType("button", locale)}
               onPress={showExchange}
             />
+            {!actingFor && context.requester ? (
+              <ReturnFavourCard
+                exchangeId={id}
+                authUserId={authUserId}
+                partnerName={context.name}
+              />
+            ) : null}
           </>
         ) : (
           <>

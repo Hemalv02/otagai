@@ -16,12 +16,14 @@ from app.database.models import Exchange, LoanExtension
 from app.database.models.enums import ExchangeStatus, HandoverPhase, Language
 from app.routes.dependencies import (
     ActorDep,
+    CurrentUserDep,
     DatabaseDep,
     RedisDep,
     SettingsDep,
     StorageDep,
 )
 from app.routes.pagination import Page, PageQuery
+from app.routes.requests.route import RequestSummary
 from app.services.exchanges.handover import (
     CheckView,
     add_item,
@@ -43,6 +45,7 @@ from app.services.exchanges.service import (
     hand_over,
     list_extensions,
     list_my_exchanges,
+    list_return_favours,
     mark_returned,
     request_extension,
     update_exchange,
@@ -250,6 +253,20 @@ async def read_exchange(
     exchange_id: uuid.UUID, actor: ActorDep, database: DatabaseDep
 ) -> ExchangeModel:
     return exchange_model(await get_exchange(database, actor, exchange_id))
+
+
+class ReturnFavourOptions(BaseModel):
+    items: list[RequestSummary]
+
+
+@router.get("/{exchange_id}/return-favours")
+async def read_return_favours(
+    exchange_id: uuid.UUID, user: CurrentUserDep, database: DatabaseDep
+) -> ReturnFavourOptions:
+    options = await list_return_favours(database, user.id, exchange_id)
+    return ReturnFavourOptions(
+        items=[RequestSummary.model_validate(request) for request in options]
+    )
 
 
 @router.patch("/{exchange_id}")

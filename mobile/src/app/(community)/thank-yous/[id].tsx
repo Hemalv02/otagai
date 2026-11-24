@@ -96,7 +96,13 @@ function Receipt({
     <CommunityScreen
       design
       back
-      title={received === false ? copy.sent : note?.show_on_wall ? recognition.sharedNote : copy.received}
+      title={
+        received === false
+          ? copy.sent
+          : note?.allow_wall_sharing && note.show_on_wall
+            ? recognition.sharedNote
+            : copy.received
+      }
       subtitle={title ? copy.forExchange(title) : undefined}
     >
       <ActivityStatus
@@ -116,7 +122,9 @@ function Receipt({
           </ActivityText>
           {note.note ? <ActivityText>{note.note}</ActivityText> : null}
           {note.points_amount ? (
-            <ActivityText>{recognition.pointsReceived(note.points_amount)}</ActivityText>
+            <ActivityText>
+              {recognition.pointsReceived(note.points_amount)}
+            </ActivityText>
           ) : null}
           <ActivityText>
             {formatActivityDate(note.created_at, locale)}
@@ -147,7 +155,8 @@ function Receipt({
           labelStyle={localizedType("button", locale)}
           onPress={() =>
             router.push({
-              pathname: exchange.mode === "loan" ? "/loans/[id]" : "/exchanges/[id]",
+              pathname:
+                exchange.mode === "loan" ? "/loans/[id]" : "/exchanges/[id]",
               params: { id: exchange.id },
             })
           }

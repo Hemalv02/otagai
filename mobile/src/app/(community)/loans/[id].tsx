@@ -4,6 +4,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { CommunityScreen } from "@/components/community-screen";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
+import { ReturnFavourCard } from "@/components/return-favour-card";
 import { Button, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Exchange, type LoanExtension } from "@/lib/api";
 import {
@@ -83,7 +84,7 @@ export default function LoanDetailsScreen() {
   const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
-  const { profile } = useSession();
+  const { profile, session } = useSession();
   const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];
@@ -389,6 +390,13 @@ export default function LoanDetailsScreen() {
                   params: { id },
                 })
               }
+            />
+          ) : null}
+          {stage === "completed" && borrower && session ? (
+            <ReturnFavourCard
+              exchangeId={exchange.id}
+              authUserId={session.user.id}
+              partnerName={partnerName}
             />
           ) : null}
           {partnerId ? (
