@@ -20,8 +20,8 @@ from app.repositories.ai_runs import AiRunRepository
 from app.repositories.categories import CategoryRepository
 from app.repositories.media import MediaRepository
 from app.services.ai import helpers
-from app.services.ai.helpers import ListingDraft, ListingDraftInput
-from app.services.ai.sanitize import clean_list, clean_text
+from app.services.ai.helpers import ListingDraft, ListingDraftInput, ListingDraftPart
+from app.services.ai.sanitize import clean_text
 from app.services.ai.service import AIDraftError
 from app.services.errors import NotFoundError, ServiceConfigurationError, ServiceError
 from app.services.media.service import MediaNotFoundError, ready_image_data_url
@@ -203,7 +203,7 @@ class ListingPhotoNotFoundError(NotFoundError):
 async def suggest_listing(
     database: Database,
     redis,
-    storage: Storage,
+    storage: Storage | None,
     settings: Settings,
     user: User,
     body: ListingDraftInput,
@@ -211,6 +211,8 @@ async def suggest_listing(
     async def produce() -> ListingDraft:
         image_url = None
         if body.image_media_id is not None:
+            if storage is None:
+                raise ServiceConfigurationError("Configure media storage.")
             try:
                 image_url = await ready_image_data_url(
                     database,
@@ -257,14 +259,18 @@ def _checked_draft(suggestion: helpers.ListingSuggestion, live: dict) -> Listing
     category = live.get(suggestion.category_slug or "") if recognized else None
     risky = bool(category and category.is_risky)
     lend_mode = "help_only" if risky else suggestion.suggested_lend_mode
-    unsure = list(dict.fromkeys(suggestion.unsure_fields))
+    part_items = _checked_parts(suggestion.parts) if recognized else []
+    unsure = dict.fromkeys(suggestion.unsure_fields)
+    if any(part.quantity is None for part in part_items):
+        unsure["parts"] = None
     return ListingDraft(
         recognized=recognized,
         title=title if recognized else "",
         category_hint=clean_text(suggestion.category_hint, 120) if recognized else "",
         category_id=category.id if category else None,
         category_is_risky=risky,
-        parts=clean_list(suggestion.parts, 120, 30) if recognized else [],
+        parts=[part.label for part in part_items],
+        part_items=part_items,
         safety_notes=(
             clean_text(suggestion.safety_notes, 2000, multiline=True) or None
             if recognized
@@ -279,5 +285,21 @@ def _checked_draft(suggestion: helpers.ListingSuggestion, live: dict) -> Listing
             if recognized
             else None
         ),
-        unsure_fields=unsure if recognized else [],
+        unsure_fields=list(unsure) if recognized else [],
     )
+
+
+def _checked_parts(parts: list[ListingDraftPart]) -> list[ListingDraftPart]:
+    cleaned: dict[str, ListingDraftPart] = {}
+    for part in parts:
+        label = clean_text(part.label, 120)
+        if not label:
+            continue
+        key = label.casefold()
+        existing = cleaned.get(key)
+        if existing is not None:
+            if existing.quantity != part.quantity:
+                cleaned[key] = ListingDraftPart(label=existing.label, quantity=None)
+        elif len(cleaned) < 30:
+            cleaned[key] = ListingDraftPart(label=label, quantity=part.quantity)
+    return list(cleaned.values())

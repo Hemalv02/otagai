@@ -9,6 +9,8 @@ import {
   listingLendMode,
   mergeSuggestion,
   parseParts,
+  partsKeptOnPhotoChange,
+  MAX_LISTING_DESCRIPTION,
   suggestionFields,
   unsureKeys,
 } from "../src/lib/listing-draft.ts";
@@ -39,7 +41,7 @@ test("suggestionFields joins parts, maps nulls and keeps live categories", () =>
     ...emptyDraftFields,
     title: "Cordless drill",
     categoryId: "c1",
-    parts: "Drill\nBattery",
+    parts: "Drill × ?\nBattery × ?",
     brand: "Makita",
     condition: "Light wear",
   });
@@ -114,17 +116,17 @@ test("composeDescription appends only filled details and caps length", () => {
     details: "Has a case",
   };
   assert.equal(
-    composeDescription("Mine", fields, labels, fields),
+    composeDescription("Mine", fields, labels),
     "Mine\nBrand: Makita\nHas a case",
   );
-  assert.equal(
-    composeDescription("", emptyDraftFields, labels, emptyDraftFields),
-    "",
+  assert.equal(composeDescription("", emptyDraftFields, labels), "");
+  const full = composeDescription(
+    "x".repeat(MAX_LISTING_DESCRIPTION),
+    fields,
+    labels,
   );
-  assert.equal(
-    composeDescription("x".repeat(2100), fields, labels, fields).length,
-    2000,
-  );
+  assert.ok(full.length > MAX_LISTING_DESCRIPTION);
+  assert.match(full, /Brand: Makita/);
 });
 
 test("visibleExtras shows rows the photo suggested except dismissed ones", () => {
@@ -138,30 +140,28 @@ test("clearing a suggested field keeps its row but drops it from the description
   const suggested = { ...emptyDraftFields, brand: "Makita" };
   const cleared = { ...emptyDraftFields };
   assert.deepEqual(visibleExtras(suggested, new Set()), ["brand"]);
-  assert.equal(
-    composeDescription("Mine", cleared, labels, suggested, new Set()),
-    "Mine",
-  );
+  assert.equal(composeDescription("Mine", cleared, labels), "Mine");
 });
 
 test("an edited suggested row is published with the edit", () => {
   const labels = { brand: "Brand", model: "Model", condition: "Condition" };
-  const suggested = { ...emptyDraftFields, brand: "Makita" };
   const edited = { ...emptyDraftFields, brand: "My brand" };
-  assert.equal(
-    composeDescription("", edited, labels, suggested, new Set()),
-    "Brand: My brand",
-  );
+  assert.equal(composeDescription("", edited, labels), "Brand: My brand");
 });
 
-test("an edit left over from an earlier photo is not published", () => {
+test("a changed photo removes untouched suggestions and keeps manual edits", () => {
   const labels = { brand: "Brand", model: "Model", condition: "Condition" };
-  const latest = { ...emptyDraftFields, model: "X1" };
-  const stale = { ...emptyDraftFields, brand: "Old edit", model: "X1" };
-  assert.deepEqual(visibleExtras(latest, new Set()), ["model"]);
+  const last = {
+    ...emptyDraftFields,
+    brand: "Old suggested brand",
+    model: "X1",
+  };
+  const edited = { ...last, brand: "Reviewed brand" };
+  const current = mergeSuggestion(edited, last, emptyDraftFields);
+  assert.deepEqual(visibleExtras(current, new Set()), ["brand"]);
   assert.equal(
-    composeDescription("", stale, labels, latest, new Set()),
-    "Model: X1",
+    composeDescription("", current, labels),
+    "Brand: Reviewed brand",
   );
 });
 
@@ -173,7 +173,47 @@ test("a dismissed row is never published", () => {
     details: "Has a case",
   };
   assert.equal(
-    composeDescription("Mine", fields, labels, fields, new Set(["brand"])),
+    composeDescription("Mine", fields, labels, new Set(["brand"])),
     "Mine\nHas a case",
+  );
+});
+
+test("structured suggested parts keep the measurable quantity through the editor", () => {
+  const next = suggestionFields(
+    {
+      ...draft,
+      part_items: [
+        { label: "Drill bits", quantity: 2 },
+        { label: "Battery", quantity: null },
+      ],
+    },
+    categories,
+  );
+  assert.equal(next.parts, "Drill bits × 2\nBattery × ?");
+  assert.deepEqual(parseParts(next.parts), [
+    { label: "Drill bits", quantity: 2 },
+    { label: "Battery", quantity: null },
+  ]);
+});
+
+test("the help-only photo suggestion carries through publication", () => {
+  assert.equal(
+    listingLendMode("tool", categories, "c1", "help_only"),
+    "help_only",
+  );
+});
+
+test("a visible user edit is published when a new suggestion omits that detail", () => {
+  const edited = { ...emptyDraftFields, brand: "Reviewed brand" };
+  const labels = { brand: "Brand", model: "Model", condition: "Condition" };
+  assert.equal(composeDescription("", edited, labels), "Brand: Reviewed brand");
+});
+
+test("editing one part does not keep prior unedited photo items", () => {
+  const current = "Drill × 1\nDrill bits × 3\nCase × 1";
+  const old = "Drill × 1\nDrill bits × 2";
+  assert.equal(
+    partsKeptOnPhotoChange(current, old),
+    "Drill bits × 3\nCase × 1",
   );
 });

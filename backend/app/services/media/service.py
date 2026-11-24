@@ -24,7 +24,7 @@ from app.services.errors import (
     UpstreamUnavailableError,
 )
 from app.services.media.processing import ImageDecodeError, process_image
-from app.services.storage.service import Storage
+from app.services.storage.service import ObjectNotFoundError, Storage, StorageError
 from app.settings import Settings
 
 AUDIO_PURPOSES = frozenset({MediaPurpose.VOICE.value})
@@ -240,9 +240,16 @@ async def ready_image_data_url(
         )
         if display is None:
             raise MediaNotFoundError
-    image = await storage.download(
-        display.s3_key, max_bytes=settings.media_max_image_bytes
-    )
+    try:
+        image = await storage.download(
+            display.s3_key, max_bytes=settings.media_max_image_bytes
+        )
+    except ObjectNotFoundError:
+        raise MediaNotFoundError from None
+    except StorageError as error:
+        raise UpstreamUnavailableError(
+            "The uploaded photo could not be read. Try again."
+        ) from error
     if not image:
         raise UpstreamUnavailableError(
             "The uploaded photo could not be read. Try again."

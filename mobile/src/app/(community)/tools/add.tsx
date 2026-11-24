@@ -7,6 +7,7 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { LendingPhoto } from "@/components/lending-photo";
+import { ListingPartsEditor } from "@/components/listing-parts-editor";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { api, ApiError, type CategoryNode, type ListingKind } from "@/lib/api";
 import { RequestNotice } from "@/components/request-notice";
@@ -18,8 +19,10 @@ import {
   type ExtraKey,
   isRiskyCategory,
   listingLendMode,
+  MAX_LISTING_DESCRIPTION,
   mergeSuggestion,
   parseParts,
+  partsKeptOnPhotoChange,
   suggestionFields,
   unsureKeys,
   type DraftFields,
@@ -41,9 +44,15 @@ type FormError =
   | "photoFailed"
   | "cameraPermission"
   | "publishFailed"
-  | "attachmentFailed";
+  | "attachmentFailed"
+  | "partsRequired"
+  | "descriptionTooLong";
 type SuggestNote =
-  "unclear" | "failed" | "rateLimited" | "photoNotReady" | "categoryUnmatched";
+  | "unclear"
+  | "failed"
+  | "rateLimited"
+  | "photoNotReady"
+  | "categoryUnmatched";
 type CategoryLoad =
   | { state: "loading" }
   | { state: "error" }
@@ -84,6 +93,7 @@ export default function AddListingScreen() {
   const [unsure, setUnsure] = useState<ReadonlySet<DraftKey>>(new Set());
   const [suggestNote, setSuggestNote] = useState<SuggestNote | null>(null);
   const [suggested, setSuggested] = useState(false);
+  const [photoHelpOnly, setPhotoHelpOnly] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [availability, setAvailability] = useState("");
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -103,7 +113,13 @@ export default function AddListingScreen() {
   const supportingType = localizedType("supporting", locale);
   const tool = kind === "tool";
   const shownExtras = visibleExtras(
-    { ...emptyDraftFields, ...extras },
+    {
+      ...emptyDraftFields,
+      brand: extras.brand || lastSuggested.brand,
+      model: extras.model || lastSuggested.model,
+      condition: extras.condition || lastSuggested.condition,
+      details: extras.details || lastSuggested.details,
+    },
     dismissed,
   );
   const busy = picking || saving || suggesting;
@@ -178,6 +194,38 @@ export default function AddListingScreen() {
       });
   }, [account, formRequests, navigation]);
 
+  function applyDraftFields(fields: DraftFields) {
+    setName(fields.title);
+    setCategory(fields.categoryId);
+    setParts(fields.parts);
+    setSafety(fields.safety);
+    setExtras({
+      brand: fields.brand,
+      model: fields.model,
+      condition: fields.condition,
+      details: fields.details,
+    });
+  }
+
+  function replacePhoto(next: ImagePicker.ImagePickerAsset | null) {
+    if (photo?.uri === next?.uri) return;
+    setPhoto(next);
+    setMediaId(null);
+    setSuggestNote(null);
+    const preserved = mergeSuggestion(
+      { title: name, categoryId: category, parts, safety, ...extras },
+      lastSuggested,
+      emptyDraftFields,
+      dismissed,
+    );
+    preserved.parts = partsKeptOnPhotoChange(parts, lastSuggested.parts);
+    applyDraftFields(preserved);
+    setLastSuggested(emptyDraftFields);
+    setUnsure(new Set());
+    setSuggested(false);
+    setPhotoHelpOnly(false);
+  }
+
   async function selectPhoto(source: "camera" | "library") {
     if (working.current || !navigation.isFocused()) return;
     const request = formRequests.start();
@@ -198,9 +246,7 @@ export default function AddListingScreen() {
         ? ImagePicker.launchCameraAsync(pickerOptions)
         : ImagePicker.launchImageLibraryAsync(pickerOptions));
       if (stillCurrent() && !result.canceled) {
-        setPhoto(result.assets[0]);
-        setMediaId(null);
-        setSuggestNote(null);
+        replacePhoto(result.assets[0]);
       }
     } catch {
       if (stillCurrent()) setError("photoFailed");
@@ -234,7 +280,14 @@ export default function AddListingScreen() {
   }
 
   async function suggest() {
-    if (working.current || !account || !photo || !navigation.isFocused())
+    if (
+      working.current ||
+      !account ||
+      !photo ||
+      !navigation.isFocused() ||
+      categoryLoad.state !== "ready" ||
+      !categoryLoad.isCurrent()
+    )
       return;
     const request = formRequests.start();
     const stillCurrent = () => request.isCurrent() && navigation.isFocused();
@@ -276,16 +329,10 @@ export default function AddListingScreen() {
         next,
         dismissed,
       );
-      setName(merged.title);
-      setCategory(merged.categoryId);
-      setParts(merged.parts);
-      setSafety(merged.safety);
-      setExtras({
-        brand: merged.brand,
-        model: merged.model,
-        condition: merged.condition,
-        details: merged.details,
-      });
+      applyDraftFields(merged);
+      setPhotoHelpOnly(
+        (previous) => previous || result.suggested_lend_mode === "help_only",
+      );
       setLastSuggested(next);
       setUnsure(unsureKeys(result));
       setSuggested(true);
@@ -330,15 +377,28 @@ export default function AddListingScreen() {
       return;
     }
 
+    const reviewedParts = tool ? parseParts(parts) : [];
+    if (reviewedParts.some(({ quantity }) => quantity === null)) {
+      setError("partsRequired");
+      return;
+    }
+    const includedParts = reviewedParts.filter(
+      (part): part is { label: string; quantity: number } =>
+        part.quantity !== null,
+    );
+
     const composedDescription = tool
       ? composeDescription(
           description,
           { ...emptyDraftFields, ...extras },
           suggestCopy,
-          lastSuggested,
           dismissed,
         )
       : description.trim();
+    if (composedDescription.length > MAX_LISTING_DESCRIPTION) {
+      setError("descriptionTooLong");
+      return;
+    }
     const request = formRequests.start();
     const stillCurrent = () => request.isCurrent() && navigation.isFocused();
     const options = { authUserId: account, signal: request.signal };
@@ -357,12 +417,15 @@ export default function AddListingScreen() {
           category_id: category,
           title: name.trim(),
           lang: locale,
-          lend_mode: listingLendMode(kind, categoryLoad.items, category),
+          lend_mode: listingLendMode(
+            kind,
+            categoryLoad.items,
+            category,
+            photoHelpOnly ? "help_only" : undefined,
+          ),
           media_ids: id ? [id] : [],
           ...(composedDescription ? { description: composedDescription } : {}),
-          ...(tool && parseParts(parts).length > 0
-            ? { parts: parseParts(parts) }
-            : {}),
+          ...(includedParts.length > 0 ? { parts: includedParts } : {}),
           ...(tool && safety.trim() ? { safety_notes: safety.trim() } : {}),
           ...(availability.trim()
             ? { availability_note: availability.trim() }
@@ -405,7 +468,13 @@ export default function AddListingScreen() {
           ) : null}
           {error ? (
             <ErrorText>
-              {error === "attachmentFailed" ? messages.photoError : copy[error]}
+              {error === "attachmentFailed"
+                ? messages.photoError
+                : error === "partsRequired"
+                  ? suggestCopy.partsRequired
+                  : error === "descriptionTooLong"
+                    ? suggestCopy.descriptionTooLong
+                    : copy[error]}
             </ErrorText>
           ) : null}
           <Button
@@ -468,7 +537,7 @@ export default function AddListingScreen() {
               labelStyle={labelType}
               onPress={suggest}
               busy={suggesting}
-              disabled={busy}
+              disabled={busy || categoryLoad.state !== "ready"}
               variant="text"
             />
           ) : null}
@@ -476,11 +545,7 @@ export default function AddListingScreen() {
             <Button
               label={copy.removePhoto}
               labelStyle={labelType}
-              onPress={() => {
-                setPhoto(null);
-                setMediaId(null);
-                setSuggestNote(null);
-              }}
+              onPress={() => replacePhoto(null)}
               disabled={busy}
               variant="text"
             />
@@ -558,6 +623,11 @@ export default function AddListingScreen() {
         )}
       </View>
       {unsureHint("categoryId", category)}
+      {tool && photoHelpOnly && !risky ? (
+        <Text style={[supportingType, styles.ink]}>
+          {suggestCopy.photoHelpOnly}
+        </Text>
+      ) : null}
       <Field
         label={copy.description}
         placeholder={
@@ -573,14 +643,14 @@ export default function AddListingScreen() {
       />
       {tool ? (
         <>
-          <Field
-            label={suggestCopy.includedParts}
+          <ListingPartsEditor
             value={parts}
-            onChangeText={setParts}
-            labelStyle={labelType}
-            style={[bodyType, styles.multiline]}
-            editable={!busy}
-            multiline
+            locale={locale}
+            disabled={busy}
+            onChange={(value) => {
+              setParts(value);
+              if (error === "partsRequired") setError(null);
+            }}
           />
           {unsureHint("parts", parts)}
         </>

@@ -61,18 +61,3 @@ def clean_text(value: str | None, limit: int, *, multiline: bool = False) -> str
     else:
         value = " ".join(line for line in lines if line)
     return value[:limit].strip()
-
-
-def clean_list(values: list[str], limit: int, count: int) -> list[str]:
-    seen: set[str] = set()
-    cleaned: list[str] = []
-    for raw in values:
-        item = clean_text(raw, limit)
-        key = item.casefold()
-        if not item or key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(item)
-        if len(cleaned) == count:
-            break
-    return cleaned

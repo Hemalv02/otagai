@@ -551,7 +551,7 @@ Each call is one LLM request with structured JSON output, logged to `ai_runs` an
 | Method and path | What it does | Success | Screens | Build |
 |---|---|---|---|---|
 | `POST /ai/intro-cards` | Draft an intro card from skills and "happy to help with" | 200 | 3 | MVP |
-| `POST /ai/listing-drafts` | Send `description`, `image_media_id` (a ready `purpose=listing` upload you own), or both, plus `language`. Returns suggestions (title, parts, safety notes, brand, model, condition, details, `unsure_fields`) with a checked `category_id`, `category_is_risky` and `recognized`. Text in the photo is treated as data and all output is sanitized | 200 | 19 | MVP |
+| `POST /ai/listing-drafts` | Send `description`, `image_media_id` (a ready `purpose=listing` upload you own), or both, plus `language`. Returns suggestions (title, legacy `parts` labels, `part_items` with `label` and nullable `quantity`, safety notes, brand, model, condition, details, `unsure_fields`) with a checked `category_id`, `category_is_risky` and `recognized`. Text in the photo is treated as data and all output is sanitized | 200 | 19 | MVP |
 | `POST /ai/transcriptions` | Voice recording → text | 200 | 11 | MVP |
 | `POST /ai/translations` | Translate text into the reader's language | 200 | 23 | MVP |
 | `POST /ai/thank-you-drafts` | Thank-you note and a suggested *orei* from the culture pack | 200 | 28 | MVP |

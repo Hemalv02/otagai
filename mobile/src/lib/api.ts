@@ -166,7 +166,11 @@ export type ProxyGrant = {
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";
 export type RippleStage =
-  "direct" | "family" | "han" | "association" | "nearby";
+  | "direct"
+  | "family"
+  | "han"
+  | "association"
+  | "nearby";
 
 export type RequestSummary = {
   id: string;
@@ -311,6 +315,7 @@ export type ListingDraft = {
   category_id: string | null;
   category_is_risky: boolean;
   parts: string[];
+  part_items?: { label: string; quantity: number | null }[];
   safety_notes: string | null;
   suggested_lend_mode: LendMode;
   brand: string | null;

@@ -7,6 +7,7 @@ from app.database.models.enums import AiFeature
 from app.routes.dependencies import (
     CurrentUserDep,
     DatabaseDep,
+    OptionalStorageDep,
     RedisDep,
     SettingsDep,
     StorageDep,
@@ -72,7 +73,7 @@ async def listing_drafts(
     user: CurrentUserDep,
     database: DatabaseDep,
     settings: SettingsDep,
-    storage: StorageDep,
+    storage: OptionalStorageDep,
     redis: RedisDep,
 ) -> ListingDraft:
     return await suggest_listing(database, redis, storage, settings, user, body)

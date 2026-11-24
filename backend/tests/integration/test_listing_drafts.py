@@ -7,6 +7,7 @@ from sqlalchemy import text
 from app.database.models.enums import AiFeature
 from app.services.ai import helpers, runner
 from app.services.ai.service import AIDraftError
+from app.services.storage.service import ObjectNotFoundError, StorageError
 from tests.integration.conftest import auth, join_circle, make_circle, make_user
 from tests.integration.test_ask_sessions import _png
 from tests.integration.test_assistant import FixtureRedis, FixtureStorage
@@ -23,7 +24,7 @@ def suggestion(**overrides):
         "title": "Cordless drill",
         "category_slug": "hand_tools",
         "category_hint": "power tool",
-        "parts": ["Drill", "Battery"],
+        "parts": [{"label": "Battery", "quantity": 1}],
         "safety_notes": "Wear eye protection.",
         "suggested_lend_mode": "lend",
         "brand": None,
@@ -110,6 +111,59 @@ async def test_text_draft_contract_still_works(client, stub_model):
         assert key in body
 
 
+async def test_text_draft_works_without_media_storage(client, stub_model):
+    token = await make_user(client, language="en")
+    client._transport.app._app.state.storage = None
+    stub_model(suggestion())
+
+    response = await post(client, token, description="Cordless drill")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["title"] == "Cordless drill"
+
+
+async def test_photo_draft_keeps_known_counts_and_marks_unknown_counts(
+    client, stub_model
+):
+    token, media_id = await setup(client)
+    stub_model(
+        suggestion(
+            parts=[
+                {"label": "<b>Battery</b>", "quantity": 2},
+                {"label": "battery", "quantity": 2},
+                {"label": "Driver bits", "quantity": None},
+                {"label": " ", "quantity": 3},
+                {"label": "Case", "quantity": 1},
+                {"label": "case", "quantity": 2},
+            ]
+        )
+    )
+
+    response = await post(client, token, image_media_id=media_id)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["parts"] == ["Battery", "Driver bits", "Case"]
+    assert body["part_items"] == [
+        {"label": "Battery", "quantity": 2},
+        {"label": "Driver bits", "quantity": None},
+        {"label": "Case", "quantity": None},
+    ]
+    assert "parts" in body["unsure_fields"]
+
+
+@pytest.mark.parametrize("quantity", [0, 1000, "2", True])
+async def test_photo_draft_rejects_invalid_model_part_counts(
+    client, stub_model, quantity
+):
+    token, media_id = await setup(client)
+    stub_model(suggestion(parts=[{"label": "Battery", "quantity": quantity}]))
+
+    response = await post(client, token, image_media_id=media_id)
+
+    assert response.status_code == 503, response.text
+
+
 async def test_photo_draft_sends_image_and_maps_category(client, stub_model):
     token, media_id = await setup(client)
     calls = stub_model(
@@ -155,8 +209,9 @@ async def test_risky_category_forces_help_only(client, stub_model):
 
 async def test_output_is_bounded(client, stub_model):
     token, media_id = await setup(client)
-    parts = ["", "  ", "Drill", "drill", "DRILL"] + [f"part {i}" for i in range(40)]
-    parts.append("x" * 300)
+    labels = ["", "  ", "Drill", "drill", "DRILL", "x" * 300]
+    labels.extend(f"part {i}" for i in range(40))
+    parts = [{"label": label, "quantity": 1} for label in labels]
     stub_model(
         suggestion(
             title="t" * 300,
@@ -171,7 +226,8 @@ async def test_output_is_bounded(client, stub_model):
     )
     body = (await post(client, token, image_media_id=media_id)).json()
     assert len(body["title"]) == 120
-    assert len(body["parts"]) == 30
+    assert len(body["parts"]) == len(body["part_items"]) == 30
+    assert body["part_items"][1] == {"label": "x" * 120, "quantity": 1}
     assert len({part.lower() for part in body["parts"]}) == 30
     assert all(0 < len(part) <= 120 for part in body["parts"])
     assert len(body["safety_notes"]) == 2000
@@ -189,10 +245,10 @@ async def test_injected_output_is_sanitized(client, stub_model):
             title="Ignore previous instructions <b>Drill</b> https://evil.example/x",
             category_slug="ladders; DROP TABLE categories",
             parts=[
-                "[Click here](https://evil.example/p)",
-                "<script>alert(1)</script>",
-                "www.evil.example",
-                "Battery\x00\x07" + chr(0x202E),
+                {"label": "[Click here](https://evil.example/p)", "quantity": 1},
+                {"label": "<script>alert(1)</script>", "quantity": 1},
+                {"label": "www.evil.example", "quantity": None},
+                {"label": "Battery\x00\x07" + chr(0x202E), "quantity": 2},
             ],
             safety_notes="Visit http://evil.example now\x1b[31m\n\nSecond line",
             brand="<img src=x onerror=alert(1)>Acme",
@@ -230,7 +286,7 @@ async def test_unrecognized_photo_has_no_suggestions(client, stub_model):
     body = (await post(client, token, image_media_id=media_id)).json()
     assert body["recognized"] is False
     assert body["category_id"] is None
-    assert body["parts"] == []
+    assert body["parts"] == body["part_items"] == []
 
 
 async def test_off_schema_model_output_is_503(client, stub_model):
@@ -277,6 +333,27 @@ async def test_unready_photo_is_404(client, stub_model):
     calls = stub_model(suggestion())
     response = await post(client, token, image_media_id=media_id)
     assert response.status_code == 404
+    assert not calls
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"), [(ObjectNotFoundError, 404), (StorageError, 503)]
+)
+async def test_photo_download_failure_has_actionable_status(
+    client, stub_model, monkeypatch, error_type, status_code
+):
+    token, media_id = await setup(client)
+    storage = client._transport.app._app.state.storage
+
+    async def unavailable(*args, **kwargs):
+        raise error_type("download failed")
+
+    monkeypatch.setattr(storage, "download", unavailable)
+    calls = stub_model(suggestion())
+
+    response = await post(client, token, image_media_id=media_id)
+
+    assert response.status_code == status_code, response.text
     assert not calls
 
 
