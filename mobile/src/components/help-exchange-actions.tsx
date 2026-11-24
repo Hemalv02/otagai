@@ -5,7 +5,13 @@ import { Platform, StyleSheet, Text, View } from "react-native";
 import { AssistantSheet } from "@/components/assistant-widgets";
 import { RequestNotice } from "@/components/request-notice";
 import { Button, ErrorText, Field } from "@/components/ui";
-import { ApiError, type Exchange, type Language, request } from "@/lib/api";
+import {
+  actingForHeaders,
+  ApiError,
+  type Exchange,
+  type Language,
+  request,
+} from "@/lib/api";
 import { helpExchangeCopy } from "@/lib/help-exchange-copy";
 import {
   helpExchangeStage,
@@ -22,10 +28,12 @@ type PickerMode = "date" | "time";
 export function HelpExchangeActions({
   exchange,
   viewerId,
+  actingFor,
   onReload,
 }: {
   exchange: Exchange;
   viewerId: string;
+  actingFor?: string;
   onReload: () => Promise<unknown>;
 }) {
   const localizedType = useLocalizedType();
@@ -60,6 +68,7 @@ export function HelpExchangeActions({
             method: "PATCH",
             body: JSON.stringify(changes),
             authUserId,
+            headers: actingForHeaders(actingFor),
           });
           setEditing(false);
         } else if (action === "start" || action === "confirm") {
@@ -67,6 +76,7 @@ export function HelpExchangeActions({
           await request<Exchange>(`${path}/${endpoint}`, {
             method: "POST",
             authUserId,
+            headers: actingForHeaders(actingFor),
           });
         }
       } catch (error) {

@@ -55,6 +55,9 @@ def _is_participant(exchange: Exchange, user_id: uuid.UUID) -> bool:
 async def _load_participant_exchange(
     session, actor: Actor, exchange_id: uuid.UUID, *, for_update: bool
 ) -> Exchange:
+    if for_update:
+        await actor.require_for_write(session, ProxyScope.VIEW_ACTIVITY)
+        await actor.require_for_write(session, ProxyScope.POST_REQUESTS)
     repository = ExchangeRepository(session)
     exchange = (
         await repository.get_for_update(exchange_id)
@@ -169,6 +172,8 @@ async def confirm_exchange(
         exchange = await _load_participant_exchange(
             session, actor, exchange_id, for_update=True
         )
+        if actor.is_proxy and _is_participant(exchange, actor.user.id):
+            raise ExchangeStateError("One person cannot confirm both sides.")
         if exchange.status in (
             ExchangeStatus.CANCELLED.value,
             ExchangeStatus.DISPUTED.value,

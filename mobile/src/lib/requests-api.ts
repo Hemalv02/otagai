@@ -1,19 +1,16 @@
-import { type Exchange, type Language, type Page, request } from "@/lib/api";
+import {
+  actingForHeaders,
+  type Exchange,
+  type Language,
+  type Page,
+  request,
+} from "@/lib/api";
 
 export type RequestStatus =
-  | "open"
-  | "matched"
-  | "in_progress"
-  | "done"
-  | "cancelled"
-  | "expired";
+  "open" | "matched" | "in_progress" | "done" | "cancelled" | "expired";
 export type ResponseKind = "offer" | "question" | "counter_time";
 export type ResponseStatus =
-  | "pending"
-  | "accepted"
-  | "superseded"
-  | "withdrawn"
-  | "expired";
+  "pending" | "accepted" | "superseded" | "withdrawn" | "expired";
 
 export type RequestSummary = {
   id: string;
@@ -42,6 +39,8 @@ export type RequestDetail = RequestSummary & {
   listing: { id: string; title: string } | null;
   raw_text: string;
   my_role: "requester" | "recipient";
+  can_manage: boolean;
+  can_chat: boolean;
   my_response_status: ResponseStatus | null;
   my_response_id: string | null;
   exchange_id: string | null;
@@ -84,15 +83,18 @@ export type ExchangeDetail = Exchange & {
     | "disputed";
 };
 
-function page<T>(path: string, cursor?: string) {
+function page<T>(path: string, cursor?: string, actingFor?: string) {
   const query = new URLSearchParams({ limit: "20" });
   if (cursor) query.set("cursor", cursor);
-  return request<Page<T>>(`${path}?${query}`);
+  return request<Page<T>>(`${path}?${query}`, {
+    headers: actingForHeaders(actingFor),
+  });
 }
 
-function post<T>(path: string, body?: object) {
+function post<T>(path: string, body?: object, actingFor?: string) {
   return request<T>(path, {
     method: "POST",
+    headers: actingForHeaders(actingFor),
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
 }
@@ -101,28 +103,40 @@ export const requestsApi = {
   mine: (cursor?: string) => page<RequestSummary>("/users/me/requests", cursor),
   incoming: (cursor?: string) =>
     page<IncomingRequest>("/users/me/received-requests", cursor),
-  detail: (id: string) => request<RequestDetail>(`/requests/${id}`),
-  update: (id: string, body: UpdateRequest) =>
+  detail: (id: string, actingFor?: string) =>
+    request<RequestDetail>(`/requests/${id}`, {
+      headers: actingForHeaders(actingFor),
+    }),
+  update: (id: string, body: UpdateRequest, actingFor?: string) =>
     request<RequestDetail>(`/requests/${id}`, {
       method: "PATCH",
+      headers: actingForHeaders(actingFor),
       body: JSON.stringify(body),
     }),
-  responses: (id: string, cursor?: string) =>
-    page<RequestResponse>(`/requests/${id}/responses`, cursor),
+  responses: (id: string, cursor?: string, actingFor?: string) =>
+    page<RequestResponse>(`/requests/${id}/responses`, cursor, actingFor),
   respond: (id: string, body: SendResponse) =>
     post<RequestResponse>(`/requests/${id}/responses`, body),
-  accept: (id: string, responseId: string) =>
-    post<RequestResponse>(`/requests/${id}/responses/${responseId}/accept`),
+  accept: (id: string, responseId: string, actingFor?: string) =>
+    post<RequestResponse>(
+      `/requests/${id}/responses/${responseId}/accept`,
+      undefined,
+      actingFor,
+    ),
   withdraw: (id: string, responseId: string) =>
     post<RequestResponse>(`/requests/${id}/responses/${responseId}/withdraw`),
-  cancel: (id: string) => post<RequestDetail>(`/requests/${id}/cancel`),
+  cancel: (id: string, actingFor?: string) =>
+    post<RequestDetail>(`/requests/${id}/cancel`, undefined, actingFor),
   markSeen: (id: string) =>
     request<IncomingRequest>(`/users/me/received-requests/${id}`, {
       method: "PATCH",
       body: JSON.stringify({ seen: true }),
     }),
   person: (id: string) => request<{ display_name: string }>(`/users/${id}`),
-  exchange: (id: string) => request<ExchangeDetail>(`/exchanges/${id}`),
+  exchange: (id: string, actingFor?: string) =>
+    request<ExchangeDetail>(`/exchanges/${id}`, {
+      headers: actingForHeaders(actingFor),
+    }),
   create: (body: NewDirectRequest, authUserId: string, signal?: AbortSignal) =>
     request<RequestSummary>("/requests", {
       method: "POST",

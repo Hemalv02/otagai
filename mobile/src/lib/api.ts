@@ -79,12 +79,7 @@ export type Circle = {
 };
 
 export type CircleUnitType =
-  | "city"
-  | "association"
-  | "han"
-  | "para"
-  | "moholla"
-  | "building";
+  "city" | "association" | "han" | "para" | "moholla" | "building";
 
 export type MembershipRole = "member" | "leader" | "coordinator";
 
@@ -216,11 +211,7 @@ export type ProxyGrant = {
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";
 export type RippleStage =
-  | "direct"
-  | "family"
-  | "han"
-  | "association"
-  | "nearby";
+  "direct" | "family" | "han" | "association" | "nearby";
 
 export type RequestSummary = {
   id: string;
@@ -243,6 +234,10 @@ export type Page<T> = { items: T[]; next_cursor: string | null };
 const MAX_REQUEST_PAGES = 10;
 
 type ListingRequestOptions = { authUserId?: string; signal?: AbortSignal };
+
+export function actingForHeaders(actingFor?: string) {
+  return actingFor ? { "X-Acting-For": actingFor } : undefined;
+}
 
 export async function request<T>(
   path: string,
@@ -526,35 +521,52 @@ export const api = {
     query.set("status", "scheduled,active,returned");
     return request<Page<Exchange>>(`/users/me/exchanges?${query}`);
   },
-  getExchange: (id: string) =>
-    request<Exchange>(`/exchanges/${encodeURIComponent(id)}`),
-  listConversations: (cursor?: string | null) =>
-    request<Page<Conversation>>(`/users/me/conversations?${pageQuery(cursor)}`),
-  getConversation: (id: string) =>
-    request<Conversation>(`/conversations/${encodeURIComponent(id)}`),
-  listMessages: (id: string, before?: string | null) => {
+  getExchange: (id: string, actingFor?: string) =>
+    request<Exchange>(`/exchanges/${encodeURIComponent(id)}`, {
+      headers: actingForHeaders(actingFor),
+    }),
+  listConversations: (cursor?: string | null, actingFor?: string) =>
+    request<Page<Conversation>>(
+      `/users/me/conversations?${pageQuery(cursor)}`,
+      { headers: actingForHeaders(actingFor) },
+    ),
+  getConversation: (id: string, actingFor?: string) =>
+    request<Conversation>(`/conversations/${encodeURIComponent(id)}`, {
+      headers: actingForHeaders(actingFor),
+    }),
+  listMessages: (id: string, before?: string | null, actingFor?: string) => {
     const query = new URLSearchParams({
       limit: "20",
       ...(before ? { before } : {}),
     });
     return request<Page<ChatMessage>>(
       `/conversations/${encodeURIComponent(id)}/messages?${query}`,
+      { headers: actingForHeaders(actingFor) },
     );
   },
-  sendMessage: (id: string, body: string, clientMessageId: string) =>
+  sendMessage: (
+    id: string,
+    body: string,
+    clientMessageId: string,
+    actingFor?: string,
+    authUserId?: string,
+  ) =>
     request<ChatMessage>(`/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
+      authUserId,
       body: JSON.stringify({
         kind: "text",
         body,
         client_message_id: clientMessageId,
       }),
     }),
-  markConversationRead: (id: string) =>
+  markConversationRead: (id: string, actingFor?: string) =>
     request<unknown>(
       `/conversations/${encodeURIComponent(id)}/participants/me`,
       {
         method: "PATCH",
+        headers: actingForHeaders(actingFor),
         body: JSON.stringify({ mark_read: true }),
       },
     ),
@@ -649,7 +661,7 @@ export const api = {
         "/users/me/proxy-grants?as=caretaker",
       )
     ).items,
-  listOpenRequests: async ({
+  listFamilyRequests: async ({
     actingFor,
     signal,
   }: {
@@ -663,7 +675,10 @@ export const api = {
     let cursor: string | null = null;
     let pages = 0;
     do {
-      const query = new URLSearchParams({ status: "open", limit: "50" });
+      const query = new URLSearchParams({
+        status: "open,matched,in_progress,done,cancelled,expired",
+        limit: "50",
+      });
       if (cursor) query.set("cursor", cursor);
       const page: Page<RequestSummary> = await request(
         `/users/me/requests?${query}`,

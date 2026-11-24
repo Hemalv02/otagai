@@ -141,6 +141,8 @@ class NewRequest:
 class RequestDetail:
     request: HelpRequest
     my_role: str
+    can_manage: bool
+    can_chat: bool
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
@@ -361,6 +363,9 @@ async def get_request(
             request=request,
             listing=listing,
             my_role="requester" if owns_request else "recipient",
+            can_manage=owns_request
+            and (actor.grant is None or actor.grant.can_post_requests),
+            can_chat=actor.grant is None or actor.grant.can_chat,
             my_response_status=live.status if live else None,
             my_response_id=live.id if live else None,
             exchange_id=exchange.id

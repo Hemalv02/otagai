@@ -144,7 +144,7 @@ export function useFamily(resetKey?: string) {
     const controller = new AbortController();
     let active = true;
     api
-      .listOpenRequests({
+      .listFamilyRequests({
         actingFor: isSelf ? undefined : selectedKey,
         signal: controller.signal,
       })

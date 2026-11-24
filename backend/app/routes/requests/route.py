@@ -223,6 +223,8 @@ class RequestDetailModel(RequestSummary):
     home_circle_id: uuid.UUID
     expires_at: datetime
     my_role: str
+    can_manage: bool
+    can_chat: bool
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
@@ -261,6 +263,8 @@ def request_detail(view: RequestDetail) -> RequestDetailModel:
         home_circle_id=view.request.home_circle_id,
         expires_at=view.request.expires_at,
         my_role=view.my_role,
+        can_manage=view.can_manage,
+        can_chat=view.can_chat,
         my_response_status=view.my_response_status,
         my_response_id=view.my_response_id,
         exchange_id=view.exchange_id,

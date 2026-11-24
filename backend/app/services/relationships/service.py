@@ -420,8 +420,15 @@ async def revoke_proxy_grant(
         grant = await repository.get_for_update(grant_id)
         if grant is None:
             raise GrantNotFoundError
-        if grant.revoked_at is not None:
-            return grant
-        return await repository.update(
-            grant, {"revoked_at": datetime.now(UTC), "revoked_by_user_id": user.id}
-        )
+        if grant.revoked_at is None:
+            grant = await repository.update(
+                grant, {"revoked_at": datetime.now(UTC), "revoked_by_user_id": user.id}
+            )
+        subject = await UserRepository(session).get(grant.member_user_id)
+        if (
+            subject is not None
+            and subject.kind == UserKind.MANAGED.value
+            and subject.created_by_user_id == grant.caretaker_user_id
+        ):
+            await repository.revoke_delegates(grant)
+        return grant

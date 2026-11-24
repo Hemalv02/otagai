@@ -11,6 +11,8 @@ import {
   formatNeededWindow,
   type StatusLinkRow,
 } from "@/lib/family-state";
+import { liveRequestCopy } from "@/lib/live-request-copy";
+import type { RequestStatus } from "@/lib/requests-api";
 import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -208,12 +210,20 @@ export function AccountList({
   );
 }
 
+const familyRequestManage = {
+  en: "Open request",
+  ja: "お願いを開く",
+  bn: "অনুরোধ খুলুন",
+};
+
 export function FamilyRequestRow({
   request,
   locale,
+  onOpen,
 }: {
   request: RequestSummary;
   locale: Language;
+  onOpen: () => void;
 }) {
   const localizedType = useLocalizedType();
   const [expanded, setExpanded] = useState(false);
@@ -225,43 +235,54 @@ export function FamilyRequestRow({
     copy.anyTime;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ expanded }}
-      accessibilityHint={expanded ? copy.hideDetails : copy.showDetails}
-      onPress={() => setExpanded((value) => !value)}
-      style={({ pressed }) => pressed && styles.pressed}
-    >
-      <ListRow
-        thumbnail={
-          <Thumbnail
-            letter={initial(kind, locale)}
-            shape="square"
-            locale={locale}
-          />
-        }
-        title={request.polite_text}
-        titleLines={expanded ? undefined : 2}
-        detail={`${kind} · ${when}`}
-        status={copy.open}
-        locale={locale}
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityHint={expanded ? copy.hideDetails : copy.showDetails}
+        onPress={() => setExpanded((value) => !value)}
+        style={({ pressed }) => pressed && styles.pressed}
       >
-        {expanded ? (
-          <>
-            <Text style={[supporting, styles.secondary]}>
-              {copy.posted} · {formatDate(request.created_at, locale)}
-            </Text>
-            <Text style={[supporting, styles.secondary]}>
-              {copy.audience} ·{" "}
-              {copy.ripple[request.ripple_stage] ?? request.ripple_stage}
-            </Text>
-          </>
-        ) : null}
-        <Text style={[localizedType("field-label", locale), styles.action]}>
-          {expanded ? copy.hideDetails : copy.showDetails}
-        </Text>
-      </ListRow>
-    </Pressable>
+        <ListRow
+          thumbnail={
+            <Thumbnail
+              letter={initial(kind, locale)}
+              shape="square"
+              locale={locale}
+            />
+          }
+          title={request.polite_text}
+          titleLines={expanded ? undefined : 2}
+          detail={`${kind} · ${when}`}
+          status={
+            liveRequestCopy[locale].status[request.status as RequestStatus] ??
+            request.status
+          }
+          locale={locale}
+        >
+          {expanded ? (
+            <>
+              <Text style={[supporting, styles.secondary]}>
+                {copy.posted} · {formatDate(request.created_at, locale)}
+              </Text>
+              <Text style={[supporting, styles.secondary]}>
+                {copy.audience} ·{" "}
+                {copy.ripple[request.ripple_stage] ?? request.ripple_stage}
+              </Text>
+            </>
+          ) : null}
+          <Text style={[localizedType("field-label", locale), styles.action]}>
+            {expanded ? copy.hideDetails : copy.showDetails}
+          </Text>
+        </ListRow>
+      </Pressable>
+      <Button
+        label={familyRequestManage[locale]}
+        variant="text"
+        labelStyle={localizedType("field-label", locale)}
+        onPress={onOpen}
+      />
+    </View>
   );
 }
 

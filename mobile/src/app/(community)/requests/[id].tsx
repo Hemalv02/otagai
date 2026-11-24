@@ -48,15 +48,28 @@ type RequestConfirmation = {
 };
 
 export default function RequestDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  return isUuid(id) ? (
-    <LiveRequestDetail key={id} id={id} />
+  const { id, actingFor } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
+  return isUuid(id) && (actingFor === undefined || isUuid(actingFor)) ? (
+    <LiveRequestDetail
+      key={`${id}:${actingFor ?? "self"}`}
+      id={id}
+      actingFor={actingFor}
+    />
   ) : (
     <Redirect href="/requests" />
   );
 }
 
-function LiveRequestDetail({ id }: { id: string }) {
+function LiveRequestDetail({
+  id,
+  actingFor,
+}: {
+  id: string;
+  actingFor?: string;
+}) {
   const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   const copy = requestCopy[locale];
@@ -97,12 +110,12 @@ function LiveRequestDetail({ id }: { id: string }) {
     setError(null);
     setResponseError(null);
     try {
-      const data = await requestsApi.detail(id);
+      const data = await requestsApi.detail(id, actingFor);
       if (current !== version.current) return;
       setDetail(data);
       if (data.my_role === "requester") {
         try {
-          const page = await requestsApi.responses(id);
+          const page = await requestsApi.responses(id, undefined, actingFor);
           if (current !== version.current) return;
           setResponses(page);
           void loadNames(
@@ -129,7 +142,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     } finally {
       if (current === version.current) setLoading(false);
     }
-  }, [id]);
+  }, [id, actingFor]);
 
   async function loadNames(ids: string[], current: number) {
     const people = await Promise.allSettled(
@@ -165,7 +178,11 @@ function LiveRequestDetail({ id }: { id: string }) {
     setLoadingResponses(true);
     setResponseError(null);
     try {
-      const page = await requestsApi.responses(id, responses.next_cursor);
+      const page = await requestsApi.responses(
+        id,
+        responses.next_cursor,
+        actingFor,
+      );
       if (current !== version.current) return;
       setResponses((previous) => ({
         items: [...(previous?.items ?? []), ...page.items],
@@ -211,7 +228,7 @@ function LiveRequestDetail({ id }: { id: string }) {
 
   function saveEdit(changes: UpdateRequest) {
     void apply(async () => {
-      const updated = await requestsApi.update(id, changes);
+      const updated = await requestsApi.update(id, changes, actingFor);
       if (changes.polite_text !== undefined) {
         translationVersion.current += 1;
         setTranslation(undefined);
@@ -264,10 +281,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     const unavailable =
       error instanceof ApiError && [403, 404].includes(error.status);
     return (
-      <CommunityScreen
-        back
-        title={unavailable ? copy.notFound : copy.requests}
-      >
+      <CommunityScreen back title={unavailable ? copy.notFound : copy.requests}>
         {loading ? (
           <ActivityIndicator
             accessibilityLabel={words.loading}
@@ -290,9 +304,9 @@ function LiveRequestDetail({ id }: { id: string }) {
 
   const owns = detail.my_role === "requester";
   const isOpen = detail.status === "open";
-  const responding = !owns && isOpen && !detail.my_response_id;
+  const responding = !actingFor && !owns && isOpen && !detail.my_response_id;
   const pendingResponse =
-    !owns && isOpen && detail.my_response_status === "pending";
+    !actingFor && !owns && isOpen && detail.my_response_status === "pending";
   const { needed_from: start, needed_until: end } = detail;
   let timing = "";
   if (start && end) timing = `${formatDate(start)} – ${formatDate(end)}`;
@@ -337,7 +351,10 @@ function LiveRequestDetail({ id }: { id: string }) {
               if (detail.exchange_id) {
                 router.push({
                   pathname: "/exchanges/[id]",
-                  params: { id: detail.exchange_id },
+                  params: {
+                    id: detail.exchange_id,
+                    ...(actingFor ? { actingFor } : {}),
+                  },
                 });
               } else {
                 startForm("offer");
@@ -369,7 +386,7 @@ function LiveRequestDetail({ id }: { id: string }) {
             onPress={() => void showTranslation()}
           />
         ) : null}
-        {owns && isOpen ? (
+        {detail.can_manage && isOpen ? (
           <View style={styles.actions}>
             <Button
               variant="secondary"
@@ -469,7 +486,10 @@ function LiveRequestDetail({ id }: { id: string }) {
             label={rippleCopy[locale].delivery}
             labelStyle={label}
             onPress={() =>
-              router.push({ pathname: "/requests/[id]/ripple", params: { id } })
+              router.push({
+                pathname: "/requests/[id]/ripple",
+                params: { id, ...(actingFor ? { actingFor } : {}) },
+              })
             }
           />
           <Text
@@ -483,6 +503,7 @@ function LiveRequestDetail({ id }: { id: string }) {
           ) : null}
           {responses?.items.map((response) => {
             const canAccept =
+              detail.can_manage &&
               isOpen &&
               response.status === "pending" &&
               response.kind !== "question";
@@ -515,7 +536,7 @@ function LiveRequestDetail({ id }: { id: string }) {
                         live.acceptTitle,
                         live.acceptDetail,
                         acceptLabel,
-                        () => requestsApi.accept(id, response.id),
+                        () => requestsApi.accept(id, response.id, actingFor),
                       )
                     }
                   />
@@ -542,7 +563,7 @@ function LiveRequestDetail({ id }: { id: string }) {
               onPress={() => void loadMore()}
             />
           ) : null}
-          {isOpen ? (
+          {detail.can_manage && isOpen ? (
             <Button
               variant="text"
               label={live.cancelRequest}
@@ -553,7 +574,7 @@ function LiveRequestDetail({ id }: { id: string }) {
                   live.cancelRequest,
                   live.cancelDetail,
                   live.cancelRequest,
-                  () => requestsApi.cancel(id),
+                  () => requestsApi.cancel(id, actingFor),
                 )
               }
             />

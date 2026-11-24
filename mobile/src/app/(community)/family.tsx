@@ -300,6 +300,15 @@ function RequestsBody({
                   key={request.id}
                   request={request}
                   locale={locale}
+                  onOpen={() =>
+                    router.push({
+                      pathname: "/requests/[id]",
+                      params: {
+                        id: request.id,
+                        ...(account.isSelf ? {} : { actingFor: account.id }),
+                      },
+                    })
+                  }
                 />
               ))}
             </View>

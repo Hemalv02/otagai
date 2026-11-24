@@ -130,7 +130,7 @@ The review used local Supabase Auth, the FastAPI application, and disposable Pos
 - The browser walkthrough covered managed account creation with explicit consent, family link acceptance without granting access, independent permission changes, posting for a member in a different region, and revocation between review and Send.
 - On the iPhone simulator, the caretaker created a managed account, saved a Chat permission change, reviewed and edited a request, and sent it to the member’s Bangladesh circle. A second attempt after revocation published nothing and kept the unsent wording.
 - The authorized recipient saw the request. Backend checks confirmed the request belonged to the member and recorded the caretaker.
-- Ending a managed creator’s own grant leaves separate delegated grants active.
+- Ending a managed creator’s grant also ends other access delegated for that managed profile. Family request cards open the selected person’s scoped request, with edits, cancellation and response acceptance available to caretakers with posting and activity consent.
 
 ## iPhone walkthrough checklist
 

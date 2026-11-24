@@ -28,7 +28,7 @@ export type NewManagedMember = {
   preferred_language: Language;
   region: Region;
   grant: {
-    caretaker_role: "family";
+    caretaker_role: "family" | "welfare_volunteer";
     consent_method: ConsentMethod;
     scopes: ExplicitScopes;
   };

@@ -1,4 +1,4 @@
-import type { api, Conversation } from "@/lib/api";
+import type { api, Conversation, Page } from "@/lib/api";
 
 type ConversationApi = Pick<
   typeof api,
@@ -10,8 +10,11 @@ export async function loadExchangeConversation(
   id: string,
   profileId: string,
   mode: "loan" | "help",
+  actingFor?: string,
 ) {
-  const exchange = await client.getExchange(id);
+  const exchange = await (actingFor
+    ? client.getExchange(id, actingFor)
+    : client.getExchange(id));
   const { requester_user_id: requester, helper_user_id: helper } = exchange;
   if (exchange.mode !== mode || ![requester, helper].includes(profileId)) {
     throw new Error("Exchange unavailable.");
@@ -21,7 +24,10 @@ export async function loadExchangeConversation(
   let cursor: string | null = null;
   let conversation: Conversation | null = null;
   do {
-    const page = await client.listConversations(cursor);
+    const page: Page<Conversation> = await client.listConversations(
+      cursor,
+      actingFor,
+    );
     conversation =
       page.items.find(
         (item) =>
@@ -38,9 +44,11 @@ export async function loadExchangeConversation(
   try {
     partnerName = (await client.getPublicProfile(partnerId)).display_name;
   } catch (error) {
-    if (
-      !(error instanceof Error && "status" in error && error.status === 404)
-    ) {
+    if (!(
+      error instanceof Error &&
+      "status" in error &&
+      error.status === 404
+    )) {
       throw error;
     }
   }

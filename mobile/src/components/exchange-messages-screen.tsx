@@ -34,17 +34,21 @@ import { useLiveResource, usePagedResource } from "@/lib/live-resource";
 import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { isUuid } from "@/lib/uuid";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function ExchangeMessagesScreen({ mode }: { mode: "loan" | "help" }) {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string; actingFor?: string }>();
+  const id = params.id;
+  const actingFor = isUuid(params.actingFor) ? params.actingFor : undefined;
   const { locale } = useOnboardingText();
   const { profile } = useSession();
-  const profileId = profile.status === "ready" ? profile.profile.id : "";
+  const profileId =
+    actingFor ?? (profile.status === "ready" ? profile.profile.id : "");
   const thread = useLiveResource(
     useCallback(
-      () => loadExchangeConversation(api, id, profileId, mode),
-      [id, profileId, mode],
+      () => loadExchangeConversation(api, id, profileId, mode, actingFor),
+      [id, profileId, mode, actingFor],
     ),
   );
   const copy = exchangeMessageCopy[locale];
@@ -56,7 +60,7 @@ export function ExchangeMessagesScreen({ mode }: { mode: "loan" | "help" }) {
     else
       router.replace({
         pathname: mode === "loan" ? "/loans/[id]" : "/exchanges/[id]",
-        params: { id },
+        params: { id, ...(actingFor ? { actingFor } : {}) },
       });
   }
 
@@ -67,6 +71,7 @@ export function ExchangeMessagesScreen({ mode }: { mode: "loan" | "help" }) {
         onBack={back}
         conversation={conversation}
         profileId={profileId}
+        actingFor={actingFor}
         loanId={mode === "loan" ? id : undefined}
         partnerName={partnerName}
       />
@@ -179,15 +184,19 @@ function ExchangeChat({
   profileId,
   loanId,
   partnerName,
+  actingFor,
 }: {
   onBack: () => void;
   conversation: Conversation;
   profileId: string;
   loanId?: string;
   partnerName: string;
+  actingFor?: string;
 }) {
   const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
+  const { session } = useSession();
+  const authUserId = session?.user.id;
   const copy = exchangeMessageCopy[locale];
   const activity = activityCopy[locale];
   const [closed, setClosed] = useState(conversation.status !== "open");
@@ -196,18 +205,18 @@ function ExchangeChat({
     useCallback(
       async (before?: string | null) => {
         const [current, page] = await Promise.all([
-          api.getConversation(conversation.id),
-          api.listMessages(conversation.id, before),
+          api.getConversation(conversation.id, actingFor),
+          api.listMessages(conversation.id, before, actingFor),
         ]);
         setClosed(current.status !== "open");
         const newestId = page.items[0]?.id;
         if (!before && newestId && newestId !== newestRead.current) {
-          await api.markConversationRead(conversation.id);
+          await api.markConversationRead(conversation.id, actingFor);
           newestRead.current = newestId;
         }
         return page;
       },
-      [conversation.id],
+      [conversation.id, actingFor],
     ),
     5000,
   );
@@ -234,14 +243,20 @@ function ExchangeChat({
 
   async function send() {
     const body = draft.trim();
-    if (!body || sendingRef.current || closed) return;
+    if (!body || !authUserId || sendingRef.current || closed) return;
     sendingRef.current = true;
     setSending(true);
     setSendError(false);
     try {
       if (pending.current?.body !== body)
         pending.current = { body, id: randomUUID() };
-      await api.sendMessage(conversation.id, body, pending.current.id);
+      await api.sendMessage(
+        conversation.id,
+        body,
+        pending.current.id,
+        actingFor,
+        authUserId,
+      );
       if (!mounted.current) return;
       pending.current = null;
       setDraft("");

@@ -31,11 +31,38 @@ const languageOptions = [
 ] as const;
 
 type Step = "details" | "review";
+type CaretakerRole = "family" | "welfare_volunteer";
+
+const caretakerCopy = {
+  en: {
+    role: "Your role",
+    family: "Family member",
+    welfare_volunteer: "Welfare volunteer",
+    attestation: "I received their consent",
+    detail:
+      "I explained these permissions and the person agreed to let me help.",
+  },
+  ja: {
+    role: "あなたの立場",
+    family: "家族",
+    welfare_volunteer: "福祉ボランティア",
+    attestation: "ご本人の同意を得ました",
+    detail: "この権限について説明し、支援することにご本人の同意を得ました。",
+  },
+  bn: {
+    role: "আপনার ভূমিকা",
+    family: "পরিবারের সদস্য",
+    welfare_volunteer: "সমাজকল্যাণ স্বেচ্ছাসেবক",
+    attestation: "আমি তাঁর সম্মতি পেয়েছি",
+    detail: "আমি এই অনুমতিগুলো বুঝিয়ে বলেছি এবং তিনি আমার সহায়তায় সম্মতি দিয়েছেন।",
+  },
+};
 
 export default function AddFamilyMemberScreen() {
   const { locale } = useOnboardingText();
   const localizedType = useLocalizedType();
   const copy = familyConsentCopy[locale];
+  const roles = caretakerCopy[locale];
   const { session, profile } = useSession();
   const [step, setStep] = useState<Step>("details");
   const [createdMember, setCreatedMember] = useState<{
@@ -47,6 +74,8 @@ export default function AddFamilyMemberScreen() {
   const [region, setRegion] = useState<Region>(
     profile.status === "ready" ? profile.profile.region : "jp",
   );
+  const [role, setRole] = useState<CaretakerRole>("family");
+  const [attested, setAttested] = useState(false);
   const [consent, setConsent] = useState<ConsentMethod>("in_person");
   const [scopes, setScopes] = useState<ScopeChoice>(DEFAULT_SCOPES);
   const [nameMissing, setNameMissing] = useState(false);
@@ -68,7 +97,13 @@ export default function AddFamilyMemberScreen() {
 
   async function create() {
     const authUserId = session?.user.id;
-    if (!authUserId || submitting.current || failure === "unsure") return;
+    if (
+      !authUserId ||
+      submitting.current ||
+      failure === "unsure" ||
+      (role === "welfare_volunteer" && !attested)
+    )
+      return;
     submitting.current = true;
     setBusy(true);
     setFailure(null);
@@ -79,7 +114,7 @@ export default function AddFamilyMemberScreen() {
           preferred_language: language,
           region,
           grant: {
-            caretaker_role: "family",
+            caretaker_role: role,
             consent_method: consent,
             scopes: explicitScopes(scopes),
           },
@@ -168,11 +203,21 @@ export default function AddFamilyMemberScreen() {
             />
           }
           title={trimmed}
-          detail={`${copy.add.consentGiven}: ${copy.consent[consent].title}`}
+          detail={`${roles[role]} · ${copy.consent[consent].title}`}
           status=""
           locale={locale}
         />
         <View style={styles.list}>
+          {role === "welfare_volunteer" ? (
+            <ScopeToggleRow
+              title={roles.attestation}
+              detail={roles.detail}
+              value={attested}
+              onChange={setAttested}
+              disabled={busy || failure === "unsure"}
+              locale={locale}
+            />
+          ) : null}
           {GRANT_SCOPES.map((scope) => (
             <ScopeToggleRow
               key={scope}
@@ -220,6 +265,18 @@ export default function AddFamilyMemberScreen() {
         />
         {nameMissing ? <ErrorText>{copy.add.nameRequired}</ErrorText> : null}
       </View>
+      <Text style={[label, styles.ink]}>{roles.role}</Text>
+      <Choice
+        options={[
+          { value: "family", label: roles.family },
+          { value: "welfare_volunteer", label: roles.welfare_volunteer },
+        ]}
+        value={role}
+        onChange={(value) => {
+          setRole(value);
+          setAttested(false);
+        }}
+      />
       <Text style={[label, styles.ink]}>{copy.add.language}</Text>
       <Choice
         options={languageOptions}

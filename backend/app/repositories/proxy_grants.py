@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,6 +59,20 @@ class ProxyGrantRepository:
         await self._session.flush()
         await self._session.refresh(grant)
         return grant
+
+    async def revoke_delegates(self, creator_grant: ProxyGrant) -> None:
+        await self._session.execute(
+            update(ProxyGrant)
+            .where(
+                ProxyGrant.member_user_id == creator_grant.member_user_id,
+                ProxyGrant.id != creator_grant.id,
+                ProxyGrant.revoked_at.is_(None),
+            )
+            .values(
+                revoked_at=creator_grant.revoked_at,
+                revoked_by_user_id=creator_grant.revoked_by_user_id,
+            )
+        )
 
     async def list_as_caretaker(self, caretaker_user_id: uuid.UUID) -> list[ProxyGrant]:
         statement = (
