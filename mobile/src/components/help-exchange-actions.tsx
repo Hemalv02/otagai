@@ -11,7 +11,7 @@ import {
   helpExchangeStage,
   helpSchedulePatch,
 } from "@/lib/help-exchange-state";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -28,6 +28,7 @@ export function HelpExchangeActions({
   viewerId: string;
   onReload: () => Promise<unknown>;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { session } = useSession();
   const authUserId = session?.user.id;
@@ -193,6 +194,7 @@ function ScheduleSheet({
   close: () => void;
   save: (changes: SchedulePatch) => void;
 }) {
+  const localizedType = useLocalizedType();
   const copy = helpExchangeCopy[locale];
   const label = localizedType("field-label", locale);
   const [initial] = useState(() => ({

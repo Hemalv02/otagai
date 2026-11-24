@@ -1,6 +1,8 @@
 import uuid
 from dataclasses import dataclass
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.database.connection import Database
 from app.database.models import Exchange, HelpRequest, PairStats, ThankYou, User
 from app.database.models.enums import UserStatus
@@ -33,7 +35,9 @@ class PairView:
     they_helped_me: int
 
 
-async def _visible(session, viewer_id: uuid.UUID, target_id: uuid.UUID) -> bool:
+async def can_view_profile(
+    session: AsyncSession, viewer_id: uuid.UUID, target_id: uuid.UUID
+) -> bool:
     if viewer_id == target_id:
         return True
     if await BlockRepository(session).is_blocked_either_way(viewer_id, target_id):
@@ -44,6 +48,10 @@ async def _visible(session, viewer_id: uuid.UUID, target_id: uuid.UUID) -> bool:
     return pair is not None
 
 
+def may_see_profile_details(viewer_id: uuid.UUID, target: User) -> bool:
+    return viewer_id == target.id or target.profile_details_visible
+
+
 async def get_public_profile(
     database: Database, viewer: User, target_id: uuid.UUID
 ) -> User:
@@ -51,14 +59,14 @@ async def get_public_profile(
         target = await UserRepository(session).get(target_id)
         if target is None or target.status == UserStatus.DELETED.value:
             raise ProfileHiddenError
-        if not await _visible(session, viewer.id, target_id):
+        if not await can_view_profile(session, viewer.id, target_id):
             raise ProfileHiddenError
         return target
 
 
 async def get_pair(database: Database, viewer: User, target_id: uuid.UUID) -> PairView:
     async with database.session() as session:
-        if not await _visible(session, viewer.id, target_id):
+        if not await can_view_profile(session, viewer.id, target_id):
             raise ProfileHiddenError
         pair = await PairStatsRepository(session).get(viewer.id, target_id)
     if pair is None:
@@ -93,7 +101,7 @@ async def list_user_requests(
     page: PageRequest,
 ) -> PageResult[HelpRequest]:
     async with database.session() as session:
-        if not await _visible(session, viewer.id, target_id):
+        if not await can_view_profile(session, viewer.id, target_id):
             raise ProfileHiddenError
         include_all = viewer.id == target_id or await _can_view_activity(
             session, viewer.id, target_id
@@ -124,7 +132,7 @@ async def list_user_thank_yous(
     database: Database, viewer: User, target_id: uuid.UUID, page: PageRequest
 ) -> PageResult[ThankYou]:
     async with database.session() as session:
-        if not await _visible(session, viewer.id, target_id):
+        if not await can_view_profile(session, viewer.id, target_id):
             raise ProfileHiddenError
         wall_only = viewer.id != target_id
         return await ThankYouRepository(session).list_for_recipient(

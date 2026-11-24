@@ -17,7 +17,7 @@ import {
   type PickupItem,
 } from "@/lib/live-pickup";
 import { useLiveResource } from "@/lib/live-resource";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -54,6 +54,7 @@ function LivePickup({
   profileId: string | null;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   const copy = livePickupCopy[locale];
   const client = useMemo(() => pickupApi(authId), [authId]);
   const load = useCallback(async () => {
@@ -198,7 +199,6 @@ function LivePickup({
     <CommunityScreen
       design
       back
-      showDemoPreview={false}
       eyebrow={title}
       title={copy.title}
       subtitle={copy.intro}
@@ -536,8 +536,8 @@ function ItemEditor({
   locale: Language;
   item?: PickupItem;
   profileId: string | null;
-  labelStyle: ReturnType<typeof localizedType>;
-  bodyStyle: ReturnType<typeof localizedType>;
+  labelStyle: ReturnType<ReturnType<typeof useLocalizedType>>;
+  bodyStyle: ReturnType<ReturnType<typeof useLocalizedType>>;
   busy: boolean;
   error: string | null;
   close: () => void;

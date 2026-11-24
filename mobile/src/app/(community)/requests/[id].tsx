@@ -1,4 +1,9 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import {
+  Redirect,
+  router,
+  useFocusEffect,
+  useLocalSearchParams,
+} from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,7 +15,10 @@ import {
 
 import { AssistantSheet } from "@/components/assistant-widgets";
 import { CommunityScreen } from "@/components/community-screen";
-import { DemoRequestDetail } from "@/components/demo-request-detail";
+import {
+  RequestEditForm,
+  type RequestEditKind,
+} from "@/components/request-edit-form";
 import { RequestNotice } from "@/components/request-notice";
 import { RequestResponseForm } from "@/components/request-response-form";
 import { Button, ErrorText } from "@/components/ui";
@@ -19,18 +27,18 @@ import { assistantError, assistantApi } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
-import { requestCopy } from "@/lib/request-demo-copy";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { requestCopy } from "@/lib/request-copy";
 import { rippleCopy } from "@/lib/request-ripple";
 import {
   type RequestDetail,
   type RequestResponse,
   type ResponseKind,
+  type UpdateRequest,
   requestsApi,
 } from "@/lib/requests-api";
+import { isUuid } from "@/lib/uuid";
 import { colors, controls, spacing } from "@/theme/tokens.json";
-
-const requestIdPattern = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/i;
 
 type RequestConfirmation = {
   title: string;
@@ -41,14 +49,15 @@ type RequestConfirmation = {
 
 export default function RequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return requestIdPattern.test(id) ? (
+  return isUuid(id) ? (
     <LiveRequestDetail key={id} id={id} />
   ) : (
-    <DemoRequestDetail id={id} />
+    <Redirect href="/requests" />
   );
 }
 
 function LiveRequestDetail({ id }: { id: string }) {
+  const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   const copy = requestCopy[locale];
   const live = liveRequestCopy[locale];
@@ -68,6 +77,7 @@ function LiveRequestDetail({ id }: { id: string }) {
   const version = useRef(0);
   const markedSeen = useRef(false);
   const [form, setForm] = useState<ResponseKind>();
+  const [edit, setEdit] = useState<RequestEditKind>();
   const [confirmation, setConfirmation] = useState<RequestConfirmation>();
   const [translation, setTranslation] = useState<{
     locale: string;
@@ -75,6 +85,7 @@ function LiveRequestDetail({ id }: { id: string }) {
     source: string;
   }>();
   const [translating, setTranslating] = useState(false);
+  const translationVersion = useRef(0);
   const translated =
     translation?.locale === locale &&
     translation.source === detail?.polite_text;
@@ -179,11 +190,13 @@ function LiveRequestDetail({ id }: { id: string }) {
     try {
       await action();
       setForm(undefined);
+      setEdit(undefined);
       setConfirmation(undefined);
       await load();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setForm(undefined);
+        setEdit(undefined);
         setConfirmation(undefined);
         await load();
         setActionError(live.changed);
@@ -196,12 +209,25 @@ function LiveRequestDetail({ id }: { id: string }) {
     }
   }
 
+  function saveEdit(changes: UpdateRequest) {
+    void apply(async () => {
+      const updated = await requestsApi.update(id, changes);
+      if (changes.polite_text !== undefined) {
+        translationVersion.current += 1;
+        setTranslation(undefined);
+        setTranslating(false);
+      }
+      setDetail(updated);
+    });
+  }
+
   async function showTranslation() {
     if (!detail || translating) return;
     if (translated) {
       setTranslation(undefined);
       return;
     }
+    const current = ++translationVersion.current;
     setTranslating(true);
     setActionError(undefined);
     try {
@@ -210,15 +236,18 @@ function LiveRequestDetail({ id }: { id: string }) {
         detail.lang,
         locale,
       );
+      if (current !== translationVersion.current) return;
       setTranslation({
         locale,
         text: result.translated,
         source: detail.polite_text,
       });
     } catch (cause) {
-      setActionError(assistantError(cause, locale));
+      if (current === translationVersion.current) {
+        setActionError(assistantError(cause, locale));
+      }
     } finally {
-      setTranslating(false);
+      if (current === translationVersion.current) setTranslating(false);
     }
   }
 
@@ -238,7 +267,6 @@ function LiveRequestDetail({ id }: { id: string }) {
       <CommunityScreen
         back
         title={unavailable ? copy.notFound : copy.requests}
-        showDemoPreview={false}
       >
         {loading ? (
           <ActivityIndicator
@@ -265,10 +293,11 @@ function LiveRequestDetail({ id }: { id: string }) {
   const responding = !owns && isOpen && !detail.my_response_id;
   const pendingResponse =
     !owns && isOpen && detail.my_response_status === "pending";
-  const timing = [detail.needed_from, detail.needed_until]
-    .filter((value) => value !== null)
-    .map(formatDate)
-    .join(" – ");
+  const { needed_from: start, needed_until: end } = detail;
+  let timing = "";
+  if (start && end) timing = `${formatDate(start)} – ${formatDate(end)}`;
+  else if (start) timing = `${live.needed_from} · ${formatDate(start)}`;
+  else if (end) timing = `${live.needed_until} · ${formatDate(end)}`;
   const requesterName = names[detail.requester_user_id];
   const disabled = loading || working;
   const linkedListing = detail.listing;
@@ -276,6 +305,11 @@ function LiveRequestDetail({ id }: { id: string }) {
   function startForm(kind: ResponseKind) {
     setActionError(undefined);
     setForm(kind);
+  }
+
+  function startEdit(kind: RequestEditKind) {
+    setActionError(undefined);
+    setEdit(kind);
   }
 
   function confirmAction(
@@ -291,7 +325,6 @@ function LiveRequestDetail({ id }: { id: string }) {
   return (
     <CommunityScreen
       back
-      showDemoPreview={false}
       title={copy.requests}
       subtitle={live.status[detail.status]}
       footer={
@@ -332,8 +365,27 @@ function LiveRequestDetail({ id }: { id: string }) {
             label={translated ? words.original : words.translate}
             labelStyle={label}
             busy={translating}
+            disabled={disabled}
             onPress={() => void showTranslation()}
           />
+        ) : null}
+        {owns && isOpen ? (
+          <View style={styles.actions}>
+            <Button
+              variant="secondary"
+              label={live.editWording}
+              labelStyle={label}
+              disabled={disabled}
+              onPress={() => startEdit("wording")}
+            />
+            <Button
+              variant="secondary"
+              label={live.editTiming}
+              labelStyle={label}
+              disabled={disabled}
+              onPress={() => startEdit("timing")}
+            />
+          </View>
         ) : null}
       </View>
       {linkedListing ? (
@@ -363,7 +415,7 @@ function LiveRequestDetail({ id }: { id: string }) {
           />
         </>
       ) : null}
-      {actionError && !form && !confirmation ? (
+      {actionError && !form && !edit && !confirmation ? (
         <ErrorText>{actionError}</ErrorText>
       ) : null}
 
@@ -529,6 +581,19 @@ function LiveRequestDetail({ id }: { id: string }) {
           send={(response) =>
             void apply(() => requestsApi.respond(id, response))
           }
+        />
+      ) : null}
+      {edit ? (
+        <RequestEditForm
+          kind={edit}
+          locale={locale}
+          detail={detail}
+          busy={working}
+          error={actionError}
+          close={() => {
+            if (!mutating.current) setEdit(undefined);
+          }}
+          save={saveEdit}
         />
       ) : null}
       {confirmation ? (

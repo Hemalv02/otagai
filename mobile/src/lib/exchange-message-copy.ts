@@ -8,6 +8,12 @@ const en = {
   deleted: "Message deleted",
   attachment: "Attachment",
   closed: "This conversation is closed. You can still read your messages.",
+  emptyChat: "Start the conversation",
+  emptyChatDetail: "Send a message to agree on a time and place.",
+  you: "You",
+  message: "Message",
+  writeMessage: "Write a message…",
+  sendMessage: "Send message",
 };
 
 export const exchangeMessageCopy: Record<Language, typeof en> = {
@@ -20,6 +26,12 @@ export const exchangeMessageCopy: Record<Language, typeof en> = {
     deleted: "削除されたメッセージ",
     attachment: "添付ファイル",
     closed: "このチャットは終了しました。以前のメッセージは確認できます。",
+    emptyChat: "メッセージを送りましょう",
+    emptyChatDetail: "メッセージで時間と場所を決めましょう。",
+    you: "あなた",
+    message: "メッセージ",
+    writeMessage: "メッセージを書く…",
+    sendMessage: "メッセージを送る",
   },
   bn: {
     messagePartner: (name) => `${name}-কে বার্তা পাঠান`,
@@ -29,5 +41,11 @@ export const exchangeMessageCopy: Record<Language, typeof en> = {
     deleted: "বার্তা মুছে ফেলা হয়েছে",
     attachment: "সংযুক্তি",
     closed: "এই কথোপকথন বন্ধ। আগের বার্তাগুলো পড়তে পারবেন।",
+    emptyChat: "কথা শুরু করুন",
+    emptyChatDetail: "সময় ও জায়গা ঠিক করতে একটি বার্তা পাঠান।",
+    you: "আপনি",
+    message: "বার্তা",
+    writeMessage: "বার্তা লিখুন…",
+    sendMessage: "বার্তা পাঠান",
   },
 };

@@ -14,7 +14,7 @@ import { assistantError } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import {
   type ExchangeDetail,
   type RequestDetail,
@@ -30,6 +30,7 @@ type Summary = {
 };
 
 export default function LiveExchangeScreen() {
+  const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { profile } = useSession();
   const viewer = profile.status === "ready" ? profile.profile.id : null;
@@ -84,7 +85,6 @@ export default function LiveExchangeScreen() {
   return (
     <CommunityScreen
       back
-      showDemoPreview={false}
       title={live.exchange}
       subtitle={
         summary

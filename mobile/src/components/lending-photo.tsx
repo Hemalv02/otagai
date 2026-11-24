@@ -2,8 +2,7 @@ import { Image } from "expo-image";
 import { StyleSheet, Text, View } from "react-native";
 
 import type { Language } from "@/lib/api";
-import { type ListingPhoto, listingPhotoSource } from "@/lib/demo-listings";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import { colors, controls } from "@/theme/tokens.json";
 
 export function LendingPhoto({
@@ -11,14 +10,15 @@ export function LendingPhoto({
   caption,
   locale,
 }: {
-  photo: ListingPhoto;
+  photo: { uri: string };
   caption: string;
   locale: Language;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <View style={styles.block}>
       <Image
-        source={listingPhotoSource(photo)}
+        source={photo}
         style={styles.photo}
         contentFit="contain"
         accessible={false}

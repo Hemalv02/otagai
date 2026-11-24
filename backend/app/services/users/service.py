@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from app.database.connection import Database
 from app.database.models import PushToken, User
 from app.database.models.enums import MediaPurpose, Region, UserKind, UserStatus
+from app.repositories.exchanges import ExchangeRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.repositories.push_tokens import PushTokenRepository
@@ -113,16 +114,26 @@ async def update_profile(
         return await repository.update(current, changes)
 
 
-async def delete_account(database: Database, user: User) -> None:
+async def delete_account(database: Database, auth_user_id: uuid.UUID) -> None:
     now = datetime.now(UTC)
     async with database.session() as session:
         repository = UserRepository(session)
-        current = await repository.get_for_update(user.id)
-        if current is None or current.status == UserStatus.DELETED.value:
+        current = await repository.get_by_auth_user_id(auth_user_id, for_update=True)
+        if current is None:
+            raise ProfileNotFoundError
+        if current.status == UserStatus.DELETED:
             return
-        await RequestRepository(session).cancel_open_for_user(user.id, now)
-        await ResponseRepository(session).withdraw_pending_for_user(user.id, now)
-        await ListingRepository(session).pause_active_for_owner(user.id)
+        if current.status != UserStatus.ACTIVE:
+            raise AccountInactiveError
+        # These writes serialize deletion with the acceptance of an existing offer.
+        # A conflict below rolls back both writes.
+        await RequestRepository(session).cancel_open_for_user(current.id, now)
+        await ResponseRepository(session).withdraw_pending_for_user(current.id, now)
+        if await ExchangeRepository(session).has_unresolved_for_user(current.id):
+            raise ConflictError(
+                "Finish or resolve your exchanges before deleting your account."
+            )
+        await ListingRepository(session).pause_active_for_owner(current.id)
         await repository.update(
             current,
             {

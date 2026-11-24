@@ -2,7 +2,7 @@ import io
 
 from PIL import Image
 
-from tests.integration.conftest import auth, make_user
+from tests.integration.conftest import auth, join_circle, make_circle, make_user
 
 
 def _png() -> bytes:
@@ -99,3 +99,52 @@ async def test_avatar_must_be_owned_media_400(client):
         "/users/me", headers=auth(other), json={"avatar_media_id": media_id}
     )
     assert response.status_code == 400
+
+
+async def test_neighbours_can_only_read_a_visible_attached_avatar(client):
+    owner = await make_user(client, display_name="Owner")
+    neighbour = await make_user(client, display_name="Neighbour")
+    circle = await make_circle(client, owner)
+    await join_circle(client, owner, circle, neighbour)
+    uploaded = await client.post(
+        "/media",
+        headers=auth(owner),
+        files={"file": ("a.png", _png(), "image/png")},
+        data={"purpose": "avatar"},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    media_id = uploaded.json()["id"]
+    media_url = f"/media/{media_id}"
+    assert (await client.get(media_url, headers=auth(neighbour))).status_code == 404
+
+    attached = await client.patch(
+        "/users/me", headers=auth(owner), json={"avatar_media_id": media_id}
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["avatar_media_id"] == media_id
+    profile_url = f"/users/{attached.json()['id']}"
+    visible = (await client.get(profile_url, headers=auth(neighbour))).json()
+    assert visible["avatar_url"] == uploaded.json()["urls"]["thumb"]
+    assert (await client.get(media_url, headers=auth(neighbour))).status_code == 200
+
+    hidden = await client.patch(
+        "/users/me", headers=auth(owner), json={"profile_details_visible": False}
+    )
+    assert hidden.status_code == 200, hidden.text
+    assert (await client.get(profile_url, headers=auth(neighbour))).json()[
+        "avatar_url"
+    ] is None
+    assert (await client.get(media_url, headers=auth(neighbour))).status_code == 404
+    assert (await client.get(media_url, headers=auth(owner))).status_code == 200
+
+    removed = await client.patch(
+        "/users/me",
+        headers=auth(owner),
+        json={"avatar_media_id": None, "profile_details_visible": True},
+    )
+    assert removed.status_code == 200, removed.text
+    assert removed.json()["avatar_media_id"] is None
+    assert (await client.get(profile_url, headers=auth(neighbour))).json()[
+        "avatar_url"
+    ] is None
+    assert (await client.get(media_url, headers=auth(neighbour))).status_code == 404

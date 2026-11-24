@@ -131,6 +131,13 @@ class UpdateRequestBody(BaseModel):
     needed_from: AwareDatetime | None = None
     needed_until: AwareDatetime | None = None
 
+    @field_validator("raw_text", "polite_text", "tone")
+    @classmethod
+    def reject_null(cls, value: str | None) -> str:
+        if value is None:
+            raise ValueError("Omit this field to keep its existing value.")
+        return value
+
 
 class WidenRequestBody(BaseModel):
     model_config = ConfigDict(extra="forbid")

@@ -1,4 +1,5 @@
 import * as Location from "expo-location";
+import { router } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Text, View } from "react-native";
 
@@ -9,8 +10,9 @@ import {
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Circle, type CircleJoin } from "@/lib/api";
 import { useMemberships } from "@/lib/memberships";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { settingsCopy } from "@/lib/settings-copy";
 
 type Method = "invite" | "nearby";
 type Match = { circle: Circle; target: CircleJoin };
@@ -23,6 +25,7 @@ type ErrorKey =
   | "joinFailed";
 
 export default function FindCircle() {
+  const localizedType = useLocalizedType();
   const { signOut } = useSession();
   const { access, state, record, refresh, refreshing } = useMemberships();
   const { t, locale } = useOnboardingText();
@@ -331,6 +334,11 @@ export default function FindCircle() {
           ) : null}
         </>
       )}
+      <OnboardingLink
+        label={settingsCopy[locale].title}
+        disabled={busy !== null}
+        onPress={() => router.push("/settings")}
+      />
     </OnboardingScreen>
   );
 }

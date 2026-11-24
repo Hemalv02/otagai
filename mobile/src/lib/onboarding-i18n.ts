@@ -1,9 +1,11 @@
 import { createInstance } from "i18next";
+import { createContext, useCallback, useContext } from "react";
 import { useTranslation } from "react-i18next";
 
 import { accountCopy } from "@/lib/account-copy";
 import type { Language } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
+import { scaleTypographyMetrics } from "@/lib/text-size";
 import { fonts, typography } from "@/theme/tokens.json";
 
 const en = {
@@ -184,11 +186,22 @@ export function useOnboardingText(language?: Language) {
 export function localizedType(
   role: Exclude<keyof typeof typography, "wordmark">,
   locale: Language,
+  percent?: number,
 ) {
   const spec = typography[role];
   return {
     fontFamily: fonts[locale][spec.weight as keyof typeof fonts.en],
-    fontSize: spec.size,
-    lineHeight: spec.lineHeight[locale],
+    ...scaleTypographyMetrics(spec.size, spec.lineHeight[locale], percent),
   };
+}
+
+export const TextSizeContext = createContext(100);
+
+export function useLocalizedType() {
+  const percent = useContext(TextSizeContext);
+  return useCallback(
+    (role: Parameters<typeof localizedType>[0], locale: Language) =>
+      localizedType(role, locale, percent),
+    [percent],
+  );
 }

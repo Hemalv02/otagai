@@ -1,5 +1,5 @@
 import { Image } from "expo-image";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import {
   type ComponentRef,
@@ -26,9 +26,8 @@ import { Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { useCommunityDemo } from "@/lib/community-demo";
 import { useOnboarding } from "@/lib/onboarding";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -40,11 +39,12 @@ type CommunityScreenProps = PropsWithChildren<{
   subtitle?: string;
   back?: boolean;
   backAction?: ReactNode;
+  backHref?: Href;
+  settingsMenu?: boolean;
   keyboard?: boolean;
   footer?: ReactNode;
   scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
   onContentSizeChange?: (width: number, height: number) => void;
-  showDemoPreview?: boolean;
   fixedTitle?: boolean;
   compactTitle?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
@@ -56,21 +56,21 @@ type CommunityScreenProps = PropsWithChildren<{
 const text = {
   en: {
     settings: "Settings",
+    profile: "Profile and account",
     language: "App language",
     done: "Done",
-    preview: "Previewing as",
   },
   ja: {
     settings: "設定",
+    profile: "プロフィールとアカウント",
     language: "表示言語",
     done: "閉じる",
-    preview: "プレビュー中",
   },
   bn: {
     settings: "সেটিংস",
+    profile: "প্রোফাইল ও অ্যাকাউন্ট",
     language: "অ্যাপের ভাষা",
     done: "বন্ধ করুন",
-    preview: "প্রিভিউ",
   },
 };
 
@@ -81,6 +81,11 @@ const languages: { value: Language; label: string }[] = [
 ];
 const shortLanguage = { en: "EN", ja: "日本語", bn: "বাংলা" };
 const settingsIcons = {
+  profile: {
+    ios: "person.crop.circle",
+    android: "account_circle",
+    web: "account_circle",
+  },
   notifications: {
     ios: "bell",
     android: "notifications",
@@ -112,11 +117,12 @@ export function CommunityScreen({
   subtitle,
   back,
   backAction,
+  backHref = "/",
+  settingsMenu = true,
   keyboard,
   footer,
   scrollRef,
   onContentSizeChange,
-  showDemoPreview = true,
   fixedTitle = false,
   compactTitle = false,
   refreshControl,
@@ -124,9 +130,9 @@ export function CommunityScreen({
   design = false,
   renderList,
 }: CommunityScreenProps) {
+  const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
-  const { actor, people } = useCommunityDemo();
   const [options, setOptions] = useState<OptionsSheet | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const copy = text[locale];
@@ -154,7 +160,7 @@ export function CommunityScreen({
 
   function goBack() {
     if (router.canGoBack()) router.back();
-    else router.replace("/");
+    else router.replace(backHref);
   }
 
   const backButton = back ? (
@@ -234,13 +240,15 @@ export function CommunityScreen({
           <View
             style={[styles.headerActions, design && styles.designHeaderActions]}
           >
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => openOptions("settings")}
-              style={styles.headerButton}
-            >
-              <Text style={[label, styles.green]}>{copy.settings}</Text>
-            </Pressable>
+            {settingsMenu ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => openOptions("settings")}
+                style={styles.headerButton}
+              >
+                <Text style={[label, styles.green]}>{copy.settings}</Text>
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={copy.language}
@@ -252,13 +260,6 @@ export function CommunityScreen({
           </View>
         </View>
       </View>
-      {showDemoPreview && actor === "neighbour" ? (
-        <View style={styles.preview}>
-          <Text style={[label, styles.green]}>
-            {copy.preview} {people.neighbour.name}
-          </Text>
-        </View>
-      ) : null}
       {fixedTitle ? heading : null}
       <KeyboardAvoidingView
         style={styles.flex}
@@ -327,6 +328,7 @@ export function CommunityScreen({
                   <View style={styles.settingsGroup}>
                     {(
                       [
+                        ["profile", copy.profile, "/settings"],
                         [
                           "notifications",
                           activityCopy[locale].notifications,
@@ -351,7 +353,7 @@ export function CommunityScreen({
                           locale={locale}
                           onPress={() => {
                             setOptions(null);
-                            router.push(href);
+                            router.navigate(href);
                           }}
                         />
                       </View>
@@ -420,6 +422,7 @@ function SettingsRow({
   navigates?: boolean;
   onPress: () => void;
 }) {
+  const localizedType = useLocalizedType();
   return (
     <Pressable
       accessibilityRole="button"
@@ -481,11 +484,6 @@ const styles = StyleSheet.create({
     minHeight: controls["touch-target"],
     minWidth: 32,
     justifyContent: "center",
-  },
-  preview: {
-    paddingHorizontal: spacing["screen-gutter"],
-    paddingVertical: 6,
-    backgroundColor: colors.wash,
   },
   content: { padding: spacing["screen-gutter"], gap: spacing["card-inset"] },
   heading: { gap: spacing["related-gap"] },

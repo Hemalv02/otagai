@@ -25,10 +25,9 @@ import { Button, ErrorText } from "@/components/ui";
 import { api, ApiError, type Conversation } from "@/lib/api";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
 import { loadExchangeConversation } from "@/lib/exchange-conversation";
-import { exchangeCopy } from "@/lib/exchange-copy";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -115,6 +114,7 @@ function ChatFrame({
   refreshing: boolean;
   refresh: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const { locale, t } = useOnboardingText();
   return (
     <SafeAreaView style={styles.screen}>
@@ -178,9 +178,9 @@ function ExchangeChat({
   profileId: string;
   partnerName: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = exchangeMessageCopy[locale];
-  const chat = exchangeCopy[locale];
   const activity = activityCopy[locale];
   const [closed, setClosed] = useState(conversation.status !== "open");
   const newestRead = useRef<string | null>(null);
@@ -270,8 +270,8 @@ function ExchangeChat({
         ListEmptyComponent={
           !messages.loading && !messages.error ? (
             <View style={styles.section}>
-              <ActivityText strong>{chat.emptyChat}</ActivityText>
-              <ActivityText>{chat.emptyChatDetail}</ActivityText>
+              <ActivityText strong>{copy.emptyChat}</ActivityText>
+              <ActivityText>{copy.emptyChatDetail}</ActivityText>
             </View>
           ) : undefined
         }
@@ -303,7 +303,7 @@ function ExchangeChat({
           return (
             <View
               accessible
-              accessibilityLabel={`${own ? chat.you : partnerName}. ${body} ${stamp}`}
+              accessibilityLabel={`${own ? copy.you : partnerName}. ${body} ${stamp}`}
               style={[styles.message, own && styles.own]}
             >
               <Text style={[localizedType("body", locale), styles.ink]}>
@@ -322,7 +322,7 @@ function ExchangeChat({
         ) : (
           <View style={styles.composeRow}>
             <TextInput
-              accessibilityLabel={chat.message}
+              accessibilityLabel={copy.message}
               style={[
                 localizedType("body", locale),
                 styles.input,
@@ -333,7 +333,7 @@ function ExchangeChat({
                 setDraft(value);
                 setSendError(false);
               }}
-              placeholder={chat.writeMessage}
+              placeholder={copy.writeMessage}
               placeholderTextColor={colors.control}
               onContentSizeChange={(event) => {
                 setInputHeight(
@@ -349,7 +349,7 @@ function ExchangeChat({
             />
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={chat.sendMessage}
+              accessibilityLabel={copy.sendMessage}
               accessibilityState={{ disabled: !canSend, busy: sending }}
               disabled={!canSend}
               onPress={() => void send()}

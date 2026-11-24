@@ -22,7 +22,7 @@ import {
   isListingId,
   photoUrls,
 } from "@/lib/listing-workflow";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { requestsApi } from "@/lib/requests-api";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -55,6 +55,7 @@ function ListingRequestFlow({
   kind: string;
   account: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { profile } = useSession();
   const profileId = profile.status === "ready" ? profile.profile.id : null;
@@ -161,7 +162,7 @@ function ListingRequestFlow({
 
   if (!validRoute) {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
           {lending.listingMissing}
         </Text>
@@ -186,7 +187,7 @@ function ListingRequestFlow({
               ? readCopy.auth
               : readCopy.error;
     return (
-      <CommunityScreen back showDemoPreview={false} title={copy.reviewTitle}>
+      <CommunityScreen back title={copy.reviewTitle}>
         {errorMessage ? (
           <>
             <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
@@ -228,7 +229,7 @@ function ListingRequestFlow({
               : copy.noOwner
         : copy.unavailable;
     return (
-      <CommunityScreen back showDemoPreview={false} title={copy.reviewTitle}>
+      <CommunityScreen back title={copy.reviewTitle}>
         <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
           {note}
         </Text>
@@ -252,7 +253,6 @@ function ListingRequestFlow({
   return (
     <CommunityScreen
       back
-      showDemoPreview={false}
       keyboard
       title={copy.reviewTitle}
       footer={

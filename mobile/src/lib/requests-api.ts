@@ -47,6 +47,10 @@ export type RequestDetail = RequestSummary & {
   exchange_id: string | null;
 };
 
+export type UpdateRequest = Partial<
+  Pick<RequestDetail, "polite_text" | "needed_from" | "needed_until">
+>;
+
 export type IncomingRequest = {
   request: RequestSummary;
   seen: boolean;
@@ -98,6 +102,11 @@ export const requestsApi = {
   incoming: (cursor?: string) =>
     page<IncomingRequest>("/users/me/received-requests", cursor),
   detail: (id: string) => request<RequestDetail>(`/requests/${id}`),
+  update: (id: string, body: UpdateRequest) =>
+    request<RequestDetail>(`/requests/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
   responses: (id: string, cursor?: string) =>
     page<RequestResponse>(`/requests/${id}/responses`, cursor),
   respond: (id: string, body: SendResponse) =>

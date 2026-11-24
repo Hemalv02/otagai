@@ -20,7 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type ScreenProps = PropsWithChildren<{
@@ -79,6 +79,7 @@ export function OnboardingBack({
   language?: Language;
   onPress?: () => void;
 }) {
+  const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText(language);
   return (
     <Button
@@ -92,6 +93,7 @@ export function OnboardingBack({
 }
 
 export function OnboardingNext({ from }: { from: 1 | 2 }) {
+  const localizedType = useLocalizedType();
   const { advance, state, saving } = useOnboarding();
   const { t, locale } = useOnboardingText();
   const [failed, setFailed] = useState(false);
@@ -135,6 +137,7 @@ export function OnboardingNext({ from }: { from: 1 | 2 }) {
 }
 
 export function OnboardingFinish() {
+  const localizedType = useLocalizedType();
   const { complete, saving } = useOnboarding();
   const { t, locale } = useOnboardingText();
   const [failed, setFailed] = useState(false);
@@ -170,6 +173,7 @@ export function OnboardingLink({
   onPress: () => void;
   disabled?: boolean;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <Button

@@ -3,10 +3,11 @@ import { Image, Pressable, StyleSheet, Text } from "react-native";
 import { api } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
 import { useLiveResource } from "@/lib/live-resource";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls } from "@/theme/tokens.json";
 
 export function NotificationBell() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
   const { data } = useLiveResource(api.getUnreadCounts);
