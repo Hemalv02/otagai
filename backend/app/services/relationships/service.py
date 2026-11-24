@@ -99,11 +99,21 @@ class NewGrant:
     consent_witness_user_id: uuid.UUID | None
 
 
-async def _authority_over(session, caller_id: uuid.UUID, member_id: uuid.UUID) -> bool:
+async def _authority_over(
+    session, caller_id: uuid.UUID, member_id: uuid.UUID, *, for_update: bool = False
+) -> bool:
     if caller_id == member_id:
         return True
+    member = await UserRepository(session).get(member_id)
+    if (
+        member is None
+        or member.kind != UserKind.MANAGED.value
+        or member.status != UserStatus.ACTIVE.value
+        or member.created_by_user_id != caller_id
+    ):
+        return False
     grant = await ProxyGrantRepository(session).get_active(
-        member_user_id=member_id, caretaker_user_id=caller_id
+        member_user_id=member_id, caretaker_user_id=caller_id, for_update=for_update
     )
     return grant is not None
 
@@ -174,10 +184,14 @@ async def update_managed_user(
 ) -> User:
     async with database.session() as session:
         users = UserRepository(session)
-        managed = await users.get_for_update(user_id)
-        if managed is None or managed.kind != UserKind.MANAGED.value:
+        if not await _authority_over(session, caretaker.id, user_id, for_update=True):
             raise UserNotFoundError
-        if not await _authority_over(session, caretaker.id, user_id):
+        managed = await users.get_for_update(user_id)
+        if (
+            managed is None
+            or managed.kind != UserKind.MANAGED.value
+            or managed.status != UserStatus.ACTIVE.value
+        ):
             raise UserNotFoundError
         if "languages" in changes or "preferred_language" in changes:
             preferred = str(
@@ -276,7 +290,7 @@ async def revoke_family_link(
 
 async def list_proxy_grants(
     database: Database, user: User, *, as_caretaker: bool
-) -> list[tuple[ProxyGrant, User | None]]:
+) -> list[tuple[ProxyGrant, User | None, bool]]:
     async with database.session() as session:
         repository = ProxyGrantRepository(session)
         grants = (
@@ -288,7 +302,10 @@ async def list_proxy_grants(
         pairs = []
         for grant in grants:
             other_id = grant.member_user_id if as_caretaker else grant.caretaker_user_id
-            pairs.append((grant, await users.get(other_id)))
+            can_change = not as_caretaker or await _authority_over(
+                session, user.id, grant.member_user_id
+            )
+            pairs.append((grant, await users.get(other_id), can_change))
     return pairs
 
 
@@ -299,7 +316,9 @@ async def create_proxy_grant(
     if new_grant.member_user_id == new_grant.caretaker_user_id:
         raise BadRequestError("A person can't be their own caretaker.")
     async with database.session() as session:
-        if not await _authority_over(session, user.id, new_grant.member_user_id):
+        if not await _authority_over(
+            session, user.id, new_grant.member_user_id, for_update=True
+        ):
             raise NotAllowedError("You can't grant proxy over this person.")
         users = UserRepository(session)
         caretaker = await users.get(new_grant.caretaker_user_id)
@@ -334,14 +353,19 @@ async def create_proxy_grant(
 async def _load_manageable_grant(
     session, user: User, grant_id: uuid.UUID
 ) -> ProxyGrant:
-    grant = await ProxyGrantRepository(session).get_for_update(grant_id)
+    repository = ProxyGrantRepository(session)
+    grant = await repository.get(grant_id)
     if grant is None or grant.revoked_at is not None:
         raise GrantNotFoundError
-    allowed = user.id in (
-        grant.member_user_id,
-        grant.caretaker_user_id,
-    ) or await _authority_over(session, user.id, grant.member_user_id)
-    if not allowed:
+    # Lock the creator's grant before the grant being changed.
+    if not await _authority_over(
+        session, user.id, grant.member_user_id, for_update=True
+    ):
+        if user.id == grant.caretaker_user_id:
+            raise NotAllowedError("Only the person who gave access can change it.")
+        raise GrantNotFoundError
+    grant = await repository.get_for_update(grant_id)
+    if grant is None or grant.revoked_at is not None:
         raise GrantNotFoundError
     return grant
 
@@ -359,20 +383,24 @@ async def update_proxy_grant(
 async def revoke_proxy_grant(
     database: Database, user: User, grant_id: uuid.UUID
 ) -> ProxyGrant:
-    now = datetime.now(UTC)
     async with database.session() as session:
         repository = ProxyGrantRepository(session)
+        grant = await repository.get(grant_id)
+        if grant is None:
+            raise GrantNotFoundError
+        allowed = user.id in (
+            grant.member_user_id,
+            grant.caretaker_user_id,
+        ) or await _authority_over(
+            session, user.id, grant.member_user_id, for_update=True
+        )
+        if not allowed:
+            raise GrantNotFoundError
         grant = await repository.get_for_update(grant_id)
         if grant is None:
             raise GrantNotFoundError
         if grant.revoked_at is not None:
             return grant
-        allowed = user.id in (
-            grant.member_user_id,
-            grant.caretaker_user_id,
-        ) or await _authority_over(session, user.id, grant.member_user_id)
-        if not allowed:
-            raise GrantNotFoundError
         return await repository.update(
-            grant, {"revoked_at": now, "revoked_by_user_id": user.id}
+            grant, {"revoked_at": datetime.now(UTC), "revoked_by_user_id": user.id}
         )

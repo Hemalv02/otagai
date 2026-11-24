@@ -9,11 +9,13 @@ import { controls } from "@/theme/tokens.json";
 
 export function ActivityToggle({
   label,
+  hint,
   value,
   disabled,
   onChange,
 }: {
   label: string;
+  hint?: string;
   value: boolean;
   disabled?: boolean;
   onChange: (value: boolean) => void;
@@ -34,6 +36,7 @@ export function ActivityToggle({
       {...keyboardProps}
       accessibilityRole="switch"
       accessibilityLabel={label}
+      accessibilityHint={hint}
       accessibilityState={{ checked: value, disabled }}
       aria-checked={value}
       aria-disabled={disabled}

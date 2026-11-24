@@ -46,7 +46,7 @@ function toResult(error: unknown): RequestsResult {
   );
 }
 
-export function useFamily() {
+export function useFamily(resetKey?: string) {
   const { profile } = useSession();
   const selfId = profile.status === "ready" ? profile.profile.id : null;
   const selfName =
@@ -60,6 +60,13 @@ export function useFamily() {
     name: string;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [seenReset, setSeenReset] = useState(resetKey);
+  if (resetKey !== seenReset) {
+    setSeenReset(resetKey);
+    setSelectedId(null);
+    setEntry(null);
+    setLostAccess(null);
+  }
   const sourcesVersion = useRef(0);
 
   const overview = useMemo(

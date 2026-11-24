@@ -95,6 +95,9 @@ from app.routes.relationships.route import (
     neighbours_router,
 )
 from app.routes.requests.route import (
+    destinations_router as request_destinations_router,
+)
+from app.routes.requests.route import (
     me_requests_router,
     received_router,
 )
@@ -263,6 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(my_listings_router)
     app.include_router(requests_router)
     app.include_router(me_requests_router)
+    app.include_router(request_destinations_router)
     app.include_router(received_router)
     app.include_router(exchanges_router)
     app.include_router(my_exchanges_router)

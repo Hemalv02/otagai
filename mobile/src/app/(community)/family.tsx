@@ -1,6 +1,12 @@
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import {
+  LinkReviewSheet,
+  type ReviewedLink,
+} from "@/components/family-link-sheet";
 import {
   AccountList,
   AccountSkeleton,
@@ -10,10 +16,12 @@ import {
 } from "@/components/family-ui";
 import { Button, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
+import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
 import { type FamilyAccount, statusLinks } from "@/lib/family-state";
 import { useMemberships } from "@/lib/memberships";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useSession } from "@/lib/session";
 import { type FamilyState, useFamily } from "@/lib/use-family";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -22,8 +30,11 @@ type ReadyFamily = Extract<FamilyState, { status: "ready" }>;
 export default function FamilyScreen() {
   const { locale } = useOnboardingText();
   const copy = familyCopy[locale];
-  const family = useFamily();
+  const params = useLocalSearchParams<{ account?: string; at?: string }>();
+  const family = useFamily(params.account === "self" ? params.at : undefined);
   const { state } = family;
+  const { session } = useSession();
+  const [reviewing, setReviewing] = useState<ReviewedLink | null>(null);
   const memberships = useMemberships();
   const circle =
     memberships.state.status === "ready"
@@ -70,10 +81,20 @@ export default function FamilyScreen() {
           circleName={circleName}
           lostAccess={family.lostAccess}
           onSelect={family.select}
+          onReviewLink={(link) =>
+            setReviewing({ id: link.id, name: link.name })
+          }
           onRefresh={() => void family.refresh()}
           onRetryRequests={family.retryRequests}
         />
       )}
+      <LinkReviewSheet
+        link={reviewing}
+        authUserId={session?.user.id ?? null}
+        onClose={() => setReviewing(null)}
+        onChanged={() => void family.refresh()}
+        locale={locale}
+      />
     </CommunityScreen>
   );
 }
@@ -84,6 +105,7 @@ function ReadyContent({
   circleName,
   lostAccess,
   onSelect,
+  onReviewLink,
   onRefresh,
   onRetryRequests,
 }: {
@@ -92,11 +114,15 @@ function ReadyContent({
   circleName: string | null;
   lostAccess: string | null;
   onSelect: (accountId: string) => void;
+  onReviewLink: (link: { id: string; name: string }) => void;
   onRefresh: () => void;
   onRetryRequests: () => void;
 }) {
   const localizedType = useLocalizedType();
   const copy = familyCopy[locale];
+  const consent = familyConsentCopy[locale];
+  const label = localizedType("field-label", locale);
+  const selected = state.selected;
   const hasFamily = state.accounts.length > 1 || state.links.length > 0;
 
   return (
@@ -118,6 +144,7 @@ function ReadyContent({
         selectedId={state.selected.id}
         circleName={circleName}
         onSelect={onSelect}
+        onReviewLink={onReviewLink}
         locale={locale}
       />
       {hasFamily ? null : (
@@ -143,6 +170,19 @@ function ReadyContent({
             ? copy.yourRequests
             : copy.theirRequests(state.selected.name)}
         </Text>
+        {!selected.isSelf && selected.canPostRequests ? (
+          <Button
+            label={consent.home.askFor(selected.name)}
+            labelStyle={label}
+            variant="outline"
+            onPress={() =>
+              router.push({
+                pathname: "/family/ask/[memberId]",
+                params: { memberId: selected.id },
+              })
+            }
+          />
+        ) : null}
         <RequestsBody
           account={state.selected}
           requests={state.requests}
@@ -151,6 +191,17 @@ function ReadyContent({
           onRetry={onRetryRequests}
         />
       </View>
+      <Button
+        label={consent.home.permissions}
+        labelStyle={label}
+        variant="text"
+        onPress={() => router.push("/family/permissions")}
+      />
+      <Button
+        label={consent.home.addMember}
+        labelStyle={localizedType("button", locale)}
+        onPress={() => router.push("/family/add")}
+      />
     </>
   );
 }

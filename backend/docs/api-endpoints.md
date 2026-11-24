@@ -512,14 +512,15 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 | `GET /users/me/neighbours` | Everyone I've exchanged with, most recent activity first, with the pair balance | 200 | 31 | MVP |
 | `POST /managed-users` | Create a managed account with no phone, plus its proxy grant (consent method and witness) | 201 | 34 | MVP |
 | `PATCH /managed-users/{user_id}` | A caretaker edits a managed person's profile | 200 | 34 | MVP |
-| `GET /users/me/family-links` | My family links, both pending and accepted | 200 | 33 | MVP |
-| `POST /family-links` | Link to an existing user (relation and an invite code). Pending until they accept | 201 | 34 | MVP |
+| `GET /users/me/family-links` | My family links, both pending and accepted. `other` includes `kind` (`self` or `managed`) | 200 | 33 | MVP |
+| `POST /family-links` | Link to an existing user by their member ID (`relative_user_id`) and relation. `invite_code` is accepted but not redeemed. Pending until they accept; accepting grants no access by itself | 201 | 34 | MVP |
 | `POST /family-links/{link_id}/accept` | The other person accepts | 200 | 34 | MVP |
 | `POST /family-links/{link_id}/revoke` | Either person ends the link | 200 | 34 | MVP |
-| `GET /users/me/proxy-grants?as=caretaker\|member` | People I can act for, with their scopes (feeds the account switcher), or the people who can act for me | 200 | 33, 35 | MVP |
-| `POST /proxy-grants` | Give someone proxy rights over me, or over a managed person I care for | 201 | 35 | MVP |
-| `PATCH /proxy-grants/{grant_id}` | Change the scopes (post requests, chat, thank and pay, see activity, manage listings) | 200 | 35 | MVP |
+| `GET /users/me/proxy-grants?as=caretaker\|member` | People I can act for, with their scopes (feeds the account switcher), or the people who can act for me. `other` includes `kind`, and `can_change_scopes` says whether the caller may change that grant | 200 | 33, 35 | MVP |
+| `POST /proxy-grants` | Give someone proxy rights over me, or over a managed person I care for. Only the member, or the caretaker who created a managed member, can pass access on (403 otherwise) | 201 | 35 | MVP |
+| `PATCH /proxy-grants/{grant_id}` | Change the scopes (post requests, chat, thank and pay, see activity, manage listings). Only the member, or the caretaker who created a managed member, can change them; any other caretaker gets 403 | 200 | 35 | MVP |
 | `POST /proxy-grants/{grant_id}/revoke` | The member or the caretaker ends the grant | 200 | 35 | MVP |
+| `GET /users/me/request-destinations` | Approved circles a request can be sent to. With `X-Acting-For: <member_id>`, the member's approved circles; needs `can_post_requests` (403 without it, or when the grant is missing or revoked) | 200 | 36 | MVP |
 
 ## 13. Notifications
 
