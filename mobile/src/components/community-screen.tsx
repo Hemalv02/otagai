@@ -45,6 +45,7 @@ type CommunityScreenProps = PropsWithChildren<{
   scrollRef?: Ref<ComponentRef<typeof ScrollView>>;
   onContentSizeChange?: (width: number, height: number) => void;
   showDemoPreview?: boolean;
+  banner?: ReactNode;
   fixedTitle?: boolean;
   compactTitle?: boolean;
   refreshControl?: ReactElement<RefreshControlProps>;
@@ -117,6 +118,7 @@ export function CommunityScreen({
   scrollRef,
   onContentSizeChange,
   showDemoPreview = true,
+  banner,
   fixedTitle = false,
   compactTitle = false,
   refreshControl,
@@ -259,6 +261,7 @@ export function CommunityScreen({
           </Text>
         </View>
       ) : null}
+      {banner}
       {fixedTitle ? heading : null}
       <KeyboardAvoidingView
         style={styles.flex}

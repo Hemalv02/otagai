@@ -11,6 +11,7 @@ export type FamilyAccount = {
   name: string;
   isSelf: boolean;
   canViewActivity: boolean;
+  canPostRequests: boolean;
 };
 
 export type LinkStanding =
@@ -82,12 +83,14 @@ export function buildFamilyOverview(
       name: self.display_name,
       isSelf: true,
       canViewActivity: true,
+      canPostRequests: true,
     },
     ...Array.from(grantsByMember.values(), (grant) => ({
       id: grant.member_user_id,
       name: grant.other?.display_name ?? "",
       isSelf: false,
       canViewActivity: grant.can_view_activity,
+      canPostRequests: grant.can_post_requests,
     })),
   ];
 

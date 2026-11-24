@@ -82,13 +82,26 @@ test("the signed-in account comes first, then everyone with an active grant", ()
   );
 
   assert.deepEqual(overview.accounts, [
-    { id: "u-yuki", name: "Yuki", isSelf: true, canViewActivity: true },
-    { id: "u-mum", name: "Mum", isSelf: false, canViewActivity: true },
+    {
+      id: "u-yuki",
+      name: "Yuki",
+      isSelf: true,
+      canViewActivity: true,
+      canPostRequests: true,
+    },
+    {
+      id: "u-mum",
+      name: "Mum",
+      isSelf: false,
+      canViewActivity: true,
+      canPostRequests: true,
+    },
     {
       id: "u-grandpa",
       name: "Grandpa",
       isSelf: false,
       canViewActivity: false,
+      canPostRequests: true,
     },
   ]);
 });

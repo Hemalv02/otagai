@@ -135,7 +135,11 @@ function pageQuery(cursor?: string | null) {
   return new URLSearchParams({ limit: "20", ...(cursor ? { cursor } : {}) });
 }
 
-export type ProfileSummary = { id: string; display_name: string };
+export type ProfileSummary = {
+  id: string;
+  display_name: string;
+  kind?: "self" | "managed";
+};
 
 export type FamilyLink = {
   id: string;
@@ -162,6 +166,7 @@ export type ProxyGrant = {
   consented_at: string;
   created_at: string;
   other: ProfileSummary | null;
+  can_change_scopes?: boolean;
 };
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";

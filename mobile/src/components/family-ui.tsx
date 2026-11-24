@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { Button } from "@/components/ui";
 import type { Language, RequestSummary } from "@/lib/api";
+import { familyConsentCopy } from "@/lib/family-consent-copy";
 import { familyCopy } from "@/lib/family-copy";
 import {
   type FamilyAccount,
@@ -18,11 +19,11 @@ type Tone = "action" | "clay" | "secondary";
 const THUMBNAIL_SIZE = 56;
 const STATUS_WIDTH = 92;
 
-function initial(value: string, locale: Language) {
+export function initial(value: string, locale: Language) {
   return Array.from(value.trim())[0]?.toLocaleUpperCase(locale) ?? "?";
 }
 
-function Thumbnail({
+export function Thumbnail({
   letter,
   shape,
   locale,
@@ -46,7 +47,7 @@ function Thumbnail({
   );
 }
 
-function ListRow({
+export function ListRow({
   thumbnail,
   title,
   titleLines,
@@ -94,6 +95,7 @@ export function AccountList({
   selectedId,
   circleName,
   onSelect,
+  onReviewLink,
   locale,
 }: {
   accounts: readonly FamilyAccount[];
@@ -101,9 +103,11 @@ export function AccountList({
   selectedId: string;
   circleName: string | null;
   onSelect: (accountId: string) => void;
+  onReviewLink: (link: StatusLinkRow) => void;
   locale: Language;
 }) {
   const copy = familyCopy[locale];
+  const consent = familyConsentCopy[locale];
 
   return (
     <View style={styles.section}>
@@ -154,12 +158,9 @@ export function AccountList({
       </View>
       {links.length > 0 ? (
         <View style={styles.list}>
-          {links.map((link) => (
-            <View
-              key={link.id}
-              accessible
-              accessibilityLabel={`${link.name}, ${copy.linkDetail[link.standing]}`}
-            >
+          {links.map((link) => {
+            const incoming = link.standing === "pending-incoming";
+            const row = (
               <ListRow
                 thumbnail={
                   <Thumbnail
@@ -171,15 +172,33 @@ export function AccountList({
                 title={link.name}
                 detail={copy.linkDetail[link.standing]}
                 status={
-                  link.standing === "no-permission"
-                    ? copy.linkStatus.noAccess
-                    : copy.linkStatus.pending
+                  incoming
+                    ? consent.home.review
+                    : link.standing === "no-permission"
+                      ? copy.linkStatus.noAccess
+                      : copy.linkStatus.pending
                 }
-                statusTone="clay"
+                statusTone={incoming ? "action" : "clay"}
                 locale={locale}
               />
-            </View>
-          ))}
+            );
+            const label = `${link.name}, ${copy.linkDetail[link.standing]}`;
+            return incoming ? (
+              <Pressable
+                key={link.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${label}, ${consent.home.review}`}
+                onPress={() => onReviewLink(link)}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
+                {row}
+              </Pressable>
+            ) : (
+              <View key={link.id} accessible accessibilityLabel={label}>
+                {row}
+              </View>
+            );
+          })}
         </View>
       ) : null}
     </View>
