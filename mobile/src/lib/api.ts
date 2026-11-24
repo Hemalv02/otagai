@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from "expo/fetch";
 import { Platform } from "react-native";
 
+import type { HomeView } from "@/lib/home-today";
 import { supabase } from "@/lib/supabase";
 
 const apiUrl = process.env.EXPO_PUBLIC_API_URL;
@@ -435,6 +436,7 @@ export const api = {
         body: JSON.stringify({ mark_read: true }),
       },
     ),
+  getHome: () => request<HomeView>("/users/me/home"),
   getPublicProfile: (id: string) =>
     request<{ id: string; display_name: string }>(
       `/users/${encodeURIComponent(id)}`,

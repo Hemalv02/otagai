@@ -6,6 +6,7 @@ import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function ListingRow({
   title,
+  titleLines,
   description,
   detail,
   photo,
@@ -14,6 +15,7 @@ export function ListingRow({
   onPress,
 }: {
   title: string;
+  titleLines?: number;
   description?: string;
   detail?: string;
   photo?: ImageSource;
@@ -42,7 +44,10 @@ export function ListingRow({
         />
       ) : null}
       <View style={styles.rowCopy}>
-        <Text style={[localizedType("field-label", locale), styles.ink]}>
+        <Text
+          numberOfLines={titleLines}
+          style={[localizedType("field-label", locale), styles.ink]}
+        >
           {title}
         </Text>
         {description ? (
