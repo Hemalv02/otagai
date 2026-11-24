@@ -258,7 +258,9 @@ async def create_request_in_session(
                     requester_id, new_request.listing_id, lock=True
                 )
                 if existing is None:
-                    raise
+                    if attempt == 1:
+                        raise
+                    continue
                 if existing.expires_at > now:
                     if existing.kind != new_request.kind:
                         raise OpenListingRequestExistsError(existing.id) from error
@@ -459,7 +461,9 @@ async def widen_request(
         if candidate is None or candidate.requester_user_id != actor.subject_id:
             raise RequestNotFoundError
         if candidate.listing_id is not None:
-            await ListingRepository(session).get_for_update(candidate.listing_id)
+            await ListingRepository(session).get_for_update(
+                candidate.listing_id, no_key_update=True
+            )
         request = await _load_own_request_for_update(session, actor, request_id)
         now = datetime.now(UTC)
         if request.status == RequestStatus.EXPIRED.value or (

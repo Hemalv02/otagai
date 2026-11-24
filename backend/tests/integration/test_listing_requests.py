@@ -471,3 +471,95 @@ async def test_reopening_elapsed_open_listing_request_ignores_itself(client):
     assert widened.status_code == 200, widened.text
     assert widened.json()["id"] == request.json()["id"]
     assert widened.json()["status"] == "open"
+
+
+async def test_duplicate_send_does_not_block_listing_foreign_key_lock(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    first = await _post(client, seeker, _body(listing, owner_id))
+    assert first.status_code == 201, first.text
+    database = Database(_settings())
+    duplicate = None
+    try:
+        async with database.session() as session:
+            await session.execute(
+                text("SELECT id FROM help_requests WHERE id = :id FOR UPDATE"),
+                {"id": uuid.UUID(first.json()["id"])},
+            )
+            duplicate = asyncio.create_task(
+                _post(client, seeker, _body(listing, owner_id))
+            )
+            for _ in range(200):
+                async with database.session() as observer:
+                    waiting = await observer.scalar(
+                        text(
+                            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity "
+                            "WHERE datname = current_database() AND wait_event_type = 'Lock' "
+                            "AND query LIKE '%help_requests%')"
+                        )
+                    )
+                if waiting:
+                    break
+                await asyncio.sleep(0.01)
+            assert waiting, "duplicate request did not wait for the request row"
+            await asyncio.wait_for(
+                session.execute(
+                    text("SELECT id FROM listings WHERE id = :id FOR KEY SHARE"),
+                    {"id": uuid.UUID(listing)},
+                ),
+                timeout=3,
+            )
+        result = await asyncio.wait_for(duplicate, timeout=3)
+        assert result.status_code == 201, result.text
+        assert result.json()["id"] == first.json()["id"]
+    finally:
+        if duplicate is not None and not duplicate.done():
+            duplicate.cancel()
+            await asyncio.gather(duplicate, return_exceptions=True)
+        await database.close()
+
+
+async def test_duplicate_send_retries_if_existing_request_is_matched(
+    client, monkeypatch
+):
+    from app.repositories.requests import RequestRepository
+
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    first = await _post(client, seeker, _body(listing, owner_id))
+    assert first.status_code == 201, first.text
+    path = f"/requests/{first.json()['id']}"
+    offer = await client.post(
+        f"{path}/responses", headers=auth(owner), json={"kind": "offer"}
+    )
+    assert offer.status_code == 201, offer.text
+    lookup_started = asyncio.Event()
+    continue_lookup = asyncio.Event()
+    original = RequestRepository.get_open_for_listing
+
+    async def delayed_lookup(self, *args, **kwargs):
+        if kwargs.get("lock"):
+            lookup_started.set()
+            await continue_lookup.wait()
+        return await original(self, *args, **kwargs)
+
+    monkeypatch.setattr(RequestRepository, "get_open_for_listing", delayed_lookup)
+    duplicate = asyncio.create_task(_post(client, seeker, _body(listing, owner_id)))
+    try:
+        await asyncio.wait_for(lookup_started.wait(), timeout=3)
+        accepted = await asyncio.wait_for(
+            client.post(
+                f"{path}/responses/{offer.json()['id']}/accept", headers=auth(seeker)
+            ),
+            timeout=3,
+        )
+        assert accepted.status_code == 200, accepted.text
+        continue_lookup.set()
+        result = await asyncio.wait_for(duplicate, timeout=3)
+        assert result.status_code == 201, result.text
+        assert result.json()["id"] != first.json()["id"]
+    finally:
+        continue_lookup.set()
+        if not duplicate.done():
+            duplicate.cancel()
+            await asyncio.gather(duplicate, return_exceptions=True)

@@ -353,7 +353,9 @@ async def requestable_listing(
     recipient_id: uuid.UUID,
     kind: str,
 ) -> Listing:
-    listing = await ListingRepository(session).get_for_update(listing_id)
+    listing = await ListingRepository(session).get_for_update(
+        listing_id, no_key_update=True
+    )
     if listing is None:
         raise ListingNotFoundError
     await _require_visible(session, actor, listing)

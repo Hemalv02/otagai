@@ -64,9 +64,14 @@ class ListingRepository:
             return None
         return listing
 
-    async def get_for_update(self, listing_id: uuid.UUID) -> Listing | None:
+    async def get_for_update(
+        self, listing_id: uuid.UUID, *, no_key_update: bool = False
+    ) -> Listing | None:
         listing = await self._session.get(
-            Listing, listing_id, with_for_update=True, populate_existing=True
+            Listing,
+            listing_id,
+            with_for_update={"key_share": True} if no_key_update else True,
+            populate_existing=True,
         )
         if listing is None or listing.status == ListingStatus.DELETED.value:
             return None
