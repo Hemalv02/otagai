@@ -1,0 +1,125 @@
+{
+  "duration": 165,
+  "voice": "af_heart",
+  "lang": "en-us",
+  "cues": [
+    {
+      "start": 0.8,
+      "end": 4.9,
+      "text": "In Nagasaki, one in three people is over sixty-five.",
+      "pronunciation": {
+        "nˌæɡɐsˈæki": "nˌɑːɡəsˈɑːki"
+      }
+    },
+    {
+      "start": 5.3,
+      "end": 9.0,
+      "text": "Here, the hardest part of the day is often a small one."
+    },
+    {
+      "start": 9.6,
+      "end": 12.6,
+      "text": "And asking a neighbour can feel like a burden."
+    },
+    {
+      "start": 13.2,
+      "end": 17.0,
+      "text": "The helpers already live here. Nothing connects them."
+    },
+    {
+      "start": 18.4,
+      "end": 24.2,
+      "text": "Otagai. It means, mutual. Help is close by.",
+      "pronunciation": {
+        "ˈɑːɾɐɡˌaɪ": "oʊtˈɑːɡaɪ"
+      }
+    },
+    {
+      "start": 25.6,
+      "end": 34.4,
+      "text": "First, join your circle. The people in your building, approved by your circle leader."
+    },
+    {
+      "start": 35.4,
+      "end": 42.2,
+      "text": "See what neighbours can lend, and what they're happy to help with."
+    },
+    {
+      "start": 43.0,
+      "end": 54.4,
+      "text": "Tanaka-san says what she needs. Otagai drafts a polite request. She chooses who can see it, then posts it.",
+      "pronunciation": {
+        "ˈɑːɾɐɡˌaɪ": "oʊtˈɑːɡaɪ",
+        "tænˈɑːkəsˌæn": "tɑːnˈɑːkəsˌɑːn"
+      }
+    },
+    {
+      "start": 55.4,
+      "end": 62.3,
+      "text": "It starts with family, then widens, gently. No reply is a quiet no."
+    },
+    {
+      "start": 63.0,
+      "end": 74.4,
+      "text": "Rahim reads it in Bengali. His reply reaches her in Japanese. Then they meet, in person.",
+      "pronunciation": {
+        "ɹˈæhɪm": "ɹɑːhˈiːm"
+      }
+    },
+    {
+      "start": 75.4,
+      "end": 84.6,
+      "text": "Now Rahim wants to put up a shelf. He doesn't know the tool. He just shows the wall.",
+      "pronunciation": {
+        "ɹˈæhɪm": "ɹɑːhˈiːm"
+      }
+    },
+    {
+      "start": 85.4,
+      "end": 94.6,
+      "text": "Tanaka-san has the drill. One photo becomes a listing, and they check the parts together.",
+      "pronunciation": {
+        "tænˈɑːkəsˌæn": "tɑːnˈɑːkəsˌɑːn"
+      }
+    },
+    {
+      "start": 95.4,
+      "end": 104.6,
+      "text": "There are no star ratings here. Only thank-yous, and a quiet record that help goes both ways."
+    },
+    {
+      "start": 105.4,
+      "end": 114.6,
+      "text": "Rahim can ask for help on behalf of his mother, Ammu, in Cumilla. They review permissions together first.",
+      "pronunciation": {
+        "ɹˈæhɪm": "ɹɑːhˈiːm",
+        "kjuːmˈɪlə": "kʊmˈɪlə"
+      }
+    },
+    {
+      "start": 115.4,
+      "end": 124.6,
+      "text": "Circle notices and cleaning days reach every neighbour, in their own language."
+    },
+    {
+      "start": 125.6,
+      "end": 139.6,
+      "text": "And on the hardest day, the same circle checks on each other. One tap. I'm safe, or I need help. Leaders see who needs a hand first."
+    },
+    {
+      "start": 140.6,
+      "end": 151.4,
+      "text": "AI suggests. People decide. Contact details stay private, and anyone can report or block."
+    },
+    {
+      "start": 155.1,
+      "end": 161.0,
+      "text": "Nagasaki already has the helpers. Otagai is the connection.",
+      "speed": 0.94,
+      "pronunciation": {
+        "ˈɑːɾɐɡˌaɪ": "oʊtˈɑːɡaɪ",
+        "nˌæɡɐsˈæki": "nˌɑːɡəsˈɑːki"
+      }
+    }
+  ]
+}
