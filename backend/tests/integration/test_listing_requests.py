@@ -65,6 +65,20 @@ async def _post(client, token, body):
     return await client.post("/requests", headers=auth(token), json=body)
 
 
+async def _elapse(request_id):
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            await session.execute(
+                text(
+                    "UPDATE help_requests SET expires_at = now() - interval '1 second' WHERE id = :request_id"
+                ),
+                {"request_id": uuid.UUID(request_id)},
+            )
+    finally:
+        await database.close()
+
+
 async def test_borrow_request_reaches_owner_with_listing(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
@@ -161,7 +175,7 @@ async def test_wrong_owner_rejected_and_missing_recipient_infers_owner(client):
             "raw_text": "May I borrow it?",
             "lang": "en",
             "listing_id": listing,
-            "ripple_max_stage": "han",
+            "ripple_max_stage": "direct",
         },
     )
     assert missing.status_code == 201, missing.text
@@ -288,11 +302,9 @@ async def test_different_members_can_each_request_the_listing(client):
 async def test_expired_open_request_does_not_block_a_new_one(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
-    stale = await _post(
-        client,
-        seeker,
-        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
-    )
+    stale = await _post(client, seeker, _body(listing, owner_id))
+    assert stale.status_code == 201, stale.text
+    await _elapse(stale.json()["id"])
     assert stale.status_code == 201, stale.text
     fresh = await _post(client, seeker, _body(listing, owner_id))
     assert fresh.status_code == 201, fresh.text
@@ -306,11 +318,9 @@ async def test_expired_open_request_does_not_block_a_new_one(client):
 async def test_reopening_an_expired_request_blocked_by_a_newer_open_one_is_409(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
-    stale = await _post(
-        client,
-        seeker,
-        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
-    )
+    stale = await _post(client, seeker, _body(listing, owner_id))
+    assert stale.status_code == 201, stale.text
+    await _elapse(stale.json()["id"])
     fresh = await _post(client, seeker, _body(listing, owner_id))
     assert fresh.json()["id"] != stale.json()["id"]
     widened = await client.post(
@@ -368,9 +378,12 @@ async def test_request_without_a_listing_has_no_listing_summary(client):
 async def test_reopening_ignores_a_sibling_that_has_already_expired(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
-    past = {"needed_until": "2020-01-01T00:00:00Z"}
-    first = await _post(client, seeker, _body(listing, owner_id, **past))
-    second = await _post(client, seeker, _body(listing, owner_id, **past))
+    first = await _post(client, seeker, _body(listing, owner_id))
+    assert first.status_code == 201, first.text
+    await _elapse(first.json()["id"])
+    second = await _post(client, seeker, _body(listing, owner_id))
+    assert second.status_code == 201, second.text
+    await _elapse(second.json()["id"])
     assert second.json()["id"] != first.json()["id"]
     widened = await client.post(
         f"/requests/{first.json()['id']}/widen", headers=auth(seeker)
@@ -384,11 +397,9 @@ async def test_reopening_ignores_a_sibling_that_has_already_expired(client):
 async def test_reopening_an_expired_request_for_a_paused_listing_is_409(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
-    stale = await _post(
-        client,
-        seeker,
-        _body(listing, owner_id, needed_until="2020-01-01T00:00:00Z"),
-    )
+    stale = await _post(client, seeker, _body(listing, owner_id))
+    assert stale.status_code == 201, stale.text
+    await _elapse(stale.json()["id"])
     fresh = await _post(client, seeker, _body(listing, owner_id))
     cancelled = await client.post(
         f"/requests/{fresh.json()['id']}/cancel", headers=auth(seeker)
@@ -453,17 +464,7 @@ async def test_reopening_elapsed_open_listing_request_ignores_itself(client):
     owner_id = await _profile_id(client, owner)
     request = await _post(client, seeker, _body(listing, owner_id))
     assert request.status_code == 201, request.text
-    database = Database(_settings())
-    try:
-        async with database.session() as session:
-            await session.execute(
-                text(
-                    "UPDATE help_requests SET expires_at = now() - interval '1 second' WHERE id = :request_id"
-                ),
-                {"request_id": uuid.UUID(request.json()["id"])},
-            )
-    finally:
-        await database.close()
+    await _elapse(request.json()["id"])
     widened = await client.post(
         f"/requests/{request.json()['id']}/widen", headers=auth(seeker)
     )
