@@ -7,6 +7,8 @@ import {
   type RequestSummary,
 } from "@/lib/api";
 
+import { type ThankYouChoice, thankYouPayload } from "@/lib/thank-you";
+
 export { isUuid } from "@/lib/uuid";
 
 type Person = { id: string; display_name: string };
@@ -30,6 +32,7 @@ export type ThankYou = {
   note: string | null;
   lang: Language | null;
   gift_type: string;
+  points_amount: number | null;
   created_at: string;
 };
 export type ReportTarget = "user" | "listing" | "message" | "request";
@@ -112,14 +115,12 @@ export function neighbourApi(authUserId: string) {
       note: string,
       lang: Language,
       aiDrafted: boolean,
+      choice: ThankYouChoice,
     ) =>
-      post<ThankYou>("/thank-yous", {
-        exchange_id: exchangeId,
-        gift_type: "note",
-        note,
-        lang,
-        ai_drafted: aiDrafted,
-      }),
+      post<ThankYou>(
+        "/thank-yous",
+        thankYouPayload(exchangeId, note, lang, aiDrafted, choice),
+      ),
     suggest: (
       helpedWith: string,
       language: Language,

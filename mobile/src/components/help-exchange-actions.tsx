@@ -1,4 +1,5 @@
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
+import { router } from "expo-router";
 import { useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
@@ -17,8 +18,10 @@ import {
   helpExchangeStage,
   helpSchedulePatch,
 } from "@/lib/help-exchange-state";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
+import { thankYouHref } from "@/lib/thank-you";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 type Action = "save" | "start" | "confirm" | "refresh";
@@ -47,6 +50,7 @@ export function HelpExchangeActions({
   const [feedback, setFeedback] = useState<string>();
   const inFlight = useRef(false);
   const stage = helpExchangeStage(exchange, viewerId);
+  const thankYou = thankYouHref(exchange, viewerId);
   const otherConfirmed =
     viewerId === exchange.requester_user_id
       ? exchange.helper_confirmed_at
@@ -143,12 +147,19 @@ export function HelpExchangeActions({
           locale={locale}
         />
       ) : null}
-      {stage === "completed" ? (
-        <RequestNotice
-          title={copy.complete}
-          detail={copy.completeDetail}
-          locale={locale}
-        />
+      {thankYou ? (
+        <>
+          <RequestNotice
+            title={copy.complete}
+            detail={copy.completeDetail}
+            locale={locale}
+          />
+          <Button
+            label={neighbourCopy[locale].sayThanks}
+            labelStyle={label}
+            onPress={() => router.push(thankYou)}
+          />
+        </>
       ) : null}
       {feedback && (!editing || !canEdit) ? (
         <ErrorText>{feedback}</ErrorText>

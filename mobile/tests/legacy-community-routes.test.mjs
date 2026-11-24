@@ -40,7 +40,7 @@ test("legacy exchange links open the appropriate live action for either particip
       chat: "/exchanges/[id]/messages",
       complete: "/exchanges/[id]",
       pickup: "/exchanges/[id]",
-      "thank-you": "/exchanges/[id]",
+      "thank-you": "/exchanges/[id]/thank-you",
     },
     loan: {
       chat: "/loans/[id]/messages",
