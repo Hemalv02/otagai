@@ -18,9 +18,11 @@ export function RequestNotice({
       <Text style={[localizedType("field-label", locale), styles.title]}>
         {title}
       </Text>
-      <Text style={[localizedType("supporting", locale), styles.detail]}>
-        {detail}
-      </Text>
+      {detail ? (
+        <Text style={[localizedType("supporting", locale), styles.detail]}>
+          {detail}
+        </Text>
+      ) : null}
     </View>
   );
 }

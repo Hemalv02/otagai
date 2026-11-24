@@ -72,6 +72,17 @@ class ListingRepository:
             return None
         return listing
 
+    async def get_for_share(self, listing_id: uuid.UUID) -> Listing | None:
+        listing = await self._session.get(
+            Listing,
+            listing_id,
+            with_for_update={"read": True},
+            populate_existing=True,
+        )
+        if listing is None or listing.status == ListingStatus.DELETED.value:
+            return None
+        return listing
+
     def _apply_filters(self, statement: Any, filters: ListingFilters) -> Any:
         if filters.kind:
             statement = statement.where(Listing.kind == filters.kind)
