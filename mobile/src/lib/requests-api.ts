@@ -1,19 +1,10 @@
 import { type Exchange, type Language, type Page, request } from "@/lib/api";
 
 export type RequestStatus =
-  | "open"
-  | "matched"
-  | "in_progress"
-  | "done"
-  | "cancelled"
-  | "expired";
+  "open" | "matched" | "in_progress" | "done" | "cancelled" | "expired";
 export type ResponseKind = "offer" | "question" | "counter_time";
 export type ResponseStatus =
-  | "pending"
-  | "accepted"
-  | "superseded"
-  | "withdrawn"
-  | "expired";
+  "pending" | "accepted" | "superseded" | "withdrawn" | "expired";
 
 export type RequestSummary = {
   id: string;
@@ -23,6 +14,7 @@ export type RequestSummary = {
   lang: Language;
   status: RequestStatus;
   direct_to_user_id: string | null;
+  listing_id: string | null;
   needed_from: string | null;
   needed_until: string | null;
   created_at: string;
@@ -34,6 +26,15 @@ export type RequestDetail = RequestSummary & {
   my_response_status: ResponseStatus | null;
   my_response_id: string | null;
   exchange_id: string | null;
+};
+
+export type NewDirectRequest = {
+  kind: "borrow" | "help";
+  raw_text: string;
+  lang: Language;
+  listing_id: string;
+  direct_to_user_id: string;
+  ripple_max_stage: "direct";
 };
 
 export type IncomingRequest = {
@@ -83,6 +84,15 @@ function post<T>(path: string, body?: object) {
 }
 
 export const requestsApi = {
+  create: (
+    body: NewDirectRequest,
+    options: { authUserId?: string; signal?: AbortSignal } = {},
+  ) =>
+    request<RequestDetail>("/requests", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   mine: (cursor?: string) => page<RequestSummary>("/users/me/requests", cursor),
   incoming: (cursor?: string) =>
     page<IncomingRequest>("/users/me/received-requests", cursor),

@@ -8,6 +8,8 @@ import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
 import { api } from "@/lib/api";
 import { lendingCopy } from "@/lib/lending-copy";
+import { listingRequestState } from "@/lib/listing-request";
+import { listingRequestCopy } from "@/lib/listing-request-copy";
 import {
   availabilityLabel,
   createLatestRequest,
@@ -72,7 +74,9 @@ export default function ToolListingScreen() {
 
   const view = account ? detailView(state, current) : "auth";
   const listing =
-    view === "loaded" && state.status === "loaded" && isCurrentDetail(state, current)
+    view === "loaded" &&
+    state.status === "loaded" &&
+    isCurrentDetail(state, current)
       ? state.listing
       : null;
 
@@ -120,6 +124,17 @@ export default function ToolListingScreen() {
   }
 
   const own = isListingOwner(listing, profileId);
+  const requestState = listingRequestState(listing, profileId);
+  const requestCopy = listingRequestCopy[locale];
+  const readOnlyMessage =
+    requestState.mode === "readOnly"
+      ? {
+          own: requestCopy.ownListing,
+          paused: requestCopy.pausedReadOnly,
+          lent_out: requestCopy.lentOutReadOnly,
+          noOwner: requestCopy.noOwner,
+        }[requestState.reason]
+      : null;
   const skill = listing.kind === "skill";
   const photos = photoUrls(listing);
   const lendState = availabilityLabel(listing, copy);
@@ -185,7 +200,11 @@ export default function ToolListingScreen() {
         detail={
           own
             ? availabilityDetail || copy.noAvailabilityNote
-            : [availabilityDetail, readCopy.readOnly]
+            : [
+                availabilityDetail,
+                readOnlyMessage,
+                requestState.mode === "readOnly" ? readCopy.readOnly : null,
+              ]
                 .filter(Boolean)
                 .join("\n")
         }
@@ -198,6 +217,26 @@ export default function ToolListingScreen() {
           onPress={() => router.push("/my-listings")}
         />
       ) : null}
+      {requestState.mode === "actions"
+        ? requestState.actions.map((kind) => (
+            <Button
+              key={kind}
+              label={
+                kind === "borrow"
+                  ? requestCopy.askToBorrow
+                  : requestCopy.askForHelp
+              }
+              labelStyle={localizedType("button", locale)}
+              disabled={!profileId}
+              onPress={() =>
+                router.push({
+                  pathname: "/listing-request/[id]",
+                  params: { id: listing.id, kind },
+                })
+              }
+            />
+          ))
+        : null}
     </CommunityScreen>
   );
 }

@@ -16,9 +16,12 @@ from app.database.models.enums import (
     MediaVariantName,
 )
 from app.repositories.ai_runs import AiRunRepository
+from app.repositories.categories import CategoryRepository
 from app.repositories.media import MediaRepository
+from app.services.ai import helpers
 from app.services.ai.service import AIDraftError
 from app.services.errors import NotFoundError, ServiceConfigurationError, ServiceError
+from app.services.media.service import MediaNotFoundError, ready_image_data_url
 from app.services.ratelimit import enforce
 from app.services.storage.service import Storage
 from app.settings import Settings
@@ -49,6 +52,77 @@ class VoiceNotFoundError(NotFoundError):
 
 class Transcript(BaseModel):
     text: str
+
+
+class ListingPhotoNotFoundError(NotFoundError):
+    def __init__(self) -> None:
+        super().__init__("Listing photo not found.")
+
+
+async def suggest_listing(
+    database: Database,
+    redis,
+    storage: Storage,
+    settings: Settings,
+    user: User,
+    body: helpers.ListingDraftInput,
+) -> helpers.ListingDraft:
+    async with database.session() as session:
+        categories = await CategoryRepository(session).list_all("tool")
+    image_url = None
+    if body.image_media_id is not None:
+        try:
+            image_url = await ready_image_data_url(
+                database, storage, settings, user.id, body.image_media_id, "listing"
+            )
+        except MediaNotFoundError:
+            raise ListingPhotoNotFoundError from None
+
+    async def produce() -> helpers.ListingDraft:
+        suggestion = await helpers.draft_listing(
+            settings,
+            body,
+            image_url=image_url,
+            categories=[
+                (item.slug, item.names.get("en") or item.slug) for item in categories
+            ],
+        )
+        category = next(
+            (item for item in categories if item.slug == suggestion.category_slug), None
+        )
+        risky = bool(category and category.is_risky)
+        title = suggestion.title.strip()[:120]
+        parts = []
+        seen = set()
+        for value in suggestion.parts:
+            label = value.strip()[:120]
+            if label and label.casefold() not in seen:
+                seen.add(label.casefold())
+                parts.append(label)
+        return helpers.ListingDraft(
+            recognized=suggestion.recognized and bool(title),
+            title=title,
+            category_hint=suggestion.category_hint[:200],
+            category_id=category.id if category else None,
+            category_is_risky=risky,
+            parts=parts[:30],
+            safety_notes=suggestion.safety_notes.strip()[:2000]
+            if suggestion.safety_notes
+            else None,
+            suggested_lend_mode="help_only"
+            if risky
+            else suggestion.suggested_lend_mode,
+        )
+
+    return await run_feature(
+        database,
+        redis,
+        settings,
+        user,
+        feature=AiFeature.PHOTO_LISTING,
+        input_payload=body.model_dump(mode="json"),
+        produce=produce,
+    )
 
 
 async def run_feature[Output: BaseModel](

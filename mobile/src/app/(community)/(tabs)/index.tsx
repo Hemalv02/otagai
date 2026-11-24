@@ -1,7 +1,13 @@
 import { router, useFocusEffect } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
 import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
@@ -242,6 +248,18 @@ function CircleHome({ circleName }: { circleName: string }) {
       eyebrow={circleName}
       titleAction={<NotificationBell />}
       inlineTitleAction
+      refreshControl={
+        <RefreshControl
+          refreshing={today.loading && profile.status === "ready"}
+          tintColor={colors.action}
+          onRefresh={() => {
+            retryNearby();
+            void (profile.status === "ready"
+              ? today.reload()
+              : reloadProfile());
+          }}
+        />
+      }
     >
       <View style={styles.actions}>
         <Button

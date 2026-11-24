@@ -1,6 +1,12 @@
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { AssistantSheet } from "@/components/assistant-widgets";
 import { CommunityScreen } from "@/components/community-screen";
@@ -8,7 +14,8 @@ import { DemoRequestDetail } from "@/components/demo-request-detail";
 import { RequestNotice } from "@/components/request-notice";
 import { RequestResponseForm } from "@/components/request-response-form";
 import { Button, ErrorText } from "@/components/ui";
-import { ApiError, type Page } from "@/lib/api";
+import { api, ApiError, type Page } from "@/lib/api";
+import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { assistantError, assistantApi } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
@@ -47,6 +54,7 @@ function LiveRequestDetail({ id }: { id: string }) {
   const live = liveRequestCopy[locale];
   const words = assistantCopy[locale];
   const [detail, setDetail] = useState<RequestDetail | null>(null);
+  const [listingTitle, setListingTitle] = useState<string | null>(null);
   const [responses, setResponses] = useState<Page<RequestResponse> | null>(
     null,
   );
@@ -82,6 +90,17 @@ function LiveRequestDetail({ id }: { id: string }) {
       const data = await requestsApi.detail(id);
       if (current !== version.current) return;
       setDetail(data);
+      setListingTitle(null);
+      if (data.listing_id) {
+        void api
+          .getListing(data.listing_id)
+          .then((listing) => {
+            if (current === version.current) setListingTitle(listing.title);
+          })
+          .catch(() => {
+            if (current === version.current) setListingTitle(null);
+          });
+      }
       if (data.my_role === "requester") {
         try {
           const page = await requestsApi.responses(id);
@@ -307,6 +326,24 @@ function LiveRequestDetail({ id }: { id: string }) {
       }
     >
       <View style={styles.card}>
+        {listingTitle && detail.listing_id ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={listingTitle}
+            onPress={() =>
+              router.push({
+                pathname: "/tools/[id]",
+                params: { id: detail.listing_id! },
+              })
+            }
+          >
+            <RequestNotice
+              title={listingRequestCopy[locale].requestedListing}
+              detail={listingTitle}
+              locale={locale}
+            />
+          </Pressable>
+        ) : null}
         {!owns && requesterName ? (
           <Text style={[supporting, styles.secondary]}>
             {live.postedBy} · {requesterName}

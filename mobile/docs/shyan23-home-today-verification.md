@@ -1,5 +1,21 @@
 # Home Today verification
 
+## Brief completion follow-up
+
+Source review on 2026-11-24 confirmed that Today reads `GET /users/me/home`,
+renders only live request and due-exchange IDs, and retains the meaningful
+empty state, error Retry, Browse, notification bell, and Family entry.
+Home now also supports pull-to-refresh for Today and nearby listings, so a
+member can refresh incoming requests without leaving the screen.
+
+After this change, `pnpm exec tsc --noEmit` and `pnpm lint` passed. The full
+mobile command `node --experimental-strip-types --test
+--experimental-test-isolation=none tests/*.test.mjs` passed all 115 tests.
+The focused Home Today tests passed all three cases. Node emitted its existing
+experimental TypeScript and implicit ESM warnings. Device interaction and
+two-account native acceptance below remain pending; these automated results
+do not establish iPhone behavior.
+
 Verified on Linux on 2026-11-24 after merging main `583982e` into this branch.
 
 ## Automated checks

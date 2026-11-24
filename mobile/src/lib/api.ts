@@ -164,11 +164,7 @@ export type ProxyGrant = {
 
 export type RequestKind = "borrow" | "help" | "borrow_with_help";
 export type RippleStage =
-  | "direct"
-  | "family"
-  | "han"
-  | "association"
-  | "nearby";
+  "direct" | "family" | "han" | "association" | "nearby";
 
 export type RequestSummary = {
   id: string;
@@ -285,6 +281,17 @@ export type ListingDetail = {
     display_url: string | null;
   }[];
 };
+export type ListingDraft = {
+  recognized: boolean;
+  title: string;
+  category_hint: string;
+  category_id: string | null;
+  category_is_risky: boolean;
+  parts: string[];
+  safety_notes: string | null;
+  suggested_lend_mode: LendMode;
+};
+
 export type CreateListingBody = {
   kind: ListingKind;
   category_id: string;
@@ -292,12 +299,22 @@ export type CreateListingBody = {
   lang: Language;
   lend_mode: "lend" | "help_only";
   media_ids: string[];
+  parts?: { label: string; quantity: number }[];
   description?: string;
   safety_notes?: string;
   availability_note?: string;
 };
 
 export const api = {
+  draftListing: (
+    body: { image_media_id: string; language: Language; description?: string },
+    options?: ListingRequestOptions,
+  ) =>
+    request<ListingDraft>("/ai/listing-drafts", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listListings: (
     params: {
       q?: string;

@@ -10,6 +10,7 @@ from app.database.models.enums import (
     ListingKind,
     ListingStatus,
     MediaPurpose,
+    RequestKind,
 )
 from app.repositories.blocks import BlockRepository
 from app.repositories.categories import CategoryRepository
@@ -46,6 +47,15 @@ class InvalidListingMediaError(BadRequestError):
 class ListingLentOutError(ConflictError):
     def __init__(self) -> None:
         super().__init__("You can't change a listing while it is lent out.")
+
+
+class ListingUnavailableError(ConflictError):
+    def __init__(self) -> None:
+        super().__init__("This listing is no longer available.")
+
+
+class ListingRequestMismatchError(BadRequestError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -315,6 +325,30 @@ async def _require_visible(session, actor: Actor, listing: Listing) -> None:
         actor.subject_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
+
+
+async def requestable_listing(
+    session, actor: Actor, listing_id: uuid.UUID, recipient_id: uuid.UUID, kind: str
+) -> Listing:
+    listing = await ListingRepository(session).get_for_update(listing_id)
+    if listing is None:
+        raise ListingNotFoundError
+    await _require_visible(session, actor, listing)
+    if listing.owner_user_id != recipient_id:
+        raise ListingRequestMismatchError(
+            "The recipient must own the selected listing."
+        )
+    if listing.owner_user_id == actor.subject_id:
+        raise ListingRequestMismatchError("You can't send a request to this person.")
+    if listing.status != ListingStatus.ACTIVE.value:
+        raise ListingUnavailableError
+    if (
+        listing.lend_mode == LendMode.HELP_ONLY.value and kind != RequestKind.HELP.value
+    ) or (listing.lend_mode == LendMode.LEND.value and kind == RequestKind.HELP.value):
+        raise ListingRequestMismatchError(
+            "This listing doesn't offer that kind of request."
+        )
+    return listing
 
 
 async def _validate_media(

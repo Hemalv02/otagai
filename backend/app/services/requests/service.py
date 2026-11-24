@@ -10,7 +10,6 @@ from app.database.models.enums import (
     ConversationKind,
     ExchangeMode,
     ExchangeStatus,
-    ListingStatus,
     MediaPurpose,
     MessageKind,
     NotificationType,
@@ -27,7 +26,6 @@ from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
 from app.repositories.circles import CircleRepository
 from app.repositories.exchanges import ExchangeRepository
-from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.repositories.notifications import NotificationRepository
 from app.repositories.pagination import PageRequest, PageResult
@@ -46,6 +44,10 @@ from app.services.errors import (
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
+)
+from app.services.listings.service import (
+    ListingRequestMismatchError,
+    requestable_listing,
 )
 from app.services.requests.ripple import (
     RippleReceipt,
@@ -183,13 +185,15 @@ async def create_request_in_session(
 
     media_ids = await _validated_media(session, requester_id, new_request.media_ids)
     target_id = new_request.direct_to_user_id
+    listing = None
     if new_request.listing_id is not None:
-        listing = await ListingRepository(session).get(new_request.listing_id)
-        if listing is None or listing.status != ListingStatus.ACTIVE.value:
+        if target_id is None:
+            raise ListingRequestMismatchError("Send a listing request to its owner.")
+        if target_id == requester_id:
             raise RecipientUnreachableError
-        if target_id is not None and target_id != listing.owner_user_id:
-            raise RecipientUnreachableError
-        target_id = listing.owner_user_id
+        listing = await requestable_listing(
+            session, actor, new_request.listing_id, target_id, new_request.kind
+        )
     if target_id is not None:
         if not await audiences.can_send_direct(requester_id, target_id):
             raise RecipientUnreachableError
@@ -203,7 +207,7 @@ async def create_request_in_session(
         "acted_by_user_id": actor.user.id,
         "region": lineage[0].region,
         "kind": new_request.kind,
-        "category_id": new_request.category_id,
+        "category_id": listing.category_id if listing else new_request.category_id,
         "listing_id": new_request.listing_id,
         "direct_to_user_id": target_id,
         "raw_text": new_request.raw_text,

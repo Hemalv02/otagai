@@ -1,0 +1,86 @@
+{
+  "model": "gpt-6.1-terra",
+  "live_model": true,
+  "auth": "test verifier",
+  "storage": "in-memory byte-preserving fixture",
+  "catalog": "disposable PostgreSQL categories",
+  "results": [
+    {
+      "file": "screw_Driver.png",
+      "initial_status": 503,
+      "retry_status": 200,
+      "final_output": {
+        "title": "Flathead screwdriver",
+        "category_hint": "Hand tools",
+        "parts": [
+          "Flathead screwdriver"
+        ],
+        "safety_notes": "Use the correct size and avoid live electrical work.",
+        "suggested_lend_mode": "lend",
+        "recognized": true,
+        "category_id": "9ba86680-fbfe-4373-ad75-935a4e4913c9",
+        "category_is_risky": false
+      },
+      "publish_checks": {
+        "file": "screw_Driver.png",
+        "reused_saved_live_model_draft": true,
+        "additional_model_calls": 0,
+        "edited_title_saved": true,
+        "parts_saved": true,
+        "same_media_reused": true,
+        "lend_mode_saved": true,
+        "my_listings_reloaded": true,
+        "browse_reloaded": true
+      }
+    },
+    {
+      "file": "knifr_image.png",
+      "initial_status": 200,
+      "retry_status": null,
+      "final_output": {
+        "title": "Kitchen cleaver",
+        "category_hint": "Cutting tools and knives",
+        "parts": [
+          "Cleaver with handle"
+        ],
+        "safety_notes": "Sharp blade; handle carefully and keep away from children.",
+        "suggested_lend_mode": "help_only",
+        "recognized": true,
+        "category_id": "9dceeb00-737d-4076-8803-356223fac120",
+        "category_is_risky": true
+      },
+      "publish_checks": {
+        "file": "knifr_image.png",
+        "reused_saved_live_model_draft": true,
+        "additional_model_calls": 0,
+        "edited_title_saved": true,
+        "parts_saved": true,
+        "same_media_reused": true,
+        "lend_mode_saved": true,
+        "my_listings_reloaded": true,
+        "browse_reloaded": true
+      }
+    },
+    {
+      "file": "multiple_tools.png",
+      "initial_status": 200,
+      "retry_status": null,
+      "final_output": {
+        "title": "",
+        "category_hint": "",
+        "parts": [],
+        "safety_notes": null,
+        "suggested_lend_mode": "lend_or_help",
+        "recognized": false,
+        "category_id": null,
+        "category_is_risky": false
+      },
+      "publish_checks": null
+    }
+  ],
+  "limitations": [
+    "First screwdriver request returned503. Retry200 succeeded. Original upstream exception class/status/code was not captured; cause remains unconfirmed.",
+    "Published listing checks reused saved live model drafts and re-uploaded the same sample files in fresh fixture storage; no additional model calls.",
+    "Signed URLs came from a byte-preserving in-memory storage fixture; real object storage, real Supabase auth and iPhone UI were not exercised."
+  ]
+}

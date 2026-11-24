@@ -6,9 +6,25 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
+import { RequestNotice } from "@/components/request-notice";
 import { LendingPhoto } from "@/components/lending-photo";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
-import { api, type CategoryNode, type ListingKind } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type CategoryNode,
+  type ListingKind,
+  type LendMode,
+} from "@/lib/api";
+import { listingDraftCopy } from "@/lib/listing-draft-copy";
+import {
+  emptyDraftFields,
+  isRiskyCategory,
+  listingLendMode,
+  mergeSuggestion,
+  parseParts,
+  suggestionFields,
+} from "@/lib/listing-draft";
 import { myListingsCopy } from "@/lib/my-listings-copy";
 import {
   createLatestRequest,
@@ -42,6 +58,7 @@ export default function AddListingScreen() {
   const { locale } = useOnboardingText();
   const messages = myListingsCopy[locale];
   const copy = lendingCopy[locale];
+  const draftCopy = listingDraftCopy[locale];
   const [categoryQuery, setCategoryQuery] = useState<{
     kind: ListingKind;
     version: number;
@@ -52,6 +69,22 @@ export default function AddListingScreen() {
   const [category, setCategory] = useState("");
   const [description, setDescription] = useState("");
   const [safety, setSafety] = useState("");
+  const [parts, setParts] = useState("");
+  const [lastSuggested, setLastSuggested] = useState(emptyDraftFields);
+  const [suggestedMode, setSuggestedMode] = useState<LendMode | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionMessage, setSuggestionMessage] = useState<string | null>(
+    null,
+  );
+  const currentFields = useRef(emptyDraftFields);
+  useLayoutEffect(() => {
+    currentFields.current = {
+      title: name,
+      categoryId: category,
+      parts,
+      safety,
+    };
+  }, [name, category, parts, safety]);
   const [availability, setAvailability] = useState("");
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [mediaId, setMediaId] = useState<string | null>(null);
@@ -68,7 +101,7 @@ export default function AddListingScreen() {
   const bodyType = localizedType("body", locale);
   const buttonType = localizedType("button", locale);
   const tool = kind === "tool";
-  const busy = picking || saving;
+  const busy = picking || saving || suggesting;
 
   useLayoutEffect(() => {
     function cancelFormWork() {
@@ -79,6 +112,7 @@ export default function AddListingScreen() {
       cancelFormWork();
       setPicking(false);
       setSaving(false);
+      setSuggesting(false);
     });
     return () => {
       unsubscribe();
@@ -117,6 +151,9 @@ export default function AddListingScreen() {
     setCategoryLoad({ state: "loading" });
     setCategoryQuery(({ version }) => ({ kind: next, version: version + 1 }));
     setError(null);
+    setSuggestionMessage(null);
+    setLastSuggested(emptyDraftFields);
+    setSuggestedMode(null);
   }
 
   useEffect(() => {
@@ -129,6 +166,7 @@ export default function AddListingScreen() {
         else if (!result.canceled) {
           setPhoto(result.assets[0]);
           setMediaId(null);
+          setSuggestionMessage(null);
         }
       })
       .catch(() => {
@@ -159,6 +197,7 @@ export default function AddListingScreen() {
       if (stillCurrent() && !result.canceled) {
         setPhoto(result.assets[0]);
         setMediaId(null);
+        setSuggestionMessage(null);
       }
     } catch {
       if (stillCurrent()) setError("photoFailed");
@@ -166,6 +205,102 @@ export default function AddListingScreen() {
       if (request.isCurrent()) {
         working.current = false;
         setPicking(false);
+      }
+    }
+  }
+
+  async function readyMediaId(signal: AbortSignal) {
+    if (!photo || !account) return null;
+    const options = { authUserId: account, signal };
+    return prepareListingMedia({
+      mediaId,
+      signal,
+      upload: async () => {
+        const form = new FormData();
+        form.append("purpose", "listing");
+        if (Platform.OS === "web" && photo.file)
+          form.append("file", photo.file);
+        else form.append("file", new File(photo.uri));
+        return api.uploadListingPhoto(form, options);
+      },
+      getMedia: (id) => api.getMedia(id, options),
+      onAccepted: setMediaId,
+    });
+  }
+
+  async function suggest() {
+    if (
+      working.current ||
+      !account ||
+      !photo ||
+      !tool ||
+      !navigation.isFocused()
+    )
+      return;
+    const request = formRequests.start();
+    const stillCurrent = () => request.isCurrent() && navigation.isFocused();
+    working.current = true;
+    setSuggesting(true);
+    setSuggestionMessage(null);
+    let preparing = true;
+    try {
+      const id = await readyMediaId(request.signal);
+      if (!id || !stillCurrent()) return;
+      preparing = false;
+      const draft = await api.draftListing(
+        {
+          image_media_id: id,
+          language: locale,
+          ...(description.trim() || name.trim()
+            ? {
+                description: [name.trim(), description.trim()]
+                  .filter(Boolean)
+                  .join("\n")
+                  .slice(0, 1000),
+              }
+            : {}),
+        },
+        { authUserId: account, signal: request.signal },
+      );
+      if (!stillCurrent()) return;
+      if (!draft.recognized) {
+        setSuggestionMessage(draftCopy.unclear);
+        return;
+      }
+      const categories =
+        categoryLoad.state === "ready" && categoryLoad.isCurrent()
+          ? categoryLoad.items
+          : [];
+      const next = suggestionFields(draft, categories);
+      const merged = mergeSuggestion(
+        currentFields.current,
+        lastSuggested,
+        next,
+      );
+      setName(merged.title);
+      setCategory(merged.categoryId);
+      setParts(merged.parts);
+      setSafety(merged.safety);
+      setLastSuggested(next);
+      setSuggestedMode(draft.suggested_lend_mode);
+      setSuggestionMessage(
+        draft.category_id && !next.categoryId
+          ? draftCopy.categoryUnmatched
+          : draftCopy.suggestHint,
+      );
+    } catch (error) {
+      if (stillCurrent())
+        setSuggestionMessage(
+          error instanceof ApiError && error.status === 429
+            ? draftCopy.rateLimited
+            : preparing || (error instanceof ApiError && error.status === 404)
+              ? draftCopy.photoNotReady
+              : draftCopy.failed,
+        );
+    } finally {
+      if (request.isCurrent()) {
+        working.current = false;
+        setSuggesting(false);
       }
     }
   }
@@ -190,22 +325,7 @@ export default function AddListingScreen() {
     let preparingPhoto = Boolean(photo);
     let navigating = false;
     try {
-      const id = photo
-        ? await prepareListingMedia({
-            mediaId,
-            signal: request.signal,
-            upload: async () => {
-              const form = new FormData();
-              form.append("purpose", "listing");
-              if (Platform.OS === "web" && photo.file)
-                form.append("file", photo.file);
-              else form.append("file", new File(photo.uri));
-              return api.uploadListingPhoto(form, options);
-            },
-            getMedia: (id) => api.getMedia(id, options),
-            onAccepted: setMediaId,
-          })
-        : null;
+      const id = await readyMediaId(request.signal);
       if (!stillCurrent()) return;
       preparingPhoto = false;
       const listing = await api.createListing(
@@ -214,7 +334,13 @@ export default function AddListingScreen() {
           category_id: category,
           title: name.trim(),
           lang: locale,
-          lend_mode: tool ? "lend" : "help_only",
+          lend_mode: listingLendMode(
+            kind,
+            categoryLoad.items,
+            category,
+            suggestedMode,
+          ),
+          ...(tool ? { parts: parseParts(parts) } : {}),
           media_ids: id ? [id] : [],
           ...(description.trim() ? { description: description.trim() } : {}),
           ...(tool && safety.trim() ? { safety_notes: safety.trim() } : {}),
@@ -261,6 +387,7 @@ export default function AddListingScreen() {
             busy={saving}
             disabled={
               picking ||
+              suggesting ||
               categoryLoad.state !== "ready" ||
               categoryLoad.items.length === 0
             }
@@ -291,7 +418,7 @@ export default function AddListingScreen() {
         }}
         labelStyle={labelType}
         style={bodyType}
-        editable={!busy}
+        editable={!picking && !saving}
         maxLength={120}
       />
       <View style={styles.category}>
@@ -345,7 +472,7 @@ export default function AddListingScreen() {
         )}
       </View>
       <Field
-        label={tool ? copy.includedParts : copy.description}
+        label={copy.description}
         placeholder={
           tool ? copy.toolDescriptionExample : copy.skillDescriptionExample
         }
@@ -353,10 +480,22 @@ export default function AddListingScreen() {
         onChangeText={setDescription}
         labelStyle={labelType}
         style={[bodyType, styles.multiline]}
-        editable={!busy}
+        editable={!picking && !saving}
         multiline
         maxLength={2000}
       />
+      {tool ? (
+        <Field
+          label={draftCopy.includedParts}
+          value={parts}
+          onChangeText={setParts}
+          labelStyle={labelType}
+          style={[bodyType, styles.multiline]}
+          multiline
+          editable={!picking && !saving}
+          maxLength={4000}
+        />
+      ) : null}
       <Field
         label={copy.availabilityOptional}
         placeholder={tool ? copy.pickupExample : copy.skillAvailabilityExample}
@@ -364,7 +503,7 @@ export default function AddListingScreen() {
         onChangeText={setAvailability}
         labelStyle={labelType}
         style={bodyType}
-        editable={!busy}
+        editable={!picking && !saving}
         maxLength={2000}
       />
       {tool ? (
@@ -374,7 +513,7 @@ export default function AddListingScreen() {
           onChangeText={setSafety}
           labelStyle={labelType}
           style={bodyType}
-          editable={!busy}
+          editable={!picking && !saving}
           maxLength={2000}
         />
       ) : null}
@@ -386,6 +525,27 @@ export default function AddListingScreen() {
             caption={copy.photoCaption}
             locale={locale}
           />
+        ) : null}
+        {tool && photo ? (
+          <Button
+            label={
+              suggesting
+                ? draftCopy.suggesting
+                : lastSuggested.title
+                  ? draftCopy.suggestAgain
+                  : draftCopy.suggestDetails
+            }
+            labelStyle={buttonType}
+            onPress={suggest}
+            busy={suggesting}
+            disabled={busy}
+            variant="secondary"
+          />
+        ) : null}
+        {suggestionMessage ? (
+          <Text style={[bodyType, styles.ink]} accessibilityLiveRegion="polite">
+            {suggestionMessage}
+          </Text>
         ) : null}
         <View style={styles.photoActions}>
           <Button
@@ -409,6 +569,7 @@ export default function AddListingScreen() {
               onPress={() => {
                 setPhoto(null);
                 setMediaId(null);
+                setSuggestionMessage(null);
               }}
               disabled={busy}
               variant="text"
@@ -416,6 +577,20 @@ export default function AddListingScreen() {
           ) : null}
         </View>
       </View>
+      {tool &&
+      (suggestedMode === "help_only" ||
+        (categoryLoad.state === "ready" &&
+          isRiskyCategory(categoryLoad.items, category))) ? (
+        <RequestNotice
+          title={draftCopy.riskyTitle}
+          detail={
+            suggestedMode === "help_only"
+              ? draftCopy.suggestedHelpDetail
+              : draftCopy.riskyDetail
+          }
+          locale={locale}
+        />
+      ) : null}
     </CommunityScreen>
   );
 }

@@ -4,6 +4,7 @@ import { registerHooks, stripTypeScriptTypes } from "node:module";
 import test from "node:test";
 
 const apiUrl = new URL("../src/lib/api.ts", import.meta.url);
+const requestsApiUrl = new URL("../src/lib/requests-api.ts", import.meta.url);
 const sessionModule = `data:text/javascript,${encodeURIComponent(`
 export const supabase = { auth: {
   getSession: async () => ({ data: { session: {
@@ -19,6 +20,12 @@ const platformStubs = {
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (
+      context.parentURL === requestsApiUrl.href &&
+      specifier === "@/lib/api"
+    ) {
+      return { url: apiUrl.href, shortCircuit: true };
+    }
     if (context.parentURL === apiUrl.href && platformStubs[specifier]) {
       return { url: platformStubs[specifier], shortCircuit: true };
     }
@@ -28,8 +35,8 @@ const hooks = registerHooks({
     return nextResolve(specifier, context);
   },
   load(url, context, nextLoad) {
-    if (url === apiUrl.href) {
-      const source = readFileSync(apiUrl, "utf8");
+    if (url === apiUrl.href || url === requestsApiUrl.href) {
+      const source = readFileSync(new URL(url), "utf8");
       return {
         format: "module",
         source: stripTypeScriptTypes(source, { mode: "transform" }),
@@ -52,6 +59,7 @@ const skill = {
 
 const originalApiUrl = process.env.EXPO_PUBLIC_API_URL;
 process.env.EXPO_PUBLIC_API_URL = "https://api.example.invalid";
+const { requestsApi } = await import(requestsApiUrl.href);
 const { api, ApiError } = await import(apiUrl.href).finally(() => {
   hooks.deregister();
   if (originalApiUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
@@ -249,6 +257,55 @@ test("canceling while the session is resolving prevents the publish request", as
     },
   });
 
+  await assert.rejects(pending);
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+const listingRequest = {
+  kind: "borrow",
+  raw_text: "May I borrow the drill?",
+  lang: "en",
+  listing_id: "listing-id",
+  direct_to_user_id: "owner-id",
+  ripple_max_stage: "direct",
+};
+
+test("a stalled listing request cannot send under a changed account", async (t) => {
+  const session = Promise.withResolvers();
+  t.mock.method(supabase.auth, "getSession", () => session.promise);
+  const fetch = t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: "sent" }),
+  );
+  const pending = requestsApi.create(listingRequest, {
+    authUserId: "account-1",
+  });
+  session.resolve({
+    data: { session: { access_token: "new-token", user: { id: "account-2" } } },
+  });
+  await assert.rejects(
+    pending,
+    (error) => error instanceof ApiError && error.status === 401,
+  );
+  assert.equal(fetch.mock.callCount(), 0);
+});
+
+test("canceling a stalled listing request prevents the POST", async (t) => {
+  const session = Promise.withResolvers();
+  const controller = new AbortController();
+  t.mock.method(supabase.auth, "getSession", () => session.promise);
+  const fetch = t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: "sent" }),
+  );
+  const pending = requestsApi.create(listingRequest, {
+    authUserId: "account-1",
+    signal: controller.signal,
+  });
+  controller.abort();
+  session.resolve({
+    data: {
+      session: { access_token: "test-token", user: { id: "account-1" } },
+    },
+  });
   await assert.rejects(pending);
   assert.equal(fetch.mock.callCount(), 0);
 });
