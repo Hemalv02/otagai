@@ -1,21 +1,25 @@
+<p align="center">
+  <img src="docs/readme/banner.svg" alt="Otagai お互い, neighbourhood tool and help sharing" width="100%">
+</p>
+
 # Otagai · お互い
 
 **Otagai is a mobile app for borrowing tools, sharing skills, and asking for everyday help within trusted neighbourhood circles.**
 
-## Tsunagu — Update the Way We Connect
+Inspired by Nagasaki and the hackathon theme 繋ぐ (tsunagu, to connect), Otagai makes it easier to ask for a small favour when asking feels like imposing. A resident can draft a polite request, choose who sees it, and coordinate with a neighbour in the same app.
 
-Tsunagu (繋ぐ) means “to connect.” A neighbour may have a drill to lend or time to help carry groceries, but living nearby doesn’t always make it easy to ask. Otagai helps residents start with a trusted circle, agree on the details across languages, and thank the person who helped. With permission, relatives who live elsewhere can also connect a family member with help in their own neighbourhood.
+[What you can do](#what-you-can-do-in-the-app) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Run locally](#run-locally)
 
-[How it works](#how-it-works) · [Screenshots](#screenshots) · [Architecture](#architecture) · [Run locally](#run-locally)
+## What you can do in the app
 
-## How it works
+- **Join your neighbourhood circle.** Create an account with email, then find a building or neighbourhood circle by invitation or location and request membership.
+- **Borrow tools and share skills.** Browse availability and safety notes, request a specific item, or list a tool or skill of your own. A tool photo can provide an editable first draft of a listing.
+- **Ask for everyday help.** Describe what you need by text, voice, or photo. Ask can find tools and people with relevant skills, ask for missing details, or prepare a request you can edit. Send the request directly or let it widen up to the audience you choose.
+- **Offer help and coordinate.** Respond to a neighbour’s request, suggest a time, or use chat to agree on details. Translate individual messages on demand.
+- **Complete an exchange and say thanks.** Both people confirm a tool handover or completed favour. After completion, send a private thank-you.
+- **Help a relative from afar.** With permission, make a request in their neighbourhood circle and see its progress.
 
-1. **Join a circle.** Sign up by email, then find your building or neighbourhood circle by invite or location. Request membership and wait for approval where required.
-2. **Find a tool or ask for help.** Browse the circle’s catalogue, or describe a task in Ask by text or voice. Ask can find tools and people with relevant skills, ask a follow-up question, or prepare an editable request.
-3. **Choose who receives the request.** Send it to one person or start with a small group. The ripple feature can widen delivery while the request is open, up to the audience you chose.
-4. **Arrange and complete the exchange.** Accept an offer and use chat to settle a time and place. For a loan, both people confirm the handover. For a favour, both confirm the task is done. Translate messages as needed and send a thank-you after completion.
-
-Members can publish tools and skills they want to share. A tool photo can fill in a first draft of a listing, which the owner can edit before publishing. In Family, a caregiver can request help in a relative’s circle with permission for that action. The interface is available in English, Japanese, and Bengali.
+The app interface is available in English, Japanese, and Bengali.
 
 ## Screenshots
 
@@ -58,6 +62,12 @@ flowchart TB
 | Infrastructure | Docker Compose, Caddy, Alembic | Runs services, routes HTTPS traffic, and applies database migrations. |
 
 FastAPI owns permissions and state changes. It checks the signed-in user and their circle access before returning Ask results. Posting requires a separate confirmation from the app. Dedicated processes handle ripple delivery and device push. [Architecture and implementation details](docs/architecture.md)
+
+### AI pipeline
+
+[![Otagai AI pipeline for finding help, listing a tool, and checking a tool at pickup](diagrams/otagai-ai-complete-pipeline.png)](diagrams/otagai-ai-complete-pipeline.png)
+
+The first row shows the path to posting a request. Ask may also return a match or a follow-up question. Listing drafts and pickup suggestions are reviewed in the app before publishing or confirming. [AI implementation](docs/architecture.md#ai-and-translation)
 
 ## Run locally
 
