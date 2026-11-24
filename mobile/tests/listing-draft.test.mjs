@@ -7,6 +7,7 @@ import {
   emptyDraftFields,
   isRiskyCategory,
   listingLendMode,
+  listingPhotoContext,
   mergeSuggestion,
   parseParts,
   partsKeptOnPhotoChange,
@@ -215,5 +216,21 @@ test("editing one part does not keep prior unedited photo items", () => {
   assert.equal(
     partsKeptOnPhotoChange(current, old),
     "Drill bits × 3\nCase × 1",
+  );
+});
+
+test("photo context includes manual details and excludes an unchanged generated title", () => {
+  assert.equal(
+    listingPhotoContext("AI drill", "Includes two bits", "AI drill"),
+    "Includes two bits",
+  );
+  assert.equal(
+    listingPhotoContext("My drill", "Includes two bits", "AI drill"),
+    "My drill\nIncludes two bits",
+  );
+  assert.equal(listingPhotoContext("  ", " ", "").length, 0);
+  assert.equal(
+    listingPhotoContext("Manual drill", "x".repeat(1500), "").length,
+    1000,
   );
 });

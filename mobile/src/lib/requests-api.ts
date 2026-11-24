@@ -114,10 +114,11 @@ export const requestsApi = {
     }),
   person: (id: string) => request<{ display_name: string }>(`/users/${id}`),
   exchange: (id: string) => request<ExchangeDetail>(`/exchanges/${id}`),
-  create: (body: NewDirectRequest, authUserId: string) =>
-    request<RequestDetail>("/requests", {
+  create: (body: NewDirectRequest, authUserId: string, signal?: AbortSignal) =>
+    request<RequestSummary>("/requests", {
       method: "POST",
       body: JSON.stringify(body),
       authUserId,
+      signal,
     }),
 };

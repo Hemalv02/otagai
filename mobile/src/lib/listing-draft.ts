@@ -37,6 +37,22 @@ const MAX_LABEL = 120;
 const MAX_PARTS = 30;
 export const MAX_LISTING_DESCRIPTION = 2000;
 
+export function listingPhotoContext(
+  title: string,
+  description: string,
+  suggestedTitle: string,
+) {
+  const reviewedTitle = title.trim();
+  return [
+    reviewedTitle === suggestedTitle.trim() ? "" : reviewedTitle,
+    description.trim(),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1000)
+    .trim();
+}
+
 export function suggestionFields(
   draft: ListingDraft,
   categories: CategoryNode[],
