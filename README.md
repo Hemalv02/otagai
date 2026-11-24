@@ -17,11 +17,19 @@ Members can publish tools and skills they want to share. A tool photo can fill i
 
 ## Screenshots
 
-| Ask finds a neighbour | Browse shows a tool listing | Chat translates a message |
-| --- | --- | --- |
-| [<img src="docs/screenshots/assistant-match.png" alt="Ask shows a neighbour who can help install a shelf" width="220">](docs/screenshots/assistant-match.png) | [<img src="docs/screenshots/tool-listing.png" alt="Cordless-drill listing with a photo, included items, and a safety note" width="220">](docs/screenshots/tool-listing.png) | [<img src="docs/screenshots/chat-translation.png" alt="Exchange chat shows a selected message and its translation" width="220">](docs/screenshots/chat-translation.png) |
+Captured from the app with seeded accounts. Select any screenshot to open it at full size. [Figma design](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai-%C2%B7-Colour-Explorations) · [Screen inventory](screens.md)
 
-*Screenshots from the app with seeded accounts.* [Figma design](https://www.figma.com/design/2UQhMRRDZKIFJZocixVIyt/Otagai-%C2%B7-Colour-Explorations) · [Screen inventory](screens.md)
+### Find and offer help
+
+| Circle home | Tool listing | Ask assistant | Offer help |
+| --- | --- | --- | --- |
+| [<img src="docs/screenshots/circle-home.png" alt="Home with available tools, skills, and neighbourhood requests" width="172">](docs/screenshots/circle-home.png) | [<img src="docs/screenshots/tool-listing.png" alt="Cordless-drill listing with a photo, included items, and a safety note" width="172">](docs/screenshots/tool-listing.png) | [<img src="docs/screenshots/assistant-match.png" alt="Ask finds a neighbour who can help install a shelf" width="172">](docs/screenshots/assistant-match.png) | [<img src="docs/screenshots/offer-help.png" alt="An open gardening request with actions to ask a question, suggest a time, or offer to help" width="172">](docs/screenshots/offer-help.png) |
+
+### Coordinate and follow through
+
+| Translated chat | Completed exchange | Family requests |
+| --- | --- | --- |
+| [<img src="docs/screenshots/chat-translation.png" alt="Exchange chat displays a Bengali reply and its English translation" width="172">](docs/screenshots/chat-translation.png) | [<img src="docs/screenshots/completed-help.png" alt="Completed help exchange with an option to send a thank-you" width="172">](docs/screenshots/completed-help.png) | [<img src="docs/screenshots/family-assistance.png" alt="Family view shows a selected relative and the option to ask for help on their behalf" width="172">](docs/screenshots/family-assistance.png) |
 
 ## Architecture
 
