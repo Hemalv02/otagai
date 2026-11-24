@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -66,18 +66,18 @@ function ListingRequestFlow({
   const validRoute = isListingId(id) && isListingRequestKind(kind);
 
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [tick, setTick] = useState(0);
   const [requests] = useState(createLatestRequest);
   const [message, setMessage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<ListingRequestError | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!account || !validRoute) {
       requests.cancel();
       return;
     }
     const request = requests.start();
+    setState({ status: "loading" });
     api
       .getListing(id, request.signal, account)
       .then((listing) => {
@@ -88,20 +88,30 @@ function ListingRequestFlow({
           setState({ status: "error", kind: requestApiError(error) });
         }
       });
-    return () => requests.cancel();
-  }, [account, id, validRoute, tick, requests]);
+  }, [account, id, validRoute, requests]);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+      return () => requests.cancel();
+    }, [load, requests]),
+  );
 
   const listing = state.status === "loaded" ? state.listing : null;
   const [existingId, setExistingId] = useState<string | null>(null);
   const sendingRef = useRef(false);
+  const [sendRequests] = useState(createLatestRequest);
   const focus = useRef<symbol | null>(null);
   useFocusEffect(
     useCallback(() => {
       focus.current = Symbol();
       return () => {
         focus.current = null;
+        sendRequests.cancel();
+        sendingRef.current = false;
+        setSending(false);
       };
-    }, []),
+    }, [sendRequests]),
   );
 
   async function send() {
@@ -120,27 +130,32 @@ function ListingRequestFlow({
       setFailure("invalid");
       return;
     }
+    const request = sendRequests.start();
+    const stillCurrent = () =>
+      focus.current === startedOn && request.isCurrent();
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
     setExistingId(null);
     try {
-      const created = await requestsApi.create(body, account);
-      if (focus.current !== startedOn) return;
+      const created = await requestsApi.create(body, account, request.signal);
+      if (!stillCurrent()) return;
       router.replace({
         pathname: "/requests/[id]",
         params: { id: created.id },
       });
     } catch (cause) {
-      if (focus.current !== startedOn) return;
+      if (!stillCurrent()) return;
       const kind = listingRequestError(cause);
       setFailure(kind);
       if (kind === "alreadyOpen" && cause instanceof ApiError) {
         setExistingId(cause.requestId ?? null);
       }
     } finally {
-      sendingRef.current = false;
-      setSending(false);
+      if (stillCurrent()) {
+        sendingRef.current = false;
+        setSending(false);
+      }
     }
   }
 
@@ -181,10 +196,7 @@ function ListingRequestFlow({
               <Button
                 label={copy.retry}
                 labelStyle={buttonType}
-                onPress={() => {
-                  setState({ status: "loading" });
-                  setTick((value) => value + 1);
-                }}
+                onPress={load}
               />
             ) : (
               <Button
