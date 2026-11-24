@@ -33,11 +33,15 @@ export function HelpExchangeActions({
   exchange,
   viewerId,
   actingFor,
+  canManage,
+  canThank,
   onReload,
 }: {
   exchange: Exchange;
   viewerId: string;
   actingFor?: string;
+  canManage: boolean;
+  canThank: boolean;
   onReload: () => Promise<unknown>;
 }) {
   const localizedType = useLocalizedType();
@@ -58,11 +62,13 @@ export function HelpExchangeActions({
       : exchange.requester_confirmed_at;
   const path = `/exchanges/${encodeURIComponent(exchange.id)}`;
   const canEdit =
-    stage === "scheduled" || stage === "confirm" || stage === "waiting";
+    canManage &&
+    (stage === "scheduled" || stage === "confirm" || stage === "waiting");
   const disabled = !authUserId || pending !== undefined;
 
   async function apply(action: Action, changes?: SchedulePatch) {
-    if (inFlight.current || !authUserId) return;
+    if (inFlight.current || !authUserId || (action !== "refresh" && !canManage))
+      return;
     inFlight.current = true;
     setPending(action);
     setFeedback(undefined);
@@ -114,7 +120,7 @@ export function HelpExchangeActions({
           }}
         />
       ) : null}
-      {stage === "scheduled" ? (
+      {canManage && stage === "scheduled" ? (
         <Button
           label={copy.start}
           labelStyle={label}
@@ -123,7 +129,7 @@ export function HelpExchangeActions({
           onPress={() => void apply("start")}
         />
       ) : null}
-      {stage === "confirm" ? (
+      {canManage && stage === "confirm" ? (
         <>
           {otherConfirmed ? (
             <Text
@@ -155,18 +161,28 @@ export function HelpExchangeActions({
             detail={copy.completeDetail}
             locale={locale}
           />
-          <Button
-            label={neighbourCopy[locale].sayThanks}
-            labelStyle={label}
-            onPress={() =>
-              router.push({
-                ...thankYou,
-                params: { ...thankYou.params, ...(actingFor ? { actingFor } : {}) },
-              })
-            }
-          />
-          {!actingFor && authUserId && exchange.requester_user_id === viewerId ? (
-            <ReturnFavourCard exchangeId={exchange.id} authUserId={authUserId} />
+          {canThank ? (
+            <Button
+              label={neighbourCopy[locale].sayThanks}
+              labelStyle={label}
+              onPress={() =>
+                router.push({
+                  ...thankYou,
+                  params: {
+                    ...thankYou.params,
+                    ...(actingFor ? { actingFor } : {}),
+                  },
+                })
+              }
+            />
+          ) : null}
+          {!actingFor &&
+          authUserId &&
+          exchange.requester_user_id === viewerId ? (
+            <ReturnFavourCard
+              exchangeId={exchange.id}
+              authUserId={authUserId}
+            />
           ) : null}
         </>
       ) : null}

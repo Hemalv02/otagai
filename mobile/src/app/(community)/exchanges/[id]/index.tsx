@@ -61,7 +61,7 @@ export default function LiveExchangeScreen() {
             : exchange.requester_user_id;
         const [request, person] = await Promise.all([
           requestsApi.detail(exchange.request_id, actingFor),
-          requestsApi.person(other).catch(() => null),
+          requestsApi.person(other, actingFor).catch(() => null),
         ]);
         if (current === version.current)
           setSummary({ exchange, request, name: person?.display_name });
@@ -138,11 +138,13 @@ export default function LiveExchangeScreen() {
               }
             />
           ) : null}
-          {viewer && (!actingFor || summary.request.can_manage) ? (
+          {viewer ? (
             <HelpExchangeActions
               exchange={summary.exchange}
               viewerId={viewer}
               actingFor={actingFor}
+              canManage={!actingFor || summary.request.can_manage}
+              canThank={summary.request.can_thank}
               onReload={() => load(true)}
             />
           ) : null}

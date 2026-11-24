@@ -9,6 +9,7 @@ from app.database.models import User
 from app.database.models.enums import MediaVariantName
 from app.repositories.listings import ListingFilters
 from app.routes.dependencies import (
+    ActorDep,
     CurrentUserDep,
     DatabaseDep,
     OptionalStorageDep,
@@ -20,7 +21,7 @@ from app.routes.listings.route import ListingSummary, listing_summary
 from app.routes.pagination import Page, PageQuery
 from app.routes.requests.route import RequestSummary
 from app.routes.thanks.route import ThankYouModel, WallThankYouModel
-from app.services.actors.service import Actor
+from app.services.actors.service import Actor, ProxyScope
 from app.services.listings.service import list_user_listings
 from app.services.media.service import MediaNotFoundError, read_media
 from app.services.users.profiles import (
@@ -76,14 +77,15 @@ def _self_actor(user: User) -> Actor:
 @router.get("/{user_id}")
 async def read_user(
     user_id: uuid.UUID,
-    user: CurrentUserDep,
+    actor: ActorDep,
     database: DatabaseDep,
     storage: OptionalStorageDep,
     settings: SettingsDep,
 ) -> PublicProfile:
-    target = await get_public_profile(database, user, user_id)
+    actor.require(ProxyScope.VIEW_ACTIVITY)
+    target = await get_public_profile(database, actor.subject, user_id)
     response = PublicProfile.model_validate(target)
-    if not may_see_profile_details(user.id, target):
+    if not may_see_profile_details(actor.subject_id, target):
         return response.model_copy(
             update={
                 "age_band": None,
@@ -95,7 +97,7 @@ async def read_user(
     if storage is not None and target.avatar_media_id is not None:
         try:
             media = await read_media(
-                database, storage, settings, _self_actor(user), target.avatar_media_id
+                database, storage, settings, actor, target.avatar_media_id
             )
         except MediaNotFoundError:
             return response

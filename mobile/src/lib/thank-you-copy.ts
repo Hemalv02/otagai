@@ -3,6 +3,7 @@ import type { Language } from "@/lib/api";
 const en = {
   incomplete:
     "You can send a thank-you after both neighbours confirm the help is complete.",
+  consentRequired: "You need their permission to send a thank-you for them.",
   returnFavour: "Return the favour",
   favourFor: (name: string) =>
     `If you have time, here’s what ${name} could use help with.`,
@@ -27,6 +28,7 @@ export const thankYouCopy: Record<Language, typeof en> = {
   en,
   ja: {
     incomplete: "お二人が助け合いの完了を確認した後にお礼を送れます。",
+    consentRequired: "代理でお礼を送るには、ご本人の許可が必要です。",
     returnFavour: "お返しにお手伝い",
     favourFor: (name) => `時間があれば、${name}のお願いをのぞいてみませんか。`,
     favourDetail: "時間があれば、ご近所の方のお願いをのぞいてみませんか。",
@@ -45,6 +47,7 @@ export const thankYouCopy: Record<Language, typeof en> = {
   },
   bn: {
     incomplete: "দুজনেই সাহায্য শেষ হয়েছে বলে নিশ্চিত করলে ধন্যবাদ পাঠাতে পারবেন।",
+    consentRequired: "তাঁর পক্ষ থেকে ধন্যবাদ পাঠাতে তাঁর অনুমতি লাগবে।",
     returnFavour: "পাল্টা সাহায্য করুন",
     favourFor: (name) => `সময় থাকলে দেখুন, ${name} কোন কাজে সাহায্য চাইছেন।`,
     favourDetail: "সময় থাকলে দেখুন, আপনার প্রতিবেশী কোন কাজে সাহায্য চাইছেন।",

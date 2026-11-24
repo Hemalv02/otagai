@@ -949,6 +949,7 @@ async def test_proxy_request_details_reflect_current_management_scope(client):
     read_only = await client.get(path, headers=headers)
     assert read_only.status_code == 200, read_only.text
     assert read_only.json()["can_manage"] is False
+    assert read_only.json()["can_thank"] is False
     denied = await client.patch(path, headers=headers, json={"polite_text": "Updated"})
     assert denied.status_code == 403, denied.text
     updated = await client.patch(

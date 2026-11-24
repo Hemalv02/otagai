@@ -24,7 +24,7 @@ const packs: Record<Region, CulturePack> = {
     languages: ["bn", "en"],
     currency: "BDT",
     demoProvider: "bKash",
-    demoAmount: 100,
+    demoAmount: 50,
   },
 };
 

@@ -42,7 +42,8 @@ export async function loadExchangeConversation(
 
   let partnerName: string | null = null;
   try {
-    partnerName = (await client.getPublicProfile(partnerId)).display_name;
+    partnerName = (await client.getPublicProfile(partnerId, actingFor))
+      .display_name;
   } catch (error) {
     if (!(
       error instanceof Error &&

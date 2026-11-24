@@ -92,7 +92,7 @@ export function neighbourApi(authUserId: string, actingFor?: string) {
   return {
     neighbours: () => get<{ items: Neighbour[] }>("/users/me/neighbours"),
     profile: (id: string) =>
-      get<PublicNeighbour>(`/users/${encodeURIComponent(id)}`),
+      get<PublicNeighbour>(`/users/${encodeURIComponent(id)}`, actingHeaders),
     pair: (id: string) => get<Pair>(`/users/${encodeURIComponent(id)}/pair`),
     exchanges: (cursor?: string | null) =>
       get<Page<HistoryExchange>>(
@@ -117,7 +117,7 @@ export function neighbourApi(authUserId: string, actingFor?: string) {
         }),
       ),
     request: (id: string) =>
-      get<{ polite_text: string; region: Region }>(
+      get<{ polite_text: string; region: Region; can_thank: boolean }>(
         `/requests/${encodeURIComponent(id)}`,
         actingHeaders,
       ),

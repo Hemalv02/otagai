@@ -143,6 +143,7 @@ class RequestDetail:
     my_role: str
     can_manage: bool
     can_chat: bool
+    can_thank: bool
     my_response_status: str | None
     my_response_id: uuid.UUID | None
     exchange_id: uuid.UUID | None
@@ -366,6 +367,7 @@ async def get_request(
             can_manage=owns_request
             and (actor.grant is None or actor.grant.can_post_requests),
             can_chat=actor.grant is None or actor.grant.can_chat,
+            can_thank=actor.grant is None or actor.grant.can_thank_and_pay,
             my_response_status=live.status if live else None,
             my_response_id=live.id if live else None,
             exchange_id=exchange.id

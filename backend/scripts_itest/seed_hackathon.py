@@ -248,7 +248,12 @@ class DemoSeed:
             if other and other["kind"] == "managed" and other["display_name"] == name:
                 if not all(
                     grant[field]
-                    for field in ("can_post_requests", "can_chat", "can_view_activity")
+                    for field in (
+                        "can_post_requests",
+                        "can_chat",
+                        "can_view_activity",
+                        "can_thank_and_pay",
+                    )
                 ):
                     raise SeedError("Amina's existing permissions were changed.")
                 return grant["member_user_id"]
@@ -268,7 +273,7 @@ class DemoSeed:
                         "can_post_requests": True,
                         "can_chat": True,
                         "can_view_activity": True,
-                        "can_thank_and_pay": False,
+                        "can_thank_and_pay": True,
                         "can_manage_listings": False,
                     },
                 },
@@ -519,6 +524,7 @@ async def seed(config: SeedConfig) -> None:
                 "region": "jp",
                 "age_band": "70s",
                 "intro": "長崎で花や野菜を育てています。",
+                "profile_details_visible": True,
                 "happy_to_help_with": "苗の育て方やベランダ菜園",
             },
             simple_mode=True,
@@ -532,6 +538,7 @@ async def seed(config: SeedConfig) -> None:
                 "region": "jp",
                 "languages": ["bn", "ja", "en"],
                 "intro": "長崎で近所のDIYを手伝っています。",
+                "profile_details_visible": True,
                 "happy_to_help_with": "家具の組み立てと棚の取り付け",
             },
             hobbies="DIYと木工",

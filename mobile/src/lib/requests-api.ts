@@ -41,6 +41,7 @@ export type RequestDetail = RequestSummary & {
   my_role: "requester" | "recipient";
   can_manage: boolean;
   can_chat: boolean;
+  can_thank: boolean;
   my_response_status: ResponseStatus | null;
   my_response_id: string | null;
   exchange_id: string | null;
@@ -132,7 +133,10 @@ export const requestsApi = {
       method: "PATCH",
       body: JSON.stringify({ seen: true }),
     }),
-  person: (id: string) => request<{ display_name: string }>(`/users/${id}`),
+  person: (id: string, actingFor?: string) =>
+    request<{ display_name: string }>(`/users/${id}`, {
+      headers: actingForHeaders(actingFor),
+    }),
   exchange: (id: string, actingFor?: string) =>
     request<ExchangeDetail>(`/exchanges/${id}`, {
       headers: actingForHeaders(actingFor),

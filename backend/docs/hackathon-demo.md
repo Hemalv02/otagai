@@ -28,6 +28,6 @@ The command prints the three account emails and fixture IDs. Sign in with the pr
 1. Sign in as Tanaka in Nagasaki. Her memberships include the port neighbourhood association and its Han 3. Use Assistant to find Rahim’s cordless drill or his shelf-installation help.
 2. Open Tanaka’s completed shelf-moving exchange. The thank-you includes the sender’s permission to share and the recipient’s choice to publish it to Han 3. Rahim’s open request for help watering balcony plants is available as a way to return the favour.
 3. Open the completed exchange’s conversation. Tanaka wrote in Japanese and Rahim replied in Bengali. Use the message translation action after selecting the target language. The environment needs an AI provider configured to generate translations.
-4. Sign in as Rahim and open Family. His managed family member Amina is approved in the Cumilla building and has a request about carrying shopping bags. Select Amina to review or draft a request on her behalf. Sign in as Nusrat, the building leader, to see the request from the local helper’s side.
+4. Sign in as Rahim and open Family. His managed family member Amina is approved in the Cumilla building and has a request about carrying shopping bags. Select Amina to review or draft a request on her behalf. Sign in as Nusrat, the building leader, to see the request from the local helper’s side. Once both sides confirm the help, Rahim can use Amina’s consented thank-you access to show the bKash demo and send a real private note.
 
 The seeded thank-you uses a note. The seed command makes no payments.

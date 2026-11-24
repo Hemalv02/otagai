@@ -93,6 +93,30 @@ function LiveRequestDetail({
   const [form, setForm] = useState<ResponseKind>();
   const [edit, setEdit] = useState<RequestEditKind>();
   const [confirmation, setConfirmation] = useState<RequestConfirmation>();
+  const loadNames = useCallback(
+    async (ids: string[], current: number) => {
+      const people = await Promise.allSettled(
+        [...new Set(ids)].map(
+          async (person) =>
+            [
+              person,
+              (await requestsApi.person(person, actingFor)).display_name,
+            ] as const,
+        ),
+      );
+      if (current !== version.current) return;
+      setNames((existing) => ({
+        ...existing,
+        ...Object.fromEntries(
+          people.flatMap((person) =>
+            person.status === "fulfilled" ? [person.value] : [],
+          ),
+        ),
+      }));
+    },
+    [actingFor],
+  );
+
   const load = useCallback(async () => {
     const current = ++version.current;
     setLoading(true);
@@ -132,25 +156,7 @@ function LiveRequestDetail({
     } finally {
       if (current === version.current) setLoading(false);
     }
-  }, [id, actingFor]);
-
-  async function loadNames(ids: string[], current: number) {
-    const people = await Promise.allSettled(
-      [...new Set(ids)].map(
-        async (person) =>
-          [person, (await requestsApi.person(person)).display_name] as const,
-      ),
-    );
-    if (current !== version.current) return;
-    setNames((existing) => ({
-      ...existing,
-      ...Object.fromEntries(
-        people.flatMap((person) =>
-          person.status === "fulfilled" ? [person.value] : [],
-        ),
-      ),
-    }));
-  }
+  }, [id, actingFor, loadNames]);
 
   useFocusEffect(
     useCallback(() => {

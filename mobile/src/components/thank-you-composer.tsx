@@ -98,6 +98,8 @@ function ExchangeThankYou({
           actingFor && mode === "help" ? null : exchangeLabel(api, exchange),
           findSentNote(api, id),
         ]);
+        if (actingFor && !request?.can_thank && !existing)
+          return { status: "consent-required" } as const;
         if (!actingFor && !person && !existing)
           return { status: "unavailable" } as const;
         return {
@@ -274,6 +276,9 @@ function ExchangeThankYou({
         <ActivityText>
           {mode === "loan" ? copy.incomplete : thanks.incomplete}
         </ActivityText>
+      ) : null}
+      {data.data?.status === "consent-required" ? (
+        <ActivityText>{thanks.consentRequired}</ActivityText>
       ) : null}
       {data.data?.status === "unavailable" ? (
         <ActivityText>{copy.unavailable}</ActivityText>
