@@ -9,7 +9,6 @@ from app.database.models import FamilyLink, PairStats, ProxyGrant, User
 from app.database.models.enums import (
     LinkStatus,
     NotificationType,
-    Region,
     UserKind,
     UserStatus,
 )
@@ -22,13 +21,14 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.pair_stats import PairStatsRepository
 from app.repositories.proxy_grants import DuplicateGrantError, ProxyGrantRepository
 from app.repositories.users import UserRepository
+from app.services.culture_packs import culture_pack_for
 from app.services.errors import (
     BadRequestError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
 )
-from app.services.users.service import REGION_TIMEZONES, ordered_languages
+from app.services.users.service import ordered_languages
 
 
 class UserNotFoundError(NotFoundError):
@@ -174,7 +174,7 @@ async def create_managed_user(
                     profile.preferred_language, profile.languages
                 ),
                 "region": profile.region,
-                "timezone": REGION_TIMEZONES[Region(profile.region)],
+                "timezone": culture_pack_for(profile.region).timezone,
                 "age_band": profile.age_band,
                 "created_by_user_id": caretaker.id,
             }

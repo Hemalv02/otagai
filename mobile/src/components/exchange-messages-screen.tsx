@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ActivityStatus, ActivityText } from "@/components/activity-ui";
+import { TranslationOption } from "@/components/translation-option";
 import { Button, ErrorText } from "@/components/ui";
 import { api, ApiError, type Conversation } from "@/lib/api";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
@@ -330,7 +331,7 @@ function ExchangeChat({
         renderItem={({ item }) => {
           const body = item.deleted
             ? copy.deleted
-            : item.body || copy.attachment;
+            : item.original_body || item.body || copy.attachment;
           if (!item.sender_user_id) {
             return (
               <Text
@@ -345,35 +346,60 @@ function ExchangeChat({
           const sender = item.sender_user_id;
           const canReport = !own && !item.deleted && !!sender;
           return (
-            <Pressable
-              accessible
-              accessibilityLabel={`${own ? copy.you : partnerName}. ${body} ${stamp}`}
-              accessibilityHint={canReport ? reportLabel : undefined}
-              accessibilityActions={
-                canReport ? [{ name: "report", label: reportLabel }] : undefined
-              }
-              onAccessibilityAction={
-                canReport
-                  ? (event) => {
-                      if (event.nativeEvent.actionName === "report" && sender)
-                        openReport(item.id, sender, body);
-                    }
-                  : undefined
-              }
-              onLongPress={
-                canReport && sender
-                  ? () => openReport(item.id, sender, body)
-                  : undefined
-              }
-              style={[styles.message, own && styles.own]}
-            >
-              <Text style={[localizedType("body", locale), styles.ink]}>
-                {body}
-              </Text>
-              <Text style={[localizedType("supporting", locale), styles.stamp]}>
-                {stamp}
-              </Text>
-            </Pressable>
+            <View style={[styles.message, own && styles.own]}>
+              <Pressable
+                accessible
+                accessibilityLabel={`${own ? copy.you : partnerName}. ${body} ${stamp}`}
+                accessibilityHint={canReport ? reportLabel : undefined}
+                accessibilityActions={
+                  canReport
+                    ? [{ name: "report", label: reportLabel }]
+                    : undefined
+                }
+                onAccessibilityAction={
+                  canReport
+                    ? (event) => {
+                        if (event.nativeEvent.actionName === "report" && sender)
+                          openReport(item.id, sender, body);
+                      }
+                    : undefined
+                }
+                onLongPress={
+                  canReport && sender
+                    ? () => openReport(item.id, sender, body)
+                    : undefined
+                }
+              >
+                <Text style={[localizedType("body", locale), styles.ink]}>
+                  {body}
+                </Text>
+                <Text
+                  style={[localizedType("supporting", locale), styles.stamp]}
+                >
+                  {stamp}
+                </Text>
+              </Pressable>
+              {!own &&
+              !item.deleted &&
+              item.kind === "text" &&
+              (item.original_body || item.body) ? (
+                <TranslationOption
+                  key={`${locale}:${item.id}:${item.edited_at}`}
+                  locale={locale}
+                  source={item.lang}
+                  original={body}
+                  load={(target) =>
+                    api.translateChatMessage(
+                      conversation.id,
+                      item.id,
+                      target,
+                      actingFor,
+                    )
+                  }
+                  chooseLanguage
+                />
+              ) : null}
+            </View>
           );
         }}
       />

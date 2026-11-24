@@ -1,7 +1,7 @@
 import {
   actingForHeaders,
+  type ContentLanguage,
   type Exchange,
-  type Language,
   type Page,
   request,
 } from "@/lib/api";
@@ -17,7 +17,7 @@ export type RequestSummary = {
   requester_user_id: string;
   kind: "help" | "borrow" | "borrow_with_help";
   polite_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   status: RequestStatus;
   listing_id: string | null;
   direct_to_user_id: string | null;
@@ -29,7 +29,7 @@ export type RequestSummary = {
 export type NewDirectRequest = {
   kind: "borrow" | "help";
   raw_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   listing_id: string;
   direct_to_user_id: string;
   ripple_max_stage: "direct";
@@ -67,7 +67,7 @@ export type RequestResponse = {
 
 export type SendResponse = {
   kind: ResponseKind;
-  lang: Language;
+  lang: ContentLanguage;
   message?: string;
   proposed_start?: string;
 };

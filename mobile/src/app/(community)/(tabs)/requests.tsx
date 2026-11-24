@@ -5,8 +5,9 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { assistantIcons } from "@/components/assistant-widgets";
 import { CommunityScreen } from "@/components/community-screen";
+import { TranslationOption } from "@/components/translation-option";
 import { Button, ErrorText } from "@/components/ui";
-import { assistantError } from "@/lib/assistant-api";
+import { assistantApi, assistantError } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -143,52 +144,62 @@ export default function RequestsScreen() {
         </View>
       ) : null}
       {rows.map(({ request, seen, my_response_status }) => (
-        <Pressable
-          key={request.id}
-          accessibilityRole="button"
-          onPress={() =>
-            router.push({
-              pathname: "/requests/[id]",
-              params: { id: request.id },
-            })
-          }
-          style={styles.card}
-        >
-          <View style={styles.cardText}>
-            <Text
-              numberOfLines={2}
-              style={[localizedType("body", locale), styles.ink]}
-            >
-              {request.polite_text}
-            </Text>
-            <View style={styles.tags}>
-              <Text style={[supporting, styles.green]}>
-                {live.status[request.status]}
+        <View key={request.id}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              router.push({
+                pathname: "/requests/[id]",
+                params: { id: request.id },
+              })
+            }
+            style={styles.card}
+          >
+            <View style={styles.cardText}>
+              <Text
+                numberOfLines={2}
+                style={[localizedType("body", locale), styles.ink]}
+              >
+                {request.polite_text}
               </Text>
-              {feed === "incoming" && !seen && request.status === "open" ? (
+              <View style={styles.tags}>
                 <Text style={[supporting, styles.green]}>
-                  {live.newRequest}
+                  {live.status[request.status]}
                 </Text>
-              ) : null}
-              {feed === "incoming" && request.direct_to_user_id ? (
-                <Text style={[supporting, styles.secondary]}>
-                  {live.direct}
-                </Text>
-              ) : null}
-              {my_response_status ? (
-                <Text style={[supporting, styles.secondary]}>
-                  {live.responseStatus[my_response_status]}
-                </Text>
-              ) : null}
+                {feed === "incoming" && !seen && request.status === "open" ? (
+                  <Text style={[supporting, styles.green]}>
+                    {live.newRequest}
+                  </Text>
+                ) : null}
+                {feed === "incoming" && request.direct_to_user_id ? (
+                  <Text style={[supporting, styles.secondary]}>
+                    {live.direct}
+                  </Text>
+                ) : null}
+                {my_response_status ? (
+                  <Text style={[supporting, styles.secondary]}>
+                    {live.responseStatus[my_response_status]}
+                  </Text>
+                ) : null}
+              </View>
             </View>
-          </View>
-          <SymbolView
-            name={assistantIcons.next}
-            size={16}
-            tintColor={colors.action}
-            accessible={false}
+            <SymbolView
+              name={assistantIcons.next}
+              size={16}
+              tintColor={colors.action}
+              accessible={false}
+            />
+          </Pressable>
+          <TranslationOption
+            key={`${locale}:${request.lang}:${request.polite_text}`}
+            locale={locale}
+            source={request.lang}
+            original={request.polite_text}
+            load={(target) =>
+              assistantApi.translate(request.polite_text, request.lang, target)
+            }
           />
-        </Pressable>
+        </View>
       ))}
       {error ? (
         <>

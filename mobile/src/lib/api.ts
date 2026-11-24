@@ -23,6 +23,7 @@ export class ApiError extends Error {
 }
 
 export type Language = "ja" | "en" | "bn";
+export type ContentLanguage = Language | "vi";
 export type Region = "jp" | "bd";
 
 export type UserProfile = {
@@ -30,8 +31,8 @@ export type UserProfile = {
   kind: "self" | "managed";
   display_name: string;
   avatar_media_id: string | null;
-  preferred_language: Language;
-  languages: Language[];
+  preferred_language: ContentLanguage;
+  languages: ContentLanguage[];
   region: Region;
   timezone: string;
   age_band: string | null;
@@ -64,7 +65,7 @@ export type UpdateMyProfile = Partial<
 
 export type NewProfile = {
   display_name: string;
-  preferred_language: Language;
+  preferred_language: ContentLanguage;
   region: Region;
   languages?: Language[];
   age_band?: string;
@@ -172,6 +173,9 @@ export type ChatMessage = {
   sender_user_id: string | null;
   kind: string;
   body: string | null;
+  original_body?: string | null;
+  lang: ContentLanguage | null;
+  edited_at: string | null;
   deleted: boolean;
   created_at: string;
 };
@@ -224,7 +228,7 @@ export type RequestSummary = {
   kind: RequestKind;
   status: string;
   polite_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   listing_id: string | null;
   direct_to_user_id: string | null;
   needed_from: string | null;
@@ -349,7 +353,7 @@ export type CreateListingBody = {
   kind: ListingKind;
   category_id: string;
   title: string;
-  lang: Language;
+  lang: ContentLanguage;
   lend_mode: "lend" | "help_only";
   media_ids: string[];
   description?: string;
@@ -549,6 +553,20 @@ export const api = {
       { headers: actingForHeaders(actingFor) },
     );
   },
+  translateChatMessage: (
+    conversationId: string,
+    messageId: string,
+    target: ContentLanguage,
+    actingFor?: string,
+  ) =>
+    request<{ translated: string }>(
+      `/conversations/${conversationId}/messages/${messageId}/translations`,
+      {
+        method: "POST",
+        headers: actingForHeaders(actingFor),
+        body: JSON.stringify({ target_language: target }),
+      },
+    ),
   sendMessage: (
     id: string,
     body: string,

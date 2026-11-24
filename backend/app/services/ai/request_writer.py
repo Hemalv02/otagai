@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.database.models.enums import Language, RequestTone
 from app.services.ai.sanitize import clean_text
 from app.services.ai.service import AIDraftError, draft
+from app.services.culture_packs import culture_pack_for
 from app.settings import Settings
 
 MAX_DRAFT_TEXT = 1500
@@ -124,6 +125,7 @@ async def rewrite_request(
                 **body.model_dump(mode="json", include=set(WordingInput.model_fields)),
                 "language": language,
                 "region": region,
+                "culture": culture_pack_for(region).asking_style,
             },
             ensure_ascii=False,
         ),

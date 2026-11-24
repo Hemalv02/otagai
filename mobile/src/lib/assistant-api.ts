@@ -10,6 +10,7 @@ import { File as ExpoFile } from "expo-file-system";
 import {
   ApiError,
   request as apiRequest,
+  type ContentLanguage,
   type Language,
   type Page,
 } from "@/lib/api";
@@ -30,7 +31,7 @@ export type ListingSummary = {
 
 export type ListingDetail = Omit<ListingSummary, "photo_url"> & {
   description: string | null;
-  lang: Language;
+  lang: ContentLanguage;
   safety_notes: string | null;
   availability_note: string | null;
   max_loan_days: number | null;
@@ -77,7 +78,7 @@ export type AssistantTurn = {
     title: string;
     description: string;
     when_text: string | null;
-    language: Language;
+    language: ContentLanguage;
     tone: RequestTone;
     relationship: DraftRelationship;
     status: "awaiting_confirmation" | "posted";
@@ -99,7 +100,7 @@ export type ConfirmRequest = {
   kind: RequestKind;
   text: string;
   title?: string;
-  language?: Language;
+  language?: ContentLanguage;
   tone?: RequestTone;
   relationship?: DraftRelationship;
   listing_id?: string;
@@ -113,7 +114,7 @@ export type PostedRequest = {
   kind: RequestKind;
   status: "open" | "matched" | "in_progress" | "done" | "cancelled" | "expired";
   polite_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   listing_id: string | null;
   direct_to_user_id: string | null;
 };
@@ -183,7 +184,7 @@ export const assistantApi = {
       paginate(`/assistant/threads/${threadId}/turns`, cursor),
     ),
   send: (body: {
-    language: Language;
+    language: ContentLanguage;
     text?: string;
     image_media_id?: string;
     previous_turn_id?: string;
@@ -211,7 +212,11 @@ export const assistantApi = {
   },
   transcribe: (id: string) =>
     post<{ text: string }>("/ai/transcriptions", { media_id: id }),
-  translate: (text: string, from: Language, to: Language) =>
+  translate: (
+    text: string,
+    from: ContentLanguage | null,
+    to: ContentLanguage,
+  ) =>
     post<{ translated: string }>("/ai/translations", {
       text,
       source_language: from,

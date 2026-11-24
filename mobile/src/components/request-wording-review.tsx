@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { Button, Choice, ErrorText } from "@/components/ui";
-import type { Language } from "@/lib/api";
+import type { ContentLanguage, Language } from "@/lib/api";
 import { useLocalizedType } from "@/lib/onboarding-i18n";
 import {
   draftLanguageNames,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/request-wording";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
-type LanguageChoice = Language | "member";
+type LanguageChoice = ContentLanguage | "member";
 
 export function RequestWordingReview({
   locale,

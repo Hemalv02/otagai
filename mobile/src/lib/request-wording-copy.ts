@@ -1,4 +1,4 @@
-import type { Language } from "./api";
+import type { ContentLanguage } from "./api";
 import type { DraftRelationship } from "./request-wording";
 
 type WordingCopy = {
@@ -14,7 +14,7 @@ type WordingCopy = {
   edited: string;
 };
 
-export const wordingCopy: Record<Language | "vi", WordingCopy> = {
+export const wordingCopy: Record<ContentLanguage, WordingCopy> = {
   en: {
     rewrite: "Rewrite with AI",
     relationship: "Relationship and tone",
@@ -82,9 +82,14 @@ export const wordingCopy: Record<Language | "vi", WordingCopy> = {
   },
 };
 
-export const draftLanguages: readonly Language[] = ["ja", "en", "bn"];
+export const draftLanguages: readonly ContentLanguage[] = [
+  "ja",
+  "en",
+  "bn",
+  "vi",
+];
 
-export const draftLanguageNames: Record<Language | "vi", string> = {
+export const draftLanguageNames: Record<ContentLanguage, string> = {
   ja: "日本語",
   en: "English",
   bn: "বাংলা",

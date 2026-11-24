@@ -13,6 +13,7 @@ import {
 import { Button, ErrorText, Field } from "@/components/ui";
 import { activityCopy } from "@/lib/activity-copy";
 import { ApiError, type Exchange, type Region } from "@/lib/api";
+import { culturePackFor } from "@/lib/culture-packs";
 import { useLiveResource } from "@/lib/live-resource";
 import {
   exchangeLabel,
@@ -33,7 +34,10 @@ import { thankYouCopy } from "@/lib/thank-you-copy";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export function ThankYouComposer({ mode }: { mode: Exchange["mode"] }) {
-  const { id, actingFor } = useLocalSearchParams<{ id: string; actingFor?: string }>();
+  const { id, actingFor } = useLocalSearchParams<{
+    id: string;
+    actingFor?: string;
+  }>();
   const actingId = isUuid(actingFor) ? actingFor : undefined;
   const { session, profile } = useSession();
   const member = profile.status === "ready" ? profile.profile : null;
@@ -42,7 +46,9 @@ export function ThankYouComposer({ mode }: { mode: Exchange["mode"] }) {
       key={`${session?.user.id}:${actingId}:${mode}:${id}`}
       id={id}
       authUserId={session?.user.id ?? ""}
-      profileId={actingFor === undefined ? member?.id ?? "" : actingId ?? ""}
+      profileId={
+        actingFor === undefined ? (member?.id ?? "") : (actingId ?? "")
+      }
       actingFor={actingId}
       mode={mode}
       region={member?.region === "bd" ? "bd" : "jp"}
@@ -123,12 +129,13 @@ function ExchangeThankYou({
   const lock = useRef(false);
   const context = data.data?.status === "ready" ? data.data : null;
   const saved = confirmed ?? context?.existing;
-  const isBangladesh = (context?.region ?? region) === "bd";
-  const culturePack = isBangladesh ? "bangladesh" : "japan";
-  const currency = isBangladesh ? "BDT" : "JPY";
-  const demoProvider = isBangladesh ? "bKash" : "Stripe";
-  const demoAmount = new Intl.NumberFormat(locale, { style: "currency", currency })
-    .format(isBangladesh ? 50 : 500);
+  const pack = culturePackFor(context?.region ?? region);
+  const culturePack = pack.aiPack;
+  const demoProvider = pack.demoProvider;
+  const demoAmount = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: pack.currency,
+  }).format(pack.demoAmount);
   const name = context?.name ?? copy.neighbour;
   const showExchange = () =>
     router.navigate({
@@ -137,7 +144,11 @@ function ExchangeThankYou({
     });
   const options = [
     { value: "note", title: copy.sendNote, detail: copy.privateTo(name) },
-    { value: "points", title: thanks.points(THANK_YOU_POINTS), detail: thanks.pointsDetail },
+    {
+      value: "points",
+      title: thanks.points(THANK_YOU_POINTS),
+      detail: thanks.pointsDetail,
+    },
     { value: "demo", title: thanks.demo, detail: thanks.demoDetail },
   ] as const;
   const unsent = Boolean(note.trim()) && !saved;
@@ -174,9 +185,14 @@ function ExchangeThankYou({
     setError(null);
     try {
       const task = context.title;
-      const describe = mode === "help"
-        ? context.requester ? thanks.draftHelpReceived : thanks.draftHelpGiven
-        : context.requester ? thanks.draftLoanReceived : thanks.draftLoanGiven;
+      const describe =
+        mode === "help"
+          ? context.requester
+            ? thanks.draftHelpReceived
+            : thanks.draftHelpGiven
+          : context.requester
+            ? thanks.draftLoanReceived
+            : thanks.draftLoanGiven;
       const helpedWith = task ? describe(task) : copy.completed;
       const result = await api.suggest(
         helpedWith.slice(0, 500),
@@ -201,7 +217,16 @@ function ExchangeThankYou({
     setBusy("send");
     setError(null);
     try {
-      setConfirmed(await api.sendThankYou(id, note, locale, suggested, choice, allowWallSharing));
+      setConfirmed(
+        await api.sendThankYou(
+          id,
+          note,
+          locale,
+          suggested,
+          choice,
+          allowWallSharing,
+        ),
+      );
     } catch (cause) {
       if (isUnavailable(cause)) {
         await data.reload();
@@ -245,7 +270,9 @@ function ExchangeThankYou({
         retry={data.reload}
       />
       {data.data?.status === "incomplete" ? (
-        <ActivityText>{mode === "loan" ? copy.incomplete : thanks.incomplete}</ActivityText>
+        <ActivityText>
+          {mode === "loan" ? copy.incomplete : thanks.incomplete}
+        </ActivityText>
       ) : null}
       {data.data?.status === "unavailable" ? (
         <ActivityText>{copy.unavailable}</ActivityText>
@@ -257,9 +284,13 @@ function ExchangeThankYou({
               <ActivityText strong>{copy.to(name)}</ActivityText>
               {saved.note ? <ActivityText>{saved.note}</ActivityText> : null}
               {saved.gift_type === "points" ? (
-                <ActivityText>{thanks.points(saved.points_amount ?? THANK_YOU_POINTS)}</ActivityText>
+                <ActivityText>
+                  {thanks.points(saved.points_amount ?? THANK_YOU_POINTS)}
+                </ActivityText>
               ) : null}
-              {confirmed && choice === "demo" ? <ActivityText>{thanks.demoDone}</ActivityText> : null}
+              {confirmed && choice === "demo" ? (
+                <ActivityText>{thanks.demoDone}</ActivityText>
+              ) : null}
             </NeighbourNotice>
             <Button
               label={copy.viewExchange}
@@ -273,11 +304,17 @@ function ExchangeThankYou({
               <NeighbourNotice>
                 <ActivityText strong>{copy.privateTo(name)}</ActivityText>
                 <ActivityText>{note.trim()}</ActivityText>
-                {allowWallSharing ? <ActivityText>{recognition.senderReview}</ActivityText> : null}
-                {choice === "points" ? <ActivityText>{thanks.points(THANK_YOU_POINTS)}</ActivityText> : null}
+                {allowWallSharing ? (
+                  <ActivityText>{recognition.senderReview}</ActivityText>
+                ) : null}
+                {choice === "points" ? (
+                  <ActivityText>{thanks.points(THANK_YOU_POINTS)}</ActivityText>
+                ) : null}
                 {choice === "demo" ? (
                   <>
-                    <ActivityText strong>{thanks.demoMethod(demoAmount, demoProvider)}</ActivityText>
+                    <ActivityText strong>
+                      {thanks.demoMethod(demoAmount, demoProvider)}
+                    </ActivityText>
                     <ActivityText>{thanks.demoDetail}</ActivityText>
                   </>
                 ) : null}
@@ -289,12 +326,19 @@ function ExchangeThankYou({
                     <Pressable
                       key={value}
                       accessibilityRole="radio"
-                      accessibilityState={{ checked: choice === value, disabled: Boolean(busy) }}
+                      accessibilityState={{
+                        checked: choice === value,
+                        disabled: Boolean(busy),
+                      }}
                       accessibilityLabel={`${title}. ${detail}`}
                       disabled={Boolean(busy)}
                       onPress={() => setChoice(value)}
                     >
-                      <SelectionCopy title={title} detail={detail} selected={choice === value} />
+                      <SelectionCopy
+                        title={title}
+                        detail={detail}
+                        selected={choice === value}
+                      />
                     </Pressable>
                   ))}
                 </View>
@@ -332,7 +376,9 @@ function ExchangeThankYou({
                   <NeighbourNotice>
                     <View style={styles.permissionRow}>
                       <View style={styles.permissionLabel}>
-                        <ActivityText strong>{recognition.senderPermission}</ActivityText>
+                        <ActivityText strong>
+                          {recognition.senderPermission}
+                        </ActivityText>
                       </View>
                       <ActivityToggle
                         label={recognition.senderPermission}
@@ -362,7 +408,13 @@ function ExchangeThankYou({
             ) : null}
             <View style={styles.actions}>
               <Button
-                label={review ? (choice === "demo" ? thanks.demoSubmit : copy.send) : copy.review}
+                label={
+                  review
+                    ? choice === "demo"
+                      ? thanks.demoSubmit
+                      : copy.send
+                    : copy.review
+                }
                 labelStyle={localizedType("button", locale)}
                 busy={busy === "send"}
                 disabled={

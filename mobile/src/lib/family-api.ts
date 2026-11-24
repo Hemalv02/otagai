@@ -1,6 +1,7 @@
 import {
   type CircleMembership,
   type FamilyLink,
+  type ContentLanguage,
   type Language,
   type Page,
   type ProxyGrant,
@@ -31,7 +32,7 @@ export type DestinationCircle = {
 
 export type NewManagedMember = {
   display_name: string;
-  preferred_language: Language;
+  preferred_language: ContentLanguage;
   region: Region;
   grant: {
     caretaker_role: "family" | "welfare_volunteer";
@@ -43,7 +44,7 @@ export type NewManagedMember = {
 export type ActingRequestBody = {
   kind: "help";
   raw_text: string;
-  lang: Language;
+  lang: ContentLanguage;
   tone?: RequestTone;
   home_circle_id: string;
 };

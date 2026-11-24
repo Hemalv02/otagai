@@ -1,4 +1,4 @@
-import type { Language } from "./api";
+import type { ContentLanguage } from "./api";
 
 export const draftRelationships = ["neighbor", "elder", "family"] as const;
 
@@ -13,14 +13,14 @@ export type WordingSource = {
 
 export type WordingInput = WordingSource & {
   relationship: DraftRelationship;
-  language?: Language;
+  language?: ContentLanguage;
 };
 
 export type RequestWording = {
   title: string;
   message: string;
   when_text: string | null;
-  language: Language;
+  language: ContentLanguage;
   tone: RequestTone;
   relationship: DraftRelationship;
 };

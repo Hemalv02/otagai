@@ -10,15 +10,22 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from app.database.models import ConversationParticipant
-from app.database.models.enums import MessageKind
+from app.database.models.enums import Language, MessageKind
 from app.repositories.pagination import (
     DEFAULT_PAGE_SIZE,
     MAX_CURSOR_LENGTH,
     MAX_PAGE_SIZE,
     PageRequest,
 )
-from app.routes.dependencies import ActorDep, DatabaseDep, SettingsDep, StorageDep
+from app.routes.dependencies import (
+    ActorDep,
+    DatabaseDep,
+    RedisDep,
+    SettingsDep,
+    StorageDep,
+)
 from app.routes.pagination import Page, PageQuery
+from app.services.ai.helpers import Translation
 from app.services.chat.service import (
     ConversationNotFoundError,
     ConversationView,
@@ -31,6 +38,7 @@ from app.services.chat.service import (
     messages_since,
     send_message,
     start_conversation,
+    translate_message,
     update_participant_settings,
     verify_stream_access,
 )
@@ -75,6 +83,7 @@ class SendMessageBody(BaseModel):
     kind: MessageKind = MessageKind.TEXT
     body: MessageBody | None = None
     client_message_id: uuid.UUID | None = None
+    lang: Language | None = None
     media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
@@ -137,6 +146,7 @@ class MessageModel(BaseModel):
     kind: str
     body: str | None
     lang: str | None
+    original_body: str | None = None
     card_type: str | None
     card_ref_id: uuid.UUID | None
     attachments: list[MessageAttachmentModel]
@@ -185,6 +195,7 @@ def message_model(view: MessageView) -> MessageModel:
         sender_user_id=message.sender_user_id,
         kind=message.kind,
         body=view.display_body,
+        original_body=None if message.deleted_at else message.body,
         lang=message.lang,
         card_type=message.card_type,
         card_ref_id=message.card_ref_id,
@@ -274,6 +285,7 @@ async def post_message(
         body=body.body,
         client_message_id=body.client_message_id,
         media_ids=body.media_ids,
+        language=body.lang.value if body.lang else None,
     )
     if not created:
         response.status_code = status.HTTP_200_OK
@@ -301,6 +313,33 @@ async def post_message(
         edited_at=message.edited_at,
         deleted=message.deleted_at is not None,
         created_at=message.created_at,
+    )
+
+
+class TranslateMessageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_language: Language
+
+
+@router.post("/{conversation_id}/messages/{message_id}/translations")
+async def translate_chat_message(
+    conversation_id: uuid.UUID,
+    message_id: uuid.UUID,
+    body: TranslateMessageBody,
+    actor: ActorDep,
+    database: DatabaseDep,
+    settings: SettingsDep,
+    redis: RedisDep,
+) -> Translation:
+    return await translate_message(
+        database,
+        redis,
+        settings,
+        actor,
+        conversation_id,
+        message_id,
+        body.target_language,
     )
 
 

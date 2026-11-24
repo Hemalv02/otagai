@@ -1,4 +1,4 @@
-import type { Language } from "./api";
+import type { ContentLanguage } from "./api";
 import type { DraftRelationship, RequestTone } from "./request-wording";
 import type { RippleScope } from "./request-ripple";
 import type {
@@ -16,7 +16,7 @@ export type Review = {
   when: string;
   recipient?: string;
   listingId?: string;
-  language?: Language;
+  language?: ContentLanguage;
   tone?: RequestTone;
   relationship?: DraftRelationship;
 };

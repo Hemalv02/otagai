@@ -21,6 +21,7 @@ import {
 } from "@/components/request-edit-form";
 import { RequestNotice } from "@/components/request-notice";
 import { RequestResponseForm } from "@/components/request-response-form";
+import { TranslationOption } from "@/components/translation-option";
 import { Button, ErrorText } from "@/components/ui";
 import { ApiError, type Page } from "@/lib/api";
 import { assistantError, assistantApi } from "@/lib/assistant-api";
@@ -92,17 +93,6 @@ function LiveRequestDetail({
   const [form, setForm] = useState<ResponseKind>();
   const [edit, setEdit] = useState<RequestEditKind>();
   const [confirmation, setConfirmation] = useState<RequestConfirmation>();
-  const [translation, setTranslation] = useState<{
-    locale: string;
-    text: string;
-    source: string;
-  }>();
-  const [translating, setTranslating] = useState(false);
-  const translationVersion = useRef(0);
-  const translated =
-    translation?.locale === locale &&
-    translation.source === detail?.polite_text;
-
   const load = useCallback(async () => {
     const current = ++version.current;
     setLoading(true);
@@ -229,43 +219,8 @@ function LiveRequestDetail({
   function saveEdit(changes: UpdateRequest) {
     void apply(async () => {
       const updated = await requestsApi.update(id, changes, actingFor);
-      if (changes.polite_text !== undefined) {
-        translationVersion.current += 1;
-        setTranslation(undefined);
-        setTranslating(false);
-      }
       setDetail(updated);
     });
-  }
-
-  async function showTranslation() {
-    if (!detail || translating) return;
-    if (translated) {
-      setTranslation(undefined);
-      return;
-    }
-    const current = ++translationVersion.current;
-    setTranslating(true);
-    setActionError(undefined);
-    try {
-      const result = await assistantApi.translate(
-        detail.polite_text,
-        detail.lang,
-        locale,
-      );
-      if (current !== translationVersion.current) return;
-      setTranslation({
-        locale,
-        text: result.translated,
-        source: detail.polite_text,
-      });
-    } catch (cause) {
-      if (current === translationVersion.current) {
-        setActionError(assistantError(cause, locale));
-      }
-    } finally {
-      if (current === translationVersion.current) setTranslating(false);
-    }
   }
 
   const label = localizedType("field-label", locale);
@@ -370,22 +325,20 @@ function LiveRequestDetail({
             {live.postedBy} · {requesterName}
           </Text>
         ) : null}
-        <Text style={[body, styles.ink]}>
-          {translated ? translation?.text : detail.polite_text}
-        </Text>
+        <Text style={[body, styles.ink]}>{detail.polite_text}</Text>
         {timing ? (
           <Text style={[supporting, styles.secondary]}>{timing}</Text>
         ) : null}
-        {detail.lang !== locale ? (
-          <Button
-            variant="text"
-            label={translated ? words.original : words.translate}
-            labelStyle={label}
-            busy={translating}
-            disabled={disabled}
-            onPress={() => void showTranslation()}
-          />
-        ) : null}
+        <TranslationOption
+          key={`${locale}:${detail.lang}:${detail.polite_text}`}
+          locale={locale}
+          source={detail.lang}
+          original={detail.polite_text}
+          load={(target) =>
+            assistantApi.translate(detail.polite_text, detail.lang, target)
+          }
+          chooseLanguage
+        />
         {detail.can_manage && isOpen ? (
           <View style={styles.actions}>
             <Button

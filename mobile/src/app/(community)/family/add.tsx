@@ -6,7 +6,7 @@ import { CommunityScreen } from "@/components/community-screen";
 import { ScopeToggleRow, SelectionCard } from "@/components/family-forms";
 import { initial, ListRow, Thumbnail } from "@/components/family-ui";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
-import { ApiError, type Language, type Region } from "@/lib/api";
+import { ApiError, type ContentLanguage, type Region } from "@/lib/api";
 import { familyApi } from "@/lib/family-api";
 import {
   CONSENT_METHODS,
@@ -28,6 +28,7 @@ const languageOptions = [
   { value: "ja", label: "日本語" },
   { value: "en", label: "English" },
   { value: "bn", label: "বাংলা" },
+  { value: "vi", label: "Tiếng Việt" },
 ] as const;
 
 type Step = "details" | "review";
@@ -70,7 +71,7 @@ export default function AddFamilyMemberScreen() {
     display_name: string;
   } | null>(null);
   const [name, setName] = useState("");
-  const [language, setLanguage] = useState<Language>(locale);
+  const [language, setLanguage] = useState<ContentLanguage>(locale);
   const [region, setRegion] = useState<Region>(
     profile.status === "ready" ? profile.profile.region : "jp",
   );

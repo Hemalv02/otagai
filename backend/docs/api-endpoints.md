@@ -484,6 +484,7 @@ Contact details stay hidden in chat until both sides have accepted. The server e
 | `POST /conversations` | Start a listing chat ("ask the owner") or a direct chat with someone I share a circle with. Returns 200 with the existing chat if there is one | 201 | 9, 30 | MVP |
 | `GET /conversations/{conversation_id}` | Participants and the linked request, exchange or listing | 200 | 23 | MVP |
 | `GET /conversations/{conversation_id}/messages?before=` | Message history with translations in my language | 200 | 23 | MVP |
+| `POST /conversations/{conversation_id}/messages/{message_id}/translations` | Translate a visible message with `{target_language}`. Supports Japanese, English, Bengali and Vietnamese. The saved translation is cleared when the message is edited. | 200 | 23 | MVP |
 | `POST /conversations/{conversation_id}/messages` | Send text, image, voice or a card. A resend with the same `client_message_id` returns 200 with the original | 201 | 23 | MVP |
 | `PATCH /conversations/{conversation_id}/messages/{message_id}` | Edit my message within a short window | 200 | 23 | Later |
 | `DELETE /conversations/{conversation_id}/messages/{message_id}` | Delete my message (soft delete) | 204 | 23 | Later |

@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext } from "react";
 import { useTranslation } from "react-i18next";
 
 import { accountCopy } from "@/lib/account-copy";
-import type { Language } from "@/lib/api";
+import type { ContentLanguage, Language } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
 import { scaleTypographyMetrics } from "@/lib/text-size";
 import { fonts, typography } from "@/theme/tokens.json";
@@ -61,7 +61,8 @@ const en = {
   suggestIntro: "Suggest an intro",
   suggestAnotherIntro: "Suggest another",
   introPlaceholder: "A warm hello to your neighbours…",
-  addSkillsFirst: "Add what you’re happy to help with, then we can suggest one.",
+  addSkillsFirst:
+    "Add what you’re happy to help with, then we can suggest one.",
   introDraftError: "Couldn’t draft an intro. You can still write your own.",
   continue: "Continue",
   signOut: "Sign out",
@@ -121,7 +122,8 @@ const ja: typeof en = {
   suggestAnotherIntro: "別の案を提案",
   introPlaceholder: "ご近所の方への一言…",
   addSkillsFirst: "お手伝いできることを書くと、自己紹介を提案できます。",
-  introDraftError: "自己紹介を作成できませんでした。ご自身で書くこともできます。",
+  introDraftError:
+    "自己紹介を作成できませんでした。ご自身で書くこともできます。",
   continue: "続ける",
   signOut: "ログアウト",
 };
@@ -177,7 +179,8 @@ const bn: typeof en = {
   suggestIntro: "একটি পরিচিতি প্রস্তাব করুন",
   suggestAnotherIntro: "আরেকটি প্রস্তাব করুন",
   introPlaceholder: "প্রতিবেশীদের জন্য উষ্ণ অভিবাদন…",
-  addSkillsFirst: "যে কাজে সাহায্য করতে চান লিখুন, তাহলে পরিচিতি প্রস্তাব করা যাবে।",
+  addSkillsFirst:
+    "যে কাজে সাহায্য করতে চান লিখুন, তাহলে পরিচিতি প্রস্তাব করা যাবে।",
   introDraftError: "পরিচিতি তৈরি করা যায়নি। আপনি নিজেই লিখতে পারেন।",
   continue: "এগিয়ে যান",
   signOut: "সাইন আউট",
@@ -206,13 +209,14 @@ export function useOnboardingText(language?: Language) {
 
 export function localizedType(
   role: Exclude<keyof typeof typography, "wordmark">,
-  locale: Language,
+  locale: ContentLanguage,
   percent?: number,
 ) {
   const spec = typography[role];
+  const fontLocale = locale === "vi" ? "en" : locale;
   return {
-    fontFamily: fonts[locale][spec.weight as keyof typeof fonts.en],
-    ...scaleTypographyMetrics(spec.size, spec.lineHeight[locale], percent),
+    fontFamily: fonts[fontLocale][spec.weight as keyof typeof fonts.en],
+    ...scaleTypographyMetrics(spec.size, spec.lineHeight[fontLocale], percent),
   };
 }
 
@@ -221,7 +225,7 @@ export const TextSizeContext = createContext(100);
 export function useLocalizedType() {
   const percent = useContext(TextSizeContext);
   return useCallback(
-    (role: Parameters<typeof localizedType>[0], locale: Language) =>
+    (role: Parameters<typeof localizedType>[0], locale: ContentLanguage) =>
       localizedType(role, locale, percent),
     [percent],
   );

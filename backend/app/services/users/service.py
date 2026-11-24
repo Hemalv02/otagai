@@ -4,21 +4,20 @@ from datetime import UTC, datetime
 
 from app.database.connection import Database
 from app.database.models import PushToken, User
-from app.database.models.enums import MediaPurpose, Region, UserKind, UserStatus
+from app.database.models.enums import MediaPurpose, UserKind, UserStatus
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.repositories.push_tokens import PushTokenRepository
 from app.repositories.requests import RequestRepository, ResponseRepository
 from app.repositories.users import DuplicateProfileError, UserRepository
+from app.services.culture_packs import culture_pack_for
 from app.services.errors import (
     BadRequestError,
     ConflictError,
     NotFoundError,
     PermissionDeniedError,
 )
-
-REGION_TIMEZONES = {Region.JP: "Asia/Tokyo", Region.BD: "Asia/Dhaka"}
 
 
 class ProfileNotFoundError(NotFoundError):
@@ -75,7 +74,7 @@ async def create_profile(
         "auth_user_id": auth_user_id,
         "intro_lang": profile.preferred_language if profile.intro else None,
         "kind": UserKind.SELF.value,
-        "timezone": REGION_TIMEZONES[Region(profile.region)],
+        "timezone": culture_pack_for(profile.region).timezone,
     }
     try:
         async with database.session() as session:
