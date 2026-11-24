@@ -336,7 +336,6 @@ function ExchangeChat({
                   ? () => openReport(item.id, sender, body)
                   : undefined
               }
-              disabled={!canReport}
               style={[styles.message, own && styles.own]}
             >
               <Text style={[localizedType("body", locale), styles.ink]}>
