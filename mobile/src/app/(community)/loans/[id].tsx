@@ -24,7 +24,7 @@ import { neighbourCopy } from "@/lib/neighbour-copy";
 import { exchangeMessageCopy } from "@/lib/exchange-message-copy";
 import { loanStage } from "@/lib/loan-state";
 import { livePickupCopy } from "@/lib/live-pickup";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -78,6 +78,7 @@ type LoanAction =
   | { advance: ExchangeAction };
 
 export default function LoanDetailsScreen() {
+  const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
   const { profile } = useSession();
@@ -171,7 +172,6 @@ export default function LoanDetailsScreen() {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard
@@ -466,6 +466,7 @@ function ExtensionDraft({
   onSend: (request: ExtensionRequest) => void;
   messageAction: ReactNode;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = activityCopy[locale];
   const screen = activityScreenCopy[locale];

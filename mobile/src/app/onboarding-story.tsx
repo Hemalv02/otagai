@@ -6,10 +6,11 @@ import {
   OnboardingNext,
   OnboardingScreen,
 } from "@/components/onboarding-screen";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function OnboardingStory() {
+  const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const { t: bengali } = useOnboardingText("bn");
   const messages = [

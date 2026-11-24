@@ -2,11 +2,12 @@ import { Image } from "expo-image";
 import type { PropsWithChildren } from "react";
 import { Modal, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 import { Button } from "@/components/ui";
 
 export function NeighbourHeading({ children }: PropsWithChildren) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <Text
@@ -29,6 +30,7 @@ export function SelectionCopy({
   selected: boolean;
   unavailable?: boolean;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <View
@@ -73,18 +75,30 @@ export function NeighbourConfirmation({
   children,
   confirmLabel,
   cancelLabel,
+  busy,
+  destructive,
   onConfirm,
   onCancel,
 }: PropsWithChildren<{
   title: string;
   confirmLabel: string;
   cancelLabel: string;
+  busy?: boolean;
+  destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }>) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onCancel}>
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        if (!busy) onCancel();
+      }}
+    >
       <View style={styles.scrim}>
         <View accessibilityViewIsModal style={styles.sheet}>
           <NeighbourHeading>{title}</NeighbourHeading>
@@ -96,13 +110,19 @@ export function NeighbourConfirmation({
           </ScrollView>
           <Button
             label={confirmLabel}
-            labelStyle={localizedType("button", locale)}
+            labelStyle={[
+              localizedType("button", locale),
+              destructive && styles.danger,
+            ]}
+            variant={destructive ? "outline" : "primary"}
+            busy={busy}
             onPress={onConfirm}
           />
           <Button
             label={cancelLabel}
             labelStyle={localizedType("button", locale)}
             variant="outline"
+            disabled={busy}
             onPress={onCancel}
           />
         </View>
@@ -128,6 +148,7 @@ const styles = StyleSheet.create({
   marker: { width: 22, height: 22 },
   copy: { flex: 1, gap: 2 },
   ink: { color: colors.ink },
+  danger: { color: colors.clay },
   secondary: { color: colors.secondary },
   notice: {
     backgroundColor: colors.paper,

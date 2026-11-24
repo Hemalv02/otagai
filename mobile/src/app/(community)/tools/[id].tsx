@@ -23,11 +23,12 @@ import {
 import { listingReadCopy, requestApiError } from "@/lib/listing-read";
 import { listingRequestCopy } from "@/lib/listing-request-copy";
 import { listingRequestState } from "@/lib/listing-request";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function ToolListingScreen() {
+  const localizedType = useLocalizedType();
   const { id: routeId } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
   const { session, profile } = useSession();

@@ -93,6 +93,16 @@ class ExchangeRepository:
             statement = statement.with_for_update()
         return await self._session.scalar(statement)
 
+    async def has_unresolved_for_user(self, user_id: uuid.UUID) -> bool:
+        exchange = select(Exchange.id).where(
+            (Exchange.requester_user_id == user_id)
+            | (Exchange.helper_user_id == user_id),
+            Exchange.status.not_in(
+                (ExchangeStatus.CANCELLED.value, ExchangeStatus.COMPLETED.value)
+            ),
+        )
+        return bool(await self._session.scalar(select(exchange.exists())))
+
     async def is_listing_out_on_loan(self, listing_id: uuid.UUID) -> bool:
         loan = select(Exchange.id).where(
             Exchange.listing_id == listing_id,

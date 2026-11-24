@@ -6,7 +6,7 @@ import { AssistantSheet } from "@/components/assistant-widgets";
 import { Button, ErrorText, Field } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { liveRequestCopy } from "@/lib/live-request-copy";
-import { localizedType } from "@/lib/onboarding-i18n";
+import { useLocalizedType } from "@/lib/onboarding-i18n";
 import type { ResponseKind, SendResponse } from "@/lib/requests-api";
 import { colors } from "@/theme/tokens.json";
 
@@ -33,6 +33,7 @@ export function RequestResponseForm({
   busy: boolean;
   error?: string;
 }) {
+  const localizedType = useLocalizedType();
   const live = liveRequestCopy[locale];
   const label = localizedType("field-label", locale);
   const [note, setNote] = useState("");

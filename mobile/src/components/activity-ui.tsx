@@ -2,13 +2,14 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import type { PropsWithChildren } from "react";
 import { Button, ErrorText } from "@/components/ui";
 import { activityCopy } from "@/lib/activity-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export function ActivityText({
   children,
   strong = false,
 }: PropsWithChildren<{ strong?: boolean }>) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   return (
     <Text

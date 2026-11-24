@@ -403,6 +403,11 @@ async def update_request(
                 "expires_at": expires_at,
                 "next_widen_at": schedule_after(request, now, expires_at),
             }
+        if (
+            changes.get("raw_text", request.raw_text) != request.raw_text
+            or changes.get("polite_text", request.polite_text) != request.polite_text
+        ):
+            changes = {**changes, "translations": {}}
         return await RequestRepository(session).update(request, changes)
 
 

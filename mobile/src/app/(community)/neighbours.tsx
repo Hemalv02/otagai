@@ -8,7 +8,7 @@ import { Button } from "@/components/ui";
 import { useLiveResource } from "@/lib/live-resource";
 import { neighbourApi } from "@/lib/neighbour-api";
 import { neighbourCopy, shortExchangeDate } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, spacing } from "@/theme/tokens.json";
 
@@ -20,6 +20,7 @@ export default function NeighboursScreen() {
 }
 
 function Neighbours({ authUserId }: { authUserId: string }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const data = useLiveResource(
@@ -28,7 +29,6 @@ function Neighbours({ authUserId }: { authUserId: string }) {
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={copy.neighbours}

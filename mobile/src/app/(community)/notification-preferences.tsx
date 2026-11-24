@@ -30,7 +30,7 @@ import {
   removeDeviceRegistration,
   supportsDevicePush,
 } from "@/lib/device-push";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -58,7 +58,6 @@ export default function NotificationPreferencesScreen() {
   const preferences = useLiveResource(api.getMyProfile);
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       title={copy.notifications}
@@ -83,6 +82,7 @@ export default function NotificationPreferencesScreen() {
 }
 
 function DeviceAlerts({ userId }: { userId: string }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = devicePushCopy[locale];
   const [registered, setRegistered] = useState(false);
@@ -158,6 +158,7 @@ function PreferencesForm({
   initial: UserProfile;
   loading: boolean;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { setProfile } = useSession();
   const copy = activityCopy[locale];

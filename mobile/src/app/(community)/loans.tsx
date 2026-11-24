@@ -12,7 +12,7 @@ import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
 import { activityScreenCopy } from "@/lib/activity-screen-copy";
 import { useCurrentTime, usePagedResource } from "@/lib/live-resource";
 import { loanStage } from "@/lib/loan-state";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 
 type LoanRow = Exchange & { title: string | null };
@@ -39,6 +39,7 @@ async function loadLoans(cursor?: string | null): Promise<Page<LoanRow>> {
 }
 
 export default function LoansScreen() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { profile } = useSession();
   const copy = activityCopy[locale];
@@ -48,7 +49,6 @@ export default function LoansScreen() {
   const me = profile.status === "ready" ? profile.profile.id : null;
   return (
     <CommunityScreen
-      showDemoPreview={false}
       scroll={false}
       back
       title={copy.loans}

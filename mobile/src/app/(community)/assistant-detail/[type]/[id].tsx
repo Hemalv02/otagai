@@ -13,7 +13,7 @@ import {
   type PostedRequest,
 } from "@/lib/assistant-api";
 import { assistantCopy } from "@/lib/assistant-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, spacing } from "@/theme/tokens.json";
 
 type Detail =
@@ -45,6 +45,7 @@ async function readDetail(
 }
 
 export default function AssistantDetailScreen() {
+  const localizedType = useLocalizedType();
   const { type, id, skill } = useLocalSearchParams<{
     type: string;
     id: string;
@@ -87,7 +88,7 @@ export default function AssistantDetailScreen() {
 
   if (!state || typeof state === "string") {
     return (
-      <CommunityScreen back showDemoPreview={false}>
+      <CommunityScreen back>
         {!state ? (
           <ActivityIndicator
             accessibilityLabel={copy.loading}
@@ -151,7 +152,7 @@ export default function AssistantDetailScreen() {
   }
 
   return (
-    <CommunityScreen back title={title} showDemoPreview={false}>
+    <CommunityScreen back title={title}>
       {photo && state.type === "listing" ? (
         <Image source={photo} style={styles.photo} contentFit="cover" />
       ) : null}

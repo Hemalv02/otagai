@@ -8,7 +8,7 @@ import {
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import { ApiError, api, type Language, type Region } from "@/lib/api";
 import { useOnboarding } from "@/lib/onboarding";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 
 const languages = [
@@ -18,6 +18,7 @@ const languages = [
 ] as const;
 
 export default function ProfileSetup() {
+  const localizedType = useLocalizedType();
   const { state } = useOnboarding();
   const { t, locale } = useOnboardingText();
   const { setProfile, reloadProfile, signOut } = useSession();

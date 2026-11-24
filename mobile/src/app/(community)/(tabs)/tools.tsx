@@ -47,7 +47,7 @@ import {
   listingReadCopy,
   requestApiError,
 } from "@/lib/listing-read";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
@@ -57,6 +57,7 @@ type CategoryLoad =
   | { state: "ready"; items: CategoryNode[] };
 
 export default function BrowseToolsScreen() {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const { session, profile } = useSession();
   const account = session?.user.id ?? null;
@@ -253,7 +254,6 @@ export default function BrowseToolsScreen() {
   return (
     <CommunityScreen
       title={copy[heading === "explore" ? "exploreTitle" : heading]}
-      showDemoPreview={false}
       titleAction={
         <Host matchContents seedColor={colors.action}>
           <ExpoButton

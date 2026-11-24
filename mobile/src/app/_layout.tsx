@@ -6,10 +6,9 @@ import { DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 
-import { CommunityDemoProvider } from "@/lib/community-demo";
-import { DemoListingsProvider } from "@/lib/demo-listings";
 import { MembershipProvider, useMemberships } from "@/lib/memberships";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
+import { TextSizeContext } from "@/lib/onboarding-i18n";
 import { getLaunchRoute } from "@/lib/onboarding-state";
 import { SessionProvider, useSession } from "@/lib/session";
 import { fontAssets } from "@/theme/fonts";
@@ -68,11 +67,8 @@ function RootNavigator() {
     profile.status === "ready" && memberships.access === "approved";
 
   return (
-    <CommunityDemoProvider
-      key={session?.user.id ?? "guest"}
-      memberName={
-        profile.status === "ready" ? profile.profile.display_name : ""
-      }
+    <TextSizeContext.Provider
+      value={profile.status === "ready" ? profile.profile.text_scale_percent : 100}
     >
       <Stack
         screenOptions={{
@@ -107,8 +103,11 @@ function RootNavigator() {
         <Stack.Protected guard={canUseCommunity}>
           <Stack.Screen name="(community)" />
         </Stack.Protected>
+        <Stack.Protected guard={profile.status === "ready"}>
+          <Stack.Screen name="settings" />
+        </Stack.Protected>
       </Stack>
-    </CommunityDemoProvider>
+    </TextSizeContext.Provider>
   );
 }
 
@@ -119,9 +118,7 @@ export default function RootLayout() {
       <SessionProvider>
         <OnboardingProvider>
           <MembershipProvider>
-            <DemoListingsProvider>
-              <RootNavigator />
-            </DemoListingsProvider>
+            <RootNavigator />
           </MembershipProvider>
         </OnboardingProvider>
       </SessionProvider>

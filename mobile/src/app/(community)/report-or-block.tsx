@@ -25,7 +25,7 @@ import {
   type ReportReason,
 } from "@/lib/neighbour-api";
 import { neighbourCopy } from "@/lib/neighbour-copy";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { useSession } from "@/lib/session";
 import { spacing } from "@/theme/tokens.json";
 
@@ -64,6 +64,7 @@ function ReportOrBlock({
   authUserId: string;
   profileId: string;
 }) {
+  const localizedType = useLocalizedType();
   const { locale } = useOnboardingText();
   const copy = neighbourCopy[locale];
   const api = useMemo(() => neighbourApi(authUserId), [authUserId]);
@@ -165,7 +166,6 @@ function ReportOrBlock({
 
   return (
     <CommunityScreen
-      showDemoPreview={false}
       design
       back
       keyboard

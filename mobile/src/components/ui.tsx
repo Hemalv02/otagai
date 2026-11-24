@@ -13,7 +13,8 @@ import {
   View,
 } from "react-native";
 
-import { colors, fonts, spacing, typography } from "@/theme/tokens.json";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { colors, spacing } from "@/theme/tokens.json";
 
 type ButtonProps = {
   label: string;
@@ -57,6 +58,8 @@ export function Button({
   style,
   labelStyle,
 }: ButtonProps) {
+  const { locale } = useOnboardingText();
+  const type = useLocalizedType();
   const appearance = buttonVariants[variant];
   const inactive = disabled || busy;
   return (
@@ -74,7 +77,10 @@ export function Button({
           color={variant === "primary" ? colors["on-action"] : colors.ink}
         />
       ) : (
-        <Text style={labelStyle} className={`type-button ${appearance.label}`}>
+        <Text
+          style={[type("button", locale), labelStyle]}
+          className={appearance.label}
+        >
           {label}
         </Text>
       )}
@@ -92,11 +98,17 @@ export function Field({
   label: string;
   labelStyle?: StyleProp<TextStyle>;
 }) {
+  const { locale } = useOnboardingText();
+  const type = useLocalizedType();
+  const { lineHeight: defaultLineHeight, ...body } = type("body", locale);
   const { lineHeight, ...inputType } = StyleSheet.flatten(style) ?? {};
 
   return (
     <View className="gap-related-gap">
-      <Text className="type-body text-secondary" style={labelStyle}>
+      <Text
+        className="text-secondary"
+        style={[body, { lineHeight: defaultLineHeight }, labelStyle]}
+      >
         {label}
       </Text>
       <TextInput
@@ -106,10 +118,11 @@ export function Field({
         multiline={multiline}
         style={[
           fieldStyles.text,
+          body,
           multiline
             ? [
                 fieldStyles.multiline,
-                { lineHeight: lineHeight ?? typography.body.lineHeight.en },
+                { lineHeight: lineHeight ?? defaultLineHeight },
               ]
             : fieldStyles.singleLine,
           inputType,
@@ -122,8 +135,6 @@ export function Field({
 
 const fieldStyles = StyleSheet.create({
   text: {
-    fontFamily: fonts.en.regular,
-    fontSize: typography.body.size,
     includeFontPadding: false,
   },
   singleLine: {
@@ -156,6 +167,9 @@ export function Choice<T extends string>({
   stacked = false,
   disabled = false,
 }: ChoiceProps<T>) {
+  const { locale } = useOnboardingText();
+  const type = useLocalizedType();
+  const body = type("body", locale);
   return (
     <View
       className={
@@ -176,8 +190,8 @@ export function Choice<T extends string>({
             }`}
           >
             <Text
-              className="type-body text-ink"
-              style={labelStyle?.(option.value)}
+              className="text-ink"
+              style={[body, labelStyle?.(option.value)]}
             >
               {option.label}
             </Text>
@@ -189,11 +203,17 @@ export function Choice<T extends string>({
 }
 
 export function ErrorText({ children }: PropsWithChildren) {
+  const { locale } = useOnboardingText();
+  const type = useLocalizedType();
   if (!children) {
     return null;
   }
   return (
-    <Text accessibilityRole="alert" className="type-body text-clay">
+    <Text
+      accessibilityRole="alert"
+      className="text-clay"
+      style={type("body", locale)}
+    >
       {children}
     </Text>
   );

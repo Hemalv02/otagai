@@ -8,11 +8,12 @@ import { Button } from "@/components/ui";
 import { formatActivityDate } from "@/lib/activity-copy";
 import { liveRequestCopy } from "@/lib/live-request-copy";
 import { useLiveResource } from "@/lib/live-resource";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { getDeliveryReceipt, rippleCopy } from "@/lib/request-ripple";
 import { colors, spacing } from "@/theme/tokens.json";
 
 export default function RequestDeliveryScreen() {
+  const localizedType = useLocalizedType();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { locale } = useOnboardingText();
   const copy = rippleCopy[locale];
@@ -27,7 +28,6 @@ export default function RequestDeliveryScreen() {
     <CommunityScreen
       back
       design
-      showDemoPreview={false}
       title={copy.delivery}
       subtitle={
         data ? liveRequestCopy[locale].status[data.request_status] : undefined

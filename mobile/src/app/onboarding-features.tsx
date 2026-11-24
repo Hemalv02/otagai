@@ -7,10 +7,11 @@ import {
   OnboardingLink,
   OnboardingScreen,
 } from "@/components/onboarding-screen";
-import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
+import { useLocalizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
 
 export default function OnboardingFeatures() {
+  const localizedType = useLocalizedType();
   const { t, locale } = useOnboardingText();
   const features = [
     {
