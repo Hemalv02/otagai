@@ -14,7 +14,7 @@ import { ListingRow, ListingRowSkeleton } from "@/components/listing-row";
 import { NotificationBell } from "@/components/notification-bell";
 import { RequestNotice } from "@/components/request-notice";
 import { Button } from "@/components/ui";
-import { ApiError, api } from "@/lib/api";
+import { api } from "@/lib/api";
 import { activityCopy, formatActivityDate } from "@/lib/activity-copy";
 import { todayPeople, todayRows } from "@/lib/home-today";
 import { lendingCopy } from "@/lib/lending-copy";
@@ -103,7 +103,8 @@ const homeCopy = {
       borrow_with_help: "সাহায্যসহ ধার চান",
     },
     nearbyEmptyTitle: "কাছাকাছি এখনো কিছু নেই",
-    nearbyEmptyDetail: "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
+    nearbyEmptyDetail:
+      "প্রয়োজনের জিনিস চান অথবা একটি যন্ত্র ধার দিয়ে শুরু করুন।",
     nearbyError: "কাছাকাছির তালিকা লোড করা যায়নি।",
   },
 };
@@ -131,40 +132,30 @@ export default function Home() {
 
 async function loadToday(me: string) {
   const rows = todayRows(await api.getHome(), me);
-  const lookup = async <T,>(load: () => Promise<T>) => {
-    try {
-      return await load();
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) return null;
-      throw error;
-    }
+  const listingIds = new Set(
+    rows.flatMap((row) =>
+      row.type === "due" && row.listingId ? [row.listingId] : [],
+    ),
+  );
+  const [people, titles] = await Promise.all([
+    Promise.all(
+      todayPeople(rows).map(async (id) => {
+        const person = await api.getPublicProfile(id).catch(() => null);
+        return [id, person?.display_name] as const;
+      }),
+    ),
+    Promise.all(
+      [...listingIds].map(async (id) => {
+        const listing = await api.getListing(id).catch(() => null);
+        return [id, listing?.title] as const;
+      }),
+    ),
+  ]);
+  return {
+    rows,
+    people: Object.fromEntries(people),
+    titles: Object.fromEntries(titles),
   };
-  const people = Object.fromEntries(
-    await Promise.all(
-      todayPeople(rows).map(
-        async (id) =>
-          [
-            id,
-            (await lookup(() => api.getPublicProfile(id)))?.display_name,
-          ] as const,
-      ),
-    ),
-  );
-  const titles = Object.fromEntries(
-    await Promise.all(
-      [
-        ...new Set(
-          rows.flatMap((row) =>
-            row.type === "due" && row.listingId ? [row.listingId] : [],
-          ),
-        ),
-      ].map(
-        async (id) =>
-          [id, (await lookup(() => api.getListing(id)))?.title] as const,
-      ),
-    ),
-  );
-  return { rows, people, titles };
 }
 
 function CircleHome({ circleName }: { circleName: string }) {
@@ -189,6 +180,7 @@ function CircleHome({ circleName }: { circleName: string }) {
   const [nearby, setNearby] = useState<BrowseState>(initialBrowseState);
   const [nearbyRequests] = useState(createLatestRequest);
   const [tick, setTick] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const focusedOnce = useRef(false);
   const key = account ?? "";
   const view = visibleBrowseState(nearby, key);
@@ -231,6 +223,18 @@ function CircleHome({ circleName }: { circleName: string }) {
     setTick((current) => current + 1);
   }
 
+  async function refreshHome() {
+    if (refreshing) return;
+    setRefreshing(true);
+    retryNearby();
+    try {
+      if (profile.status === "ready") await today.reload();
+      else await reloadProfile();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const retryButton = (
     <Button
       label={listingCopy.retry}
@@ -248,16 +252,13 @@ function CircleHome({ circleName }: { circleName: string }) {
       eyebrow={circleName}
       titleAction={<NotificationBell />}
       inlineTitleAction
+      showDemoPreview={false}
       refreshControl={
         <RefreshControl
-          refreshing={today.loading && profile.status === "ready"}
+          refreshing={refreshing}
+          onRefresh={() => void refreshHome()}
           tintColor={colors.action}
-          onRefresh={() => {
-            retryNearby();
-            void (profile.status === "ready"
-              ? today.reload()
-              : reloadProfile());
-          }}
+          colors={[colors.action]}
         />
       }
     >
@@ -408,8 +409,7 @@ function CircleHome({ circleName }: { circleName: string }) {
                   (row.listingId && today.data?.titles[row.listingId]) ||
                   (row.borrowing ? activity.unnamedLoan : copy.lentItem)
                 }
-                description={today.data?.people[row.partnerId] ?? copy.someone}
-                detail={`${activity.due}: ${formatActivityDate(row.dueAt, locale)}`}
+                description={`${today.data?.people[row.partnerId] ?? copy.someone} · ${activity.due}: ${formatActivityDate(row.dueAt, locale)}`}
                 onPress={() =>
                   router.push({
                     pathname: "/loans/[id]",
@@ -422,6 +422,7 @@ function CircleHome({ circleName }: { circleName: string }) {
                 key={`request-${row.id}`}
                 accessibilityRole="link"
                 title={row.text}
+                titleLines={2}
                 description={today.data?.people[row.personId] ?? copy.someone}
                 detail={copy.kinds[row.kind]}
                 portrait

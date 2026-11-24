@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -52,7 +53,12 @@ class ExchangeRepository:
         return exchange
 
     async def list_for_user(
-        self, user_id: uuid.UUID, statuses: tuple[str, ...], page: PageRequest
+        self,
+        user_id: uuid.UUID,
+        statuses: tuple[str, ...],
+        page: PageRequest,
+        *,
+        due_by: datetime | None = None,
     ) -> PageResult[Exchange]:
         statement = select(Exchange).where(
             (Exchange.requester_user_id == user_id)
@@ -60,6 +66,18 @@ class ExchangeRepository:
         )
         if statuses:
             statement = statement.where(Exchange.status.in_(statuses))
+        if due_by is not None:
+            statement = statement.where(
+                Exchange.mode == ExchangeMode.LOAN.value, Exchange.due_at <= due_by
+            )
+            return await paginate(
+                self._session,
+                statement,
+                page,
+                Exchange.due_at,
+                Exchange.id,
+                descending=False,
+            )
         return await paginate(
             self._session, statement, page, Exchange.created_at, Exchange.id
         )

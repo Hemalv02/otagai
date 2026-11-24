@@ -156,6 +156,7 @@ class RequestRepository:
         direct_only: bool,
         page: PageRequest,
         statuses: tuple[str, ...] = (),
+        expires_after: datetime | None = None,
     ) -> PageResult[RequestRecipient]:
         statement = (
             select(RequestRecipient)
@@ -169,6 +170,8 @@ class RequestRepository:
             statement = statement.where(HelpRequest.direct_to_user_id == user_id)
         if statuses:
             statement = statement.where(HelpRequest.status.in_(statuses))
+        if expires_after is not None:
+            statement = statement.where(HelpRequest.expires_at > expires_after)
         if exclude_owner_ids:
             statement = statement.where(
                 HelpRequest.requester_user_id.not_in(exclude_owner_ids)
