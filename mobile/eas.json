@@ -6,6 +6,14 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "production": {
+      "extends": "preview",
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://otagai.hemal.me",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://xkfygqkmbblxnqypfcox.supabase.co"
+      }
     }
   }
 }

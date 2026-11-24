@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "expo-crypto";
 import { AppState, Platform } from "react-native";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -12,8 +13,9 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const isServer = Platform.OS === "web" && typeof window === "undefined";
+const authConfig = { url: supabaseUrl, key: supabaseKey };
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(authConfig.url, authConfig.key, {
   auth: {
     storage: isServer ? undefined : AsyncStorage,
     autoRefreshToken: !isServer,
@@ -29,5 +31,17 @@ if (Platform.OS !== "web") {
     } else {
       supabase.auth.stopAutoRefresh();
     }
+  });
+}
+
+// Email verification and recovery stay separate from the app session.
+export function createTemporaryAuthClient() {
+  return createClient(authConfig.url, authConfig.key, {
+    auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+      persistSession: false,
+      storageKey: `otagai.email-verification.${randomUUID()}`,
+    },
   });
 }
