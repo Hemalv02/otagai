@@ -12,23 +12,24 @@ INDEX = "uq_help_requests_open_listing_per_requester"
 
 
 def upgrade() -> None:
+    op.execute("LOCK TABLE help_requests IN EXCLUSIVE MODE")
     op.execute(
         sa.text(
             """
-            UPDATE help_requests
-            SET status = 'expired'
-            WHERE id IN (
-                SELECT id FROM (
-                    SELECT id,
-                           row_number() OVER (
-                               PARTITION BY requester_user_id, listing_id
-                               ORDER BY created_at DESC, id DESC
-                           ) AS rank
-                    FROM help_requests
-                    WHERE listing_id IS NOT NULL AND status = 'open'
-                ) AS ranked
-                WHERE rank > 1
+            WITH ranked AS (
+                SELECT id, expires_at,
+                       row_number() OVER (
+                           PARTITION BY requester_user_id, listing_id
+                           ORDER BY (expires_at > now()) DESC, created_at DESC, id DESC
+                       ) AS position
+                FROM help_requests
+                WHERE listing_id IS NOT NULL AND status = 'open'
             )
+            UPDATE help_requests AS request
+            SET status = 'expired', next_widen_at = NULL
+            FROM ranked
+            WHERE request.id = ranked.id
+              AND (ranked.position > 1 OR ranked.expires_at <= now())
             """
         )
     )

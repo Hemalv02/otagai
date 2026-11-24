@@ -5,9 +5,11 @@ import pytest
 from sqlalchemy import text
 
 from app.database.connection import Database
+from app.repositories.requests import RequestRepository
 from tests.integration.conftest import (
     _settings,
     auth,
+    confirmed_pickup,
     join_circle,
     make_circle,
     make_user,
@@ -345,6 +347,20 @@ async def test_repeat_send_with_a_different_kind_is_409(client):
     assert second.json()["request_id"] == first.json()["id"]
 
 
+async def test_repeat_send_with_a_changed_message_is_409(client):
+    owner, seeker, listing, _ = await _world(client)
+    owner_id = await _profile_id(client, owner)
+    first = await _post(client, seeker, _body(listing, owner_id))
+    assert first.status_code == 201, first.text
+
+    changed = await _post(
+        client, seeker, _body(listing, owner_id, raw_text="Could I borrow it Monday?")
+    )
+    assert changed.status_code == 409, changed.text
+    assert changed.json()["code"] == "open_request_exists"
+    assert changed.json()["request_id"] == first.json()["id"]
+
+
 async def test_request_detail_shows_the_listing_title_to_the_recipient(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
@@ -473,6 +489,84 @@ async def test_reopening_elapsed_open_listing_request_ignores_itself(client):
     assert widened.json()["status"] == "open"
 
 
+async def _accepted_listing_request(client, owner, seeker, listing):
+    owner_id = await _profile_id(client, owner)
+    created = await _post(client, seeker, _body(listing, owner_id))
+    assert created.status_code == 201, created.text
+    request_id = created.json()["id"]
+    path = f"/requests/{request_id}"
+    offer = await client.post(
+        f"{path}/responses", headers=auth(owner), json={"kind": "offer"}
+    )
+    assert offer.status_code == 201, offer.text
+    offer_path = f"{path}/responses/{offer.json()['id']}"
+    accepted = await client.post(f"{offer_path}/accept", headers=auth(seeker))
+    assert accepted.status_code == 200, accepted.text
+    request = await client.get(path, headers=auth(seeker))
+    assert request.status_code == 200, request.text
+    return request_id, request.json()["exchange_id"], offer_path
+
+
+async def test_stale_widen_does_not_block_pickup(client, monkeypatch):
+    owner, seeker, listing, _ = await _world(client)
+    request_id, exchange_id, _ = await _accepted_listing_request(
+        client, owner, seeker, listing
+    )
+    await confirmed_pickup(client, exchange_id, seeker, owner)
+    widen_waiting = asyncio.Event()
+    continue_widen = asyncio.Event()
+    original = RequestRepository.get_for_update
+
+    async def pause_widen_before_request_lock(self, candidate_id):
+        if candidate_id == uuid.UUID(request_id) and not widen_waiting.is_set():
+            widen_waiting.set()
+            await continue_widen.wait()
+        return await original(self, candidate_id)
+
+    monkeypatch.setattr(
+        RequestRepository, "get_for_update", pause_widen_before_request_lock
+    )
+    widening = asyncio.create_task(
+        client.post(f"/requests/{request_id}/widen", headers=auth(seeker))
+    )
+    try:
+        await asyncio.wait_for(widen_waiting.wait(), timeout=3)
+        pickup = await asyncio.wait_for(
+            client.post(f"/exchanges/{exchange_id}/hand-over", headers=auth(owner)),
+            timeout=3,
+        )
+        assert pickup.status_code == 200, pickup.text
+    finally:
+        continue_widen.set()
+        widened = await asyncio.wait_for(widening, timeout=3)
+
+    assert widened.status_code == 409, widened.text
+
+
+@pytest.mark.parametrize("action", ["withdraw", "cancel_exchange"])
+async def test_reversing_match_does_not_reopen_when_listing_is_paused(client, action):
+    owner, seeker, listing, _ = await _world(client)
+    request_id, exchange_id, offer_path = await _accepted_listing_request(
+        client, owner, seeker, listing
+    )
+    paused = await client.post(f"/listings/{listing}/pause", headers=auth(owner))
+    assert paused.status_code == 200, paused.text
+
+    if action == "withdraw":
+        reversed_match = await client.post(
+            f"{offer_path}/withdraw", headers=auth(owner)
+        )
+    else:
+        reversed_match = await client.post(
+            f"/exchanges/{exchange_id}/cancel", headers=auth(seeker)
+        )
+    assert reversed_match.status_code == 200, reversed_match.text
+
+    request = await client.get(f"/requests/{request_id}", headers=auth(seeker))
+    assert request.status_code == 200, request.text
+    assert request.json()["status"] == "expired"
+
+
 async def test_duplicate_send_does_not_block_listing_foreign_key_lock(client):
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
@@ -522,8 +616,6 @@ async def test_duplicate_send_does_not_block_listing_foreign_key_lock(client):
 async def test_duplicate_send_retries_if_existing_request_is_matched(
     client, monkeypatch
 ):
-    from app.repositories.requests import RequestRepository
-
     owner, seeker, listing, _ = await _world(client)
     owner_id = await _profile_id(client, owner)
     first = await _post(client, seeker, _body(listing, owner_id))

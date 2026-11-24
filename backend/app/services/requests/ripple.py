@@ -3,15 +3,27 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.connection import Database
 from app.database.models import Circle, HelpRequest
 from app.database.models.enums import NotificationType, RequestStatus, RippleStage
+from app.repositories.errors import violates
 from app.repositories.notifications import NotificationRepository
 from app.repositories.request_ripple import RippleRepository
-from app.repositories.requests import RecipientRepository, RequestRepository
+from app.repositories.requests import (
+    OPEN_LISTING_INDEX,
+    RecipientRepository,
+    RequestRepository,
+)
 from app.services.errors import BadRequestError
+from app.services.listings.service import (
+    ListingNotFoundError,
+    ListingRequestMismatchError,
+    ListingUnavailableError,
+    requestable_listing,
+)
 from app.services.notifications.dispatch import enqueue_ripple_push
 
 RIPPLE_ORDER = tuple(RippleStage)
@@ -210,20 +222,35 @@ async def delivery_receipt(
     )
 
 
-async def reopen_after_match_safely(session, request, now):
-    from sqlalchemy.exc import IntegrityError
-
+async def reopen_after_match_safely(
+    session: AsyncSession, request: HelpRequest, now: datetime
+) -> HelpRequest:
     requests = RequestRepository(session)
+    expired = {"status": RequestStatus.EXPIRED.value, "next_widen_at": None}
+    changes = reopen_after_match(request, now)
+    if (
+        changes["status"] == RequestStatus.OPEN.value
+        and request.listing_id is not None
+        and request.direct_to_user_id is not None
+    ):
+        try:
+            await requestable_listing(
+                session,
+                request.requester_user_id,
+                request.listing_id,
+                request.direct_to_user_id,
+                request.kind,
+            )
+        except (
+            ListingNotFoundError,
+            ListingRequestMismatchError,
+            ListingUnavailableError,
+        ):
+            return await requests.update(request, expired)
     try:
         async with session.begin_nested():
-            return await requests.update(request, reopen_after_match(request, now))
+            return await requests.update(request, changes)
     except IntegrityError as error:
-        driver_error = getattr(error.orig, "__cause__", None)
-        if (
-            getattr(driver_error, "constraint_name", None)
-            != "uq_help_requests_open_listing_per_requester"
-        ):
+        if not violates(error, OPEN_LISTING_INDEX):
             raise
-        return await requests.update(
-            request, {"status": RequestStatus.EXPIRED.value, "next_widen_at": None}
-        )
+        return await requests.update(request, expired)

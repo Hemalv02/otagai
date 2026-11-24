@@ -228,6 +228,11 @@ export default function ToolListingScreen() {
                   ? requestCopy.askToBorrow
                   : requestCopy.askForHelp
               }
+              variant={
+                kind === "help" && requestState.actions.includes("borrow")
+                  ? "secondary"
+                  : "primary"
+              }
               labelStyle={localizedType("button", locale)}
               onPress={() =>
                 router.push({

@@ -26,6 +26,7 @@ from app.database.models.enums import (
 from app.repositories.blocks import BlockRepository
 from app.repositories.chat import ConversationRepository, MessageRepository
 from app.repositories.circles import CircleRepository
+from app.repositories.errors import violates
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
@@ -33,6 +34,7 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.pagination import PageRequest, PageResult
 from app.repositories.request_ripple import RippleRepository
 from app.repositories.requests import (
+    OPEN_LISTING_INDEX,
     LiveResponseExistsError,
     RecipientRepository,
     RequestRepository,
@@ -115,14 +117,6 @@ class OpenListingRequestExistsError(ConflictError):
     def __init__(self, request_id: uuid.UUID) -> None:
         super().__init__("You already have an open request for this listing.")
         self.details = {"code": "open_request_exists", "request_id": str(request_id)}
-
-
-OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
-
-
-def _violates_open_listing_index(error: IntegrityError) -> bool:
-    driver_error = getattr(error.orig, "__cause__", None)
-    return getattr(driver_error, "constraint_name", None) == OPEN_LISTING_INDEX
 
 
 @dataclass(frozen=True)
@@ -213,7 +207,11 @@ async def create_request_in_session(
             raise RecipientUnreachableError
         if new_request.listing_id is not None:
             listing = await requestable_listing(
-                session, actor, new_request.listing_id, target_id, new_request.kind
+                session,
+                requester_id,
+                new_request.listing_id,
+                target_id,
+                new_request.kind,
             )
             category_id = listing.category_id
         ripple_max = ripple_stage = RippleStage.DIRECT
@@ -252,7 +250,7 @@ async def create_request_in_session(
                     request = await requests.create(values, media_ids)
                 break
             except IntegrityError as error:
-                if not _violates_open_listing_index(error):
+                if not violates(error, OPEN_LISTING_INDEX):
                     raise
                 existing = await requests.get_open_for_listing(
                     requester_id, new_request.listing_id, lock=True
@@ -262,7 +260,25 @@ async def create_request_in_session(
                         raise
                     continue
                 if existing.expires_at > now:
-                    if existing.kind != new_request.kind:
+                    if (
+                        any(
+                            getattr(existing, field) != values[field]
+                            for field in (
+                                "kind",
+                                "raw_text",
+                                "polite_text",
+                                "tone",
+                                "lang",
+                                "needed_from",
+                                "needed_until",
+                            )
+                        )
+                        or (
+                            new_request.home_circle_id is not None
+                            and existing.home_circle_id != new_request.home_circle_id
+                        )
+                        or await requests.media_ids(existing.id) != media_ids
+                    ):
                         raise OpenListingRequestExistsError(existing.id) from error
                     return existing
                 if attempt == 1:
@@ -457,13 +473,6 @@ async def widen_request(
 ) -> HelpRequest:
     actor.require(ProxyScope.POST_REQUESTS)
     async with database.session() as session:
-        candidate = await RequestRepository(session).get(request_id)
-        if candidate is None or candidate.requester_user_id != actor.subject_id:
-            raise RequestNotFoundError
-        if candidate.listing_id is not None:
-            await ListingRepository(session).get_for_update(
-                candidate.listing_id, no_key_update=True
-            )
         request = await _load_own_request_for_update(session, actor, request_id)
         now = datetime.now(UTC)
         if request.status == RequestStatus.EXPIRED.value or (
@@ -474,7 +483,7 @@ async def widen_request(
                 if request.direct_to_user_id is not None:
                     await requestable_listing(
                         session,
-                        actor,
+                        request.requester_user_id,
                         request.listing_id,
                         request.direct_to_user_id,
                         request.kind,
@@ -502,7 +511,7 @@ async def widen_request(
                         },
                     )
             except IntegrityError as error:
-                if not _violates_open_listing_index(error):
+                if not violates(error, OPEN_LISTING_INDEX):
                     raise
                 existing = await requests.get_open_for_listing(
                     request.requester_user_id, request.listing_id

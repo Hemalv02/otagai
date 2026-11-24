@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { CommunityScreen } from "@/components/community-screen";
@@ -34,9 +34,29 @@ type LoadState =
 
 export default function ListingRequestScreen() {
   const { id, kind } = useLocalSearchParams<{ id: string; kind: string }>();
-  const { locale } = useOnboardingText();
-  const { session, profile } = useSession();
+  const { session } = useSession();
   const account = session?.user.id ?? "";
+  return (
+    <ListingRequestFlow
+      key={`${account}:${id}:${kind}`}
+      id={id}
+      kind={kind}
+      account={account}
+    />
+  );
+}
+
+function ListingRequestFlow({
+  id,
+  kind,
+  account,
+}: {
+  id: string;
+  kind: string;
+  account: string;
+}) {
+  const { locale } = useOnboardingText();
+  const { profile } = useSession();
   const profileId = profile.status === "ready" ? profile.profile.id : null;
   const copy = listingRequestCopy[locale];
   const lending = lendingCopy[locale];
@@ -74,9 +94,27 @@ export default function ListingRequestScreen() {
   const listing = state.status === "loaded" ? state.listing : null;
   const [existingId, setExistingId] = useState<string | null>(null);
   const sendingRef = useRef(false);
+  const focus = useRef<symbol | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      focus.current = Symbol();
+      return () => {
+        focus.current = null;
+      };
+    }, []),
+  );
 
   async function send() {
-    if (sendingRef.current || !listing || !isListingRequestKind(kind)) return;
+    const startedOn = focus.current;
+    if (
+      !startedOn ||
+      sendingRef.current ||
+      !listing ||
+      !profileId ||
+      !isListingRequestKind(kind) ||
+      !allowed
+    )
+      return;
     const body = buildListingRequest(listing, kind, text, locale);
     if (!body) {
       setFailure("invalid");
@@ -87,12 +125,14 @@ export default function ListingRequestScreen() {
     setFailure(null);
     setExistingId(null);
     try {
-      const created = await requestsApi.create(body);
+      const created = await requestsApi.create(body, account);
+      if (focus.current !== startedOn) return;
       router.replace({
         pathname: "/requests/[id]",
         params: { id: created.id },
       });
     } catch (cause) {
+      if (focus.current !== startedOn) return;
       const kind = listingRequestError(cause);
       setFailure(kind);
       if (kind === "alreadyOpen" && cause instanceof ApiError) {
@@ -106,7 +146,7 @@ export default function ListingRequestScreen() {
 
   if (!validRoute) {
     return (
-      <CommunityScreen back>
+      <CommunityScreen back showDemoPreview={false}>
         <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
           {lending.listingMissing}
         </Text>
@@ -131,7 +171,7 @@ export default function ListingRequestScreen() {
               ? readCopy.auth
               : readCopy.error;
     return (
-      <CommunityScreen back title={copy.reviewTitle}>
+      <CommunityScreen back showDemoPreview={false} title={copy.reviewTitle}>
         {errorMessage ? (
           <>
             <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
@@ -176,7 +216,7 @@ export default function ListingRequestScreen() {
               : copy.noOwner
         : copy.unavailable;
     return (
-      <CommunityScreen back title={copy.reviewTitle}>
+      <CommunityScreen back showDemoPreview={false} title={copy.reviewTitle}>
         <Text accessibilityRole="alert" style={[bodyType, styles.ink]}>
           {note}
         </Text>
@@ -200,6 +240,7 @@ export default function ListingRequestScreen() {
   return (
     <CommunityScreen
       back
+      showDemoPreview={false}
       keyboard
       title={copy.reviewTitle}
       footer={
@@ -229,6 +270,7 @@ export default function ListingRequestScreen() {
             label={sending ? copy.sending : copy.send}
             labelStyle={buttonType}
             busy={sending}
+            disabled={!text.trim() || !profileId}
             onPress={() => void send()}
           />
         </View>

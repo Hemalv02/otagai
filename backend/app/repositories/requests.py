@@ -26,6 +26,8 @@ from app.repositories.blocks import blocked_user_ids
 from app.repositories.errors import violates
 from app.repositories.pagination import PageRequest, PageResult, paginate
 
+OPEN_LISTING_INDEX = "uq_help_requests_open_listing_per_requester"
+
 
 class LiveResponseExistsError(Exception):
     pass
@@ -67,6 +69,15 @@ class RequestRepository:
         if lock:
             statement = statement.with_for_update()
         return await self._session.scalar(statement)
+
+    async def media_ids(self, request_id: uuid.UUID) -> list[uuid.UUID]:
+        return list(
+            await self._session.scalars(
+                select(RequestMedia.media_id)
+                .where(RequestMedia.request_id == request_id)
+                .order_by(RequestMedia.sort_order)
+            )
+        )
 
     async def due_for_ripple(
         self, now: datetime, request_id: uuid.UUID | None = None

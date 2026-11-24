@@ -316,7 +316,7 @@ async def get_listing(
         listing = await ListingRepository(session).get(listing_id)
         if listing is None:
             raise ListingNotFoundError
-        await _require_visible(session, actor, listing)
+        await _require_visible(session, actor.subject_id, listing)
         return await _detail_view(session, storage, settings, listing)
 
 
@@ -327,38 +327,36 @@ async def visible_listing(
     if listing is None:
         return None
     try:
-        await _require_visible(session, actor, listing)
+        await _require_visible(session, actor.subject_id, listing)
     except ListingNotFoundError:
         return None
     return listing
 
 
-async def _require_visible(session, actor: Actor, listing: Listing) -> None:
-    if listing.owner_user_id == actor.subject_id:
+async def _require_visible(session, viewer_id: uuid.UUID, listing: Listing) -> None:
+    if listing.owner_user_id == viewer_id:
         return
     if await BlockRepository(session).is_blocked_either_way(
-        actor.subject_id, listing.owner_user_id
+        viewer_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
     if not await CircleRepository(session).share_approved_circle(
-        actor.subject_id, listing.owner_user_id
+        viewer_id, listing.owner_user_id
     ):
         raise ListingNotFoundError
 
 
 async def requestable_listing(
     session,
-    actor: Actor,
+    requester_id: uuid.UUID,
     listing_id: uuid.UUID,
     recipient_id: uuid.UUID,
     kind: str,
 ) -> Listing:
-    listing = await ListingRepository(session).get_for_update(
-        listing_id, no_key_update=True
-    )
+    listing = await ListingRepository(session).get_for_share(listing_id)
     if listing is None:
         raise ListingNotFoundError
-    await _require_visible(session, actor, listing)
+    await _require_visible(session, requester_id, listing)
     if recipient_id != listing.owner_user_id:
         raise ListingRequestMismatchError(
             "The recipient must own the selected listing."
@@ -436,7 +434,7 @@ async def _load_owned_for_update(
     if listing is None:
         raise ListingNotFoundError
     if listing.owner_user_id != actor.subject_id:
-        await _require_visible(session, actor, listing)
+        await _require_visible(session, actor.subject_id, listing)
         raise ListingNotFoundError
     actor.require(ProxyScope.MANAGE_LISTINGS)
     return listing
