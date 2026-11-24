@@ -86,7 +86,14 @@ export default function LiveExchangeScreen() {
   const body = localizedType("body", locale);
   const supporting = localizedType("supporting", locale);
   if (summary?.exchange.mode === "loan") {
-    return <Redirect href={{ pathname: "/loans/[id]", params: { id } }} />;
+    return (
+      <Redirect
+        href={{
+          pathname: "/loans/[id]",
+          params: { id, ...(actingFor ? { actingFor } : {}) },
+        }}
+      />
+    );
   }
   return (
     <CommunityScreen
@@ -143,7 +150,7 @@ export default function LiveExchangeScreen() {
               exchange={summary.exchange}
               viewerId={viewer}
               actingFor={actingFor}
-              canManage={!actingFor || summary.request.can_manage}
+              canManage={!actingFor || summary.exchange.can_manage === true}
               canThank={summary.request.can_thank}
               onReload={() => load(true)}
             />

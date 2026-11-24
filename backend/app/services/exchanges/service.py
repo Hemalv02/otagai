@@ -203,9 +203,23 @@ async def confirm_exchange(
         is_requester = actor.subject_id == exchange.requester_user_id
         changes: dict = {}
         if is_requester and exchange.requester_confirmed_at is None:
-            changes["requester_confirmed_at"] = now
+            prior_signer = (
+                exchange.helper_confirmed_by_user_id or exchange.helper_user_id
+            )
+            if exchange.helper_confirmed_at and prior_signer == actor.user.id:
+                raise ExchangeStateError("One person cannot confirm both sides.")
+            changes.update(
+                requester_confirmed_at=now, requester_confirmed_by_user_id=actor.user.id
+            )
         if not is_requester and exchange.helper_confirmed_at is None:
-            changes["helper_confirmed_at"] = now
+            prior_signer = (
+                exchange.requester_confirmed_by_user_id or exchange.requester_user_id
+            )
+            if exchange.requester_confirmed_at and prior_signer == actor.user.id:
+                raise ExchangeStateError("One person cannot confirm both sides.")
+            changes.update(
+                helper_confirmed_at=now, helper_confirmed_by_user_id=actor.user.id
+            )
         requester_done = exchange.requester_confirmed_at is not None or is_requester
         helper_done = exchange.helper_confirmed_at is not None or not is_requester
         if requester_done and helper_done:
@@ -362,6 +376,7 @@ async def request_extension(
 async def list_extensions(
     database: Database, actor: Actor, exchange_id: uuid.UUID, page: PageRequest
 ) -> PageResult[LoanExtension]:
+    actor.require(ProxyScope.VIEW_ACTIVITY)
     async with database.session() as session:
         await _load_participant_exchange(session, actor, exchange_id, for_update=False)
         return await ExtensionRepository(session).list_for_exchange(exchange_id, page)

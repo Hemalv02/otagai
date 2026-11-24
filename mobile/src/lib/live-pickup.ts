@@ -1,4 +1,5 @@
 import {
+  actingForHeaders,
   ApiError,
   request,
   type Exchange,
@@ -30,14 +31,16 @@ type ItemChanges = Partial<
   Part & { present: boolean | null; dispute_note: string | null }
 >;
 
-export function pickupApi(authUserId: string) {
+export function pickupApi(authUserId: string, actingFor?: string) {
+  const headers = actingForHeaders(actingFor);
   function get<T>(path: string) {
-    return request<T>(path, { authUserId });
+    return request<T>(path, { authUserId, headers });
   }
 
   function send<T>(path: string, method: string, body?: object) {
     return request<T>(path, {
       authUserId,
+      headers,
       method,
       body: body instanceof FormData ? body : body && JSON.stringify(body),
     });
@@ -213,8 +216,7 @@ const bn: typeof en = {
   reviewChanged: "তালিকা বদলেছে। নিশ্চিত করার আগে আবার মিলিয়ে নিন।",
   failure: "পরিবর্তন সংরক্ষণ করা যায়নি। আবার লোড করে চেষ্টা করুন।",
   changedPhoto: "ছবি যুক্ত করা যায়নি। সমর্থিত ছবি দিয়ে চেষ্টা করুন।",
-  aiFailure:
-    "ছবি থেকে পরামর্শ পাওয়া যাচ্ছে না। নিজে থেকে জিনিস যোগ করতে পারেন।",
+  aiFailure: "ছবি থেকে পরামর্শ পাওয়া যাচ্ছে না। নিজে থেকে জিনিস যোগ করতে পারেন।",
 };
 
 export const livePickupCopy = { en, ja, bn };

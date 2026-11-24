@@ -141,7 +141,7 @@ function LiveRequestDetail({
         }
       } else {
         void loadNames([data.requester_user_id], current);
-        if (!markedSeen.current) {
+        if (!actingFor && !markedSeen.current) {
           markedSeen.current = true;
           void requestsApi.markSeen(id).catch(() => {
             markedSeen.current = false;

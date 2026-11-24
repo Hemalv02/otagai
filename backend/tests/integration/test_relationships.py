@@ -1011,3 +1011,36 @@ async def test_proxy_help_exchange_writes_require_posting_consent(client):
     ).status_code == 200
     completed = await client.post(f"{exchange_path}/confirm", headers=auth(helper))
     assert completed.status_code == 200 and completed.json()["status"] == "completed"
+
+
+async def test_one_caretaker_cannot_confirm_two_principals_exchange(client):
+    from tests.integration.conftest import matched_exchange
+
+    match = await matched_exchange(client)
+    caretaker = await make_user(client, display_name="Shared caretaker")
+    caretaker_id = await me_id(client, caretaker)
+    requester, helper = match["requester"], match["helper"]
+    requester_id = await me_id(client, requester)
+    helper_id = await me_id(client, helper)
+    for principal, member_id in ((requester, requester_id), (helper, helper_id)):
+        await give_grant(
+            client,
+            principal,
+            member_id,
+            caretaker_id,
+            "can_view_activity",
+            "can_post_requests",
+        )
+    path = f"/exchanges/{match['exchange_id']}"
+    started = await client.post(f"{path}/hand-over", headers=auth(helper))
+    assert started.status_code == 200, started.text
+    first = await client.post(
+        f"{path}/confirm", headers=acting(caretaker, requester_id)
+    )
+    assert first.status_code == 200 and first.json()["status"] == "active", first.text
+    second = await client.post(f"{path}/confirm", headers=acting(caretaker, helper_id))
+    assert second.status_code == 409, second.text
+    independent = await client.post(f"{path}/confirm", headers=auth(helper))
+    assert (
+        independent.status_code == 200 and independent.json()["status"] == "completed"
+    )

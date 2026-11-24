@@ -134,6 +134,10 @@ export type Exchange = {
   requester_confirmed_at: string | null;
   helper_confirmed_at: string | null;
   meet_place_note: string | null;
+  can_manage?: boolean;
+  can_manage_pickup?: boolean;
+  can_chat?: boolean;
+  can_thank?: boolean;
 };
 
 export type LoanExtension = {
@@ -459,10 +463,16 @@ export const api = {
       authUserId,
     });
   },
-  getListing: (id: string, signal?: AbortSignal, authUserId?: string) =>
+  getListing: (
+    id: string,
+    signal?: AbortSignal,
+    authUserId?: string,
+    actingFor?: string,
+  ) =>
     request<ListingDetail>(`/listings/${encodeURIComponent(id)}`, {
       signal,
       authUserId,
+      headers: actingForHeaders(actingFor),
     }),
   updateListing: (
     id: string,
@@ -604,26 +614,38 @@ export const api = {
       `/users/${encodeURIComponent(id)}`,
       { headers: actingForHeaders(actingFor) },
     ),
-  advanceLoan: (id: string, action: "hand-over" | "return" | "confirm") =>
+  advanceLoan: (
+    id: string,
+    action: "hand-over" | "return" | "confirm",
+    actingFor?: string,
+  ) =>
     request<Exchange>(`/exchanges/${encodeURIComponent(id)}/${action}`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
     }),
-  listExtensions: (id: string, cursor?: string | null) =>
+  listExtensions: (id: string, cursor?: string | null, actingFor?: string) =>
     request<Page<LoanExtension>>(
       `/exchanges/${encodeURIComponent(id)}/extensions?${pageQuery(cursor)}`,
+      { headers: actingForHeaders(actingFor) },
     ),
   requestExtension: (
     id: string,
     body: { new_due_at: string; message?: string },
+    actingFor?: string,
   ) =>
     request<LoanExtension>(`/exchanges/${encodeURIComponent(id)}/extensions`, {
       method: "POST",
+      headers: actingForHeaders(actingFor),
       body: JSON.stringify(body),
     }),
-  decideExtension: (id: string, decision: "accept" | "decline") =>
+  decideExtension: (
+    id: string,
+    decision: "accept" | "decline",
+    actingFor?: string,
+  ) =>
     request<LoanExtension>(
       `/loan-extensions/${encodeURIComponent(id)}/${decision}`,
-      { method: "POST" },
+      { method: "POST", headers: actingForHeaders(actingFor) },
     ),
   listNotifications: (unreadOnly: boolean, cursor?: string | null) => {
     const query = pageQuery(cursor);
