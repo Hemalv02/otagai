@@ -1,13 +1,18 @@
 import uuid
+from dataclasses import dataclass
+from datetime import datetime
 
-from sqlalchemy import Select, case, or_, select
+from sqlalchemy import Select, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
+    Category,
     Circle,
     CircleMembership,
     FamilyLink,
     HelpRequest,
+    Listing,
+    PairStats,
     RequestRecipient,
     User,
 )
@@ -15,14 +20,31 @@ from app.database.models.enums import (
     CircleStatus,
     CircleUnitType,
     LinkStatus,
+    ListingStatus,
+    ListingVisibility,
     MembershipStatus,
     RippleStage,
     UserStatus,
 )
 from app.repositories.blocks import blocked_user_ids
 from app.repositories.circles import NEARBY_RADIUS_METERS, circle_distance_meters
+from app.repositories.listings import listing_term_score
 
 ASSOCIATION_TYPES = (CircleUnitType.ASSOCIATION.value, CircleUnitType.MOHOLLA.value)
+
+
+@dataclass(frozen=True)
+class RippleCandidate:
+    user_id: uuid.UUID
+    skills: str | None
+    pair_balance: int
+    distance_m: float | None
+
+
+@dataclass(frozen=True)
+class ListingMatch:
+    available_score: int = 0
+    unavailable_score: int = 0
 
 
 class RippleRepository:
@@ -125,38 +147,8 @@ class RippleRepository:
             is not None
         )
 
-    def _scope(
-        self, request: HelpRequest, stage: RippleStage, lineage: list[Circle]
-    ) -> Select | None:
-        owner_id = request.requester_user_id
-        home = lineage[0]
-        if stage is RippleStage.DIRECT:
-            if request.direct_to_user_id is None:
-                return None
-            return self._direct_scope(owner_id, request.direct_to_user_id)
-        if stage is RippleStage.FAMILY:
-            relative = case(
-                (FamilyLink.user_id == owner_id, FamilyLink.relative_user_id),
-                else_=FamilyLink.user_id,
-            )
-            return select(relative).where(
-                FamilyLink.status == LinkStatus.ACCEPTED.value,
-                or_(
-                    FamilyLink.user_id == owner_id,
-                    FamilyLink.relative_user_id == owner_id,
-                ),
-            )
-        if stage is RippleStage.HAN:
-            return self._approved_in(select(Circle.id).where(Circle.id == home.id))
-
-        association = self._association_circles(lineage)
-        if stage is RippleStage.ASSOCIATION:
-            if association is None:
-                return None
-            return self._approved_in(association).where(
-                CircleMembership.circle_id != home.id
-            )
-        origin = next(
+    def _origin(self, lineage: list[Circle]) -> Circle | None:
+        return next(
             (
                 circle
                 for circle in lineage
@@ -166,6 +158,20 @@ class RippleRepository:
             ),
             None,
         )
+
+    def _circle_scope(self, stage: RippleStage, lineage: list[Circle]) -> Select | None:
+        home = lineage[0]
+        if stage is RippleStage.HAN:
+            return select(Circle.id).where(Circle.id == home.id)
+
+        association = self._association_circles(lineage)
+        if stage is RippleStage.ASSOCIATION:
+            if association is None:
+                return None
+            return select(Circle.id).where(
+                Circle.id.in_(association), Circle.id != home.id
+            )
+        origin = self._origin(lineage)
         if origin is None:
             return None
         nearby = select(Circle.id).where(
@@ -181,20 +187,94 @@ class RippleRepository:
         )
         if association is not None:
             nearby = nearby.where(Circle.id.not_in(association))
-        return self._approved_in(nearby)
+        return nearby
 
-    async def recipients(
+    def _distance(self, lineage: list[Circle], circles: Select | None):
+        origin = self._origin(lineage)
+        if origin is None:
+            return None
+        distance = (
+            select(
+                func.min(
+                    circle_distance_meters(
+                        float(origin.approx_lat), float(origin.approx_lng)
+                    )
+                )
+            )
+            .join(CircleMembership, CircleMembership.circle_id == Circle.id)
+            .where(
+                CircleMembership.user_id == User.id,
+                CircleMembership.status == MembershipStatus.APPROVED.value,
+                Circle.region == origin.region,
+                Circle.status == CircleStatus.ACTIVE.value,
+                Circle.unit_type != CircleUnitType.CITY.value,
+                Circle.approx_lat.is_not(None),
+                Circle.approx_lng.is_not(None),
+            )
+            .correlate(User)
+        )
+        if circles is not None:
+            distance = distance.where(Circle.id.in_(circles))
+        else:
+            distance = distance.where(Circle.open_to_nearby.is_(True))
+        return distance.scalar_subquery()
+
+    async def candidates(
         self, request: HelpRequest, stage: RippleStage, lineage: list[Circle]
-    ) -> list[uuid.UUID]:
-        scope = self._scope(request, stage, lineage)
-        if scope is None:
-            return []
+    ) -> list[RippleCandidate]:
         owner_id = request.requester_user_id
+        circles = None
+        if stage is RippleStage.DIRECT:
+            if request.direct_to_user_id is None:
+                return []
+            scope = self._direct_scope(owner_id, request.direct_to_user_id)
+        elif stage is RippleStage.FAMILY:
+            relative = case(
+                (FamilyLink.user_id == owner_id, FamilyLink.relative_user_id),
+                else_=FamilyLink.user_id,
+            )
+            scope = select(relative).where(
+                FamilyLink.status == LinkStatus.ACCEPTED.value,
+                or_(
+                    FamilyLink.user_id == owner_id,
+                    FamilyLink.relative_user_id == owner_id,
+                ),
+            )
+        else:
+            circles = self._circle_scope(stage, lineage)
+            if circles is None:
+                return []
+            scope = self._approved_in(circles)
         existing = select(RequestRecipient.user_id).where(
             RequestRecipient.request_id == request.id
         )
+        balance = case(
+            (
+                PairStats.user_low_id == owner_id,
+                PairStats.low_helped_high - PairStats.high_helped_low,
+            ),
+            else_=PairStats.high_helped_low - PairStats.low_helped_high,
+        )
         statement = (
-            select(User.id)
+            select(
+                User.id,
+                case((User.profile_details_visible.is_(True), User.happy_to_help_with)),
+                func.coalesce(balance, 0),
+                self._distance(lineage, circles),
+            )
+            .outerjoin(
+                PairStats,
+                or_(
+                    and_(
+                        PairStats.user_low_id == owner_id,
+                        PairStats.user_high_id == User.id,
+                    ),
+                    and_(
+                        PairStats.user_high_id == owner_id,
+                        PairStats.user_low_id == User.id,
+                    ),
+                ),
+            )
             .where(
                 User.id.in_(scope),
                 User.id != owner_id,
@@ -202,6 +282,54 @@ class RippleRepository:
                 User.id.not_in(blocked_user_ids(owner_id)),
                 User.id.not_in(existing),
             )
-            .order_by(User.id)
         )
-        return list(await self._session.scalars(statement))
+        rows = await self._session.execute(statement)
+        return [RippleCandidate(*row) for row in rows]
+
+    async def listing_matches(
+        self,
+        user_ids: list[uuid.UUID],
+        request: HelpRequest,
+        stage: RippleStage,
+        terms: list[str],
+        lend_modes: list[str],
+        now: datetime,
+    ) -> dict[uuid.UUID, ListingMatch]:
+        visibility = {
+            RippleStage.ASSOCIATION: [
+                ListingVisibility.ASSOCIATION,
+                ListingVisibility.NEARBY,
+            ],
+            RippleStage.NEARBY: [ListingVisibility.NEARBY],
+        }.get(stage, list(ListingVisibility))
+        score = listing_term_score(terms, terms)
+        if request.category_id is not None:
+            score = case((Listing.category_id == request.category_id, 7), else_=score)
+        needed_at = max(request.needed_from or now, now)
+        available = and_(
+            Listing.status == ListingStatus.ACTIVE.value,
+            or_(
+                Listing.available_again_at.is_(None),
+                Listing.available_again_at <= needed_at,
+            ),
+        )
+        rows = await self._session.execute(
+            select(
+                Listing.owner_user_id,
+                func.max(case((available, score), else_=0)),
+                func.max(case((available, 0), else_=score)),
+            )
+            .join(Category, Category.id == Listing.category_id)
+            .where(
+                Listing.owner_user_id.in_(user_ids),
+                Listing.status != ListingStatus.DELETED.value,
+                Listing.visibility.in_(visibility),
+                Listing.lend_mode.in_(lend_modes),
+                score > 0,
+            )
+            .group_by(Listing.owner_user_id)
+        )
+        return {
+            user_id: ListingMatch(available_score, unavailable_score)
+            for user_id, available_score, unavailable_score in rows
+        }

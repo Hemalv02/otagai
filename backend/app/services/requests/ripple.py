@@ -14,17 +14,20 @@ from app.repositories.notifications import NotificationRepository
 from app.repositories.request_ripple import RippleRepository
 from app.repositories.requests import (
     OPEN_LISTING_INDEX,
+    RecipientMatch,
     RecipientRepository,
     RequestRepository,
 )
 from app.services.errors import BadRequestError
 from app.services.listings.service import (
+    ALLOWED_REQUEST_KINDS,
     ListingNotFoundError,
     ListingRequestMismatchError,
     ListingUnavailableError,
     requestable_listing,
 )
 from app.services.notifications.dispatch import enqueue_ripple_push
+from app.services.requests.matching import matching_terms, rank_candidates
 
 RIPPLE_ORDER = tuple(RippleStage)
 RIPPLE_INTERVAL = timedelta(hours=6)
@@ -107,18 +110,36 @@ async def deliver_from(
     scheduled = None
     stage = start
     for stage in RIPPLE_ORDER[first : maximum + 1]:
-        users = await audiences.recipients(request, stage, lineage)
+        candidates = await audiences.candidates(request, stage, lineage)
         history[stage.value] = now.isoformat()
-        if not users:
+        if not candidates:
             continue
-        await recipients.add_many(request.id, stage.value, users, notified_at=now)
+        if stage is RippleStage.DIRECT:
+            matches = [RecipientMatch(candidates[0].user_id, None, {})]
+        else:
+            terms = matching_terms(request.raw_text)
+            lend_modes = [
+                mode
+                for mode, kinds in ALLOWED_REQUEST_KINDS.items()
+                if request.kind in kinds
+            ]
+            listings = await audiences.listing_matches(
+                [candidate.user_id for candidate in candidates],
+                request,
+                stage,
+                terms,
+                lend_modes,
+                now,
+            )
+            matches = rank_candidates(candidates, listings, terms, request.kind)
+        await recipients.add_many(request.id, stage.value, matches, notified_at=now)
         notification_type = (
             NotificationType.REQUEST_DIRECT
             if stage is RippleStage.DIRECT
             else NotificationType.REQUEST_NEARBY
         )
         created = await notifications.create_many(
-            users,
+            [match.user_id for match in matches],
             notification_type.value,
             {"request_id": str(request.id), "ripple_stage": stage.value},
         )

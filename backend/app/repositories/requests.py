@@ -42,6 +42,13 @@ class RequestFilters:
     statuses: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class RecipientMatch:
+    user_id: uuid.UUID
+    score: int | None
+    reasons: dict[str, Any]
+
+
 class RequestRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -341,17 +348,19 @@ class RecipientRepository:
         self,
         request_id: uuid.UUID,
         stage: str,
-        user_ids: list[uuid.UUID],
+        matches: list[RecipientMatch],
         *,
         notified_at: datetime,
     ) -> None:
-        for user_id in user_ids:
+        for match in matches:
             self._session.add(
                 RequestRecipient(
                     request_id=request_id,
-                    user_id=user_id,
+                    user_id=match.user_id,
                     stage=stage,
                     notified_at=notified_at,
+                    match_score=match.score,
+                    match_reasons=match.reasons,
                 )
             )
         await self._session.flush()

@@ -3,7 +3,18 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import and_, case, delete, exists, false, func, or_, select, update
+from sqlalchemy import (
+    and_,
+    case,
+    delete,
+    exists,
+    false,
+    func,
+    literal,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.models import (
@@ -52,6 +63,49 @@ def _assistant_visibility(
         Listing.owner_user_id.not_in(excluded_owners),
         _shared_listing_circle(circle_ids),
     )
+
+
+def listing_term_score(tool_terms: list[str], skill_terms: list[str]):
+    scores = []
+    listing_text = func.concat_ws(" ", Listing.title, Listing.description)
+    for kind, terms in (
+        (ListingKind.TOOL, tool_terms),
+        (ListingKind.SKILL, skill_terms),
+    ):
+        for term in terms:
+            has_kind = Listing.kind == kind.value
+            words = list(dict.fromkeys(re.findall(r"[^\W_]+", term)))
+            reordered_match = false()
+            if 2 <= len(words) <= 5:
+                reordered_match = and_(
+                    *(listing_text.icontains(word, autoescape=True) for word in words)
+                )
+            category_match = or_(
+                func.replace(Category.slug, "_", " ").icontains(term, autoescape=True),
+                *(
+                    Category.names[lang].astext.icontains(term, autoescape=True)
+                    for lang in ("en", "ja", "bn")
+                ),
+            )
+            scores.append(
+                case(
+                    (
+                        and_(has_kind, Listing.title.icontains(term, autoescape=True)),
+                        6,
+                    ),
+                    (
+                        and_(
+                            has_kind,
+                            Listing.description.icontains(term, autoescape=True),
+                        ),
+                        3,
+                    ),
+                    (and_(has_kind, reordered_match), 2),
+                    (and_(has_kind, category_match), 1),
+                    else_=0,
+                )
+            )
+    return func.greatest(*scores) if scores else literal(0)
 
 
 class ListingRepository:
@@ -127,53 +181,7 @@ class ListingRepository:
         if not circle_ids or not (tool_terms or skill_terms):
             return []
 
-        scores = []
-        listing_text = func.concat_ws(" ", Listing.title, Listing.description)
-        for kind, terms in (
-            (ListingKind.TOOL, tool_terms),
-            (ListingKind.SKILL, skill_terms),
-        ):
-            for term in terms:
-                has_kind = Listing.kind == kind.value
-                words = list(dict.fromkeys(re.findall(r"[^\W_]+", term)))
-                reordered_match = false()
-                if 2 <= len(words) <= 5:
-                    reordered_match = and_(
-                        *(
-                            listing_text.icontains(word, autoescape=True)
-                            for word in words
-                        )
-                    )
-                category_match = or_(
-                    func.replace(Category.slug, "_", " ").icontains(
-                        term, autoescape=True
-                    ),
-                    *(
-                        Category.names[lang].astext.icontains(term, autoescape=True)
-                        for lang in ("en", "ja", "bn")
-                    ),
-                )
-                scores.append(
-                    case(
-                        (
-                            and_(
-                                has_kind, Listing.title.icontains(term, autoescape=True)
-                            ),
-                            6,
-                        ),
-                        (
-                            and_(
-                                has_kind,
-                                Listing.description.icontains(term, autoescape=True),
-                            ),
-                            3,
-                        ),
-                        (and_(has_kind, reordered_match), 2),
-                        (and_(has_kind, category_match), 1),
-                        else_=0,
-                    )
-                )
-        score = func.greatest(*scores)
+        score = listing_term_score(tool_terms, skill_terms)
         ranked = (
             select(
                 Listing.id,
