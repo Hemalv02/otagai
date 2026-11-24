@@ -63,10 +63,38 @@ export type Circle = {
   name_translations: Partial<Record<Language, unknown>>;
 };
 
+export type CircleUnitType =
+  | "city"
+  | "association"
+  | "han"
+  | "para"
+  | "moholla"
+  | "building";
+
+export type MembershipRole = "member" | "leader" | "coordinator";
+
+export type CircleDetail = Circle & {
+  approx_lat: number | null;
+  approx_lng: number | null;
+  open_to_nearby: boolean;
+  status: string;
+  member_count: number;
+  my_status: string | null;
+  my_role: string | null;
+};
+
 export type CircleMembership = {
   circle_id: string;
+  role: MembershipRole;
   status: "pending" | "approved" | "rejected" | "removed" | "left";
   circle: Circle | null;
+};
+
+export type NewCircle = {
+  name: string;
+  unit_type: CircleUnitType;
+  region?: Region;
+  open_to_nearby?: boolean;
 };
 
 export type CircleJoin = { invite_code: string } | { circle_id: string };
@@ -434,6 +462,42 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(preferences),
     }),
+  updateMyProfile: (
+    body: {
+      intro?: string | null;
+      happy_to_help_with?: string | null;
+      languages?: Language[];
+    },
+    options?: ListingRequestOptions,
+  ) =>
+    request<UserProfile>("/users/me", {
+      ...options,
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  draftIntroCard: (
+    body: { skills: string; happy_to_help_with?: string; language: Language },
+    options?: ListingRequestOptions,
+  ) =>
+    request<{ intro: string }>("/ai/intro-cards", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  draftExtension: (
+    body: {
+      intent: "extend" | "remind";
+      item?: string;
+      days?: number;
+      language: Language;
+    },
+    options?: ListingRequestOptions,
+  ) =>
+    request<{ message: string }>("/ai/extension-drafts", {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listOpenLoanExchanges: (cursor?: string | null) => {
     const query = pageQuery(cursor);
     query.set("status", "scheduled,active,returned");
@@ -533,6 +597,11 @@ export const api = {
     request<CircleMembership>("/users/me/memberships", {
       method: "POST",
       body: JSON.stringify(target),
+    }),
+  createCircle: (body: NewCircle) =>
+    request<CircleDetail>("/circles", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
   listMemberships: async () => {
     const items: CircleMembership[] = [];

@@ -4,6 +4,7 @@ import {
   type Exchange,
   type Language,
   type Page,
+  type RequestSummary,
 } from "@/lib/api";
 
 type Person = { id: string; display_name: string };
@@ -29,7 +30,7 @@ export type ThankYou = {
   created_at: string;
 };
 export type ReportTarget = "user" | "listing" | "message" | "request";
-export type ReportReason = "harassment" | "other";
+export type ReportReason = "harassment" | "spam" | "unsafe" | "scam" | "other";
 type HistoryExchange = Exchange & { completed_at: string | null };
 type NeighbourListing = {
   id: string;
@@ -96,6 +97,12 @@ export function neighbourApi(authUserId: string) {
       get<Page<NeighbourListing>>(
         pagePath(`/users/${encodeURIComponent(id)}/listings`),
       ),
+    openRequests: (id: string) =>
+      get<Page<RequestSummary>>(
+        pagePath(`/users/${encodeURIComponent(id)}/requests`, {
+          status: "open",
+        }),
+      ),
     request: (id: string) =>
       get<{ polite_text: string }>(`/requests/${encodeURIComponent(id)}`),
     thankYou: (id: string) =>
@@ -122,7 +129,7 @@ export function neighbourApi(authUserId: string) {
       language: Language,
       culturePack: "japan" | "bangladesh",
     ) =>
-      post<{ note: string }>("/ai/thank-you-drafts", {
+      post<{ note: string; suggested_orei: string }>("/ai/thank-you-drafts", {
         helped_with: helpedWith,
         language,
         culture_pack: culturePack,
