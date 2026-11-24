@@ -17,6 +17,8 @@ import { activityLocale } from "@/lib/activity-screen-copy";
 import { assistantCopy } from "@/lib/assistant-copy";
 import { requestNotificationId } from "@/lib/request-ripple";
 import { useLiveResource, usePagedResource } from "@/lib/live-resource";
+import { isUuid } from "@/lib/neighbour-api";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -167,6 +169,7 @@ export default function NotificationsScreen() {
               item.payload.request_id,
             );
             const isUnread = !item.read_at;
+            const thankYouId = item.payload.thank_you_id;
 
             return (
               <View>
@@ -196,6 +199,20 @@ export default function NotificationsScreen() {
                     </Text>
                     {validDate ? (
                       <ActivityText>{timeLabel.format(date)}</ActivityText>
+                    ) : null}
+                    {item.type === "thank_you" && isUuid(thankYouId) ? (
+                      <Button
+                        label={neighbourCopy[locale].viewThanks}
+                        variant="text"
+                        labelStyle={localizedType("field-label", locale)}
+                        onPress={() => {
+                          if (isUnread) void markRead(item.id);
+                          router.push({
+                            pathname: "/thank-yous/[id]",
+                            params: { id: thankYouId },
+                          });
+                        }}
+                      />
                     ) : null}
                     {requestId ? (
                       <Button

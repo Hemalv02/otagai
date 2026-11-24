@@ -20,7 +20,8 @@ type ButtonProps = {
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
-  variant?: "primary" | "secondary" | "text";
+  accessibilityLabel?: string;
+  variant?: "primary" | "secondary" | "outline" | "text";
   style?: StyleProp<ViewStyle>;
   labelStyle?: StyleProp<TextStyle>;
 };
@@ -35,6 +36,11 @@ const buttonVariants = {
       "min-h-primary-control items-center border border-rule bg-canvas px-card-inset",
     label: "text-center text-ink",
   },
+  outline: {
+    container:
+      "min-h-touch-target items-center border border-control bg-canvas px-card-inset",
+    label: "text-center text-action",
+  },
   text: {
     container: "min-h-touch-target items-start self-start",
     label: "text-action",
@@ -47,6 +53,7 @@ export function Button({
   busy = false,
   disabled = false,
   variant = "primary",
+  accessibilityLabel,
   style,
   labelStyle,
 }: ButtonProps) {
@@ -55,7 +62,7 @@ export function Button({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: inactive, busy }}
       disabled={inactive}
       onPress={onPress}

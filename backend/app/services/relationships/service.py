@@ -11,6 +11,7 @@ from app.database.models.enums import (
     UserKind,
     UserStatus,
 )
+from app.repositories.blocks import BlockRepository
 from app.repositories.family_links import (
     DuplicateFamilyLinkError,
     FamilyLinkRepository,
@@ -110,12 +111,15 @@ async def _authority_over(session, caller_id: uuid.UUID, member_id: uuid.UUID) -
 async def list_neighbours(database: Database, user: User) -> list[NeighbourView]:
     async with database.session() as session:
         pairs = await PairStatsRepository(session).neighbours(user.id)
+        blocked = set(await BlockRepository(session).blocked_either_way(user.id))
         users = UserRepository(session)
         views = []
         for pair in pairs:
             other_id = (
                 pair.user_high_id if pair.user_low_id == user.id else pair.user_low_id
             )
+            if other_id in blocked:
+                continue
             other = await users.get(other_id)
             if other is not None and other.status != UserStatus.DELETED.value:
                 views.append(NeighbourView(other=other, pair=pair))

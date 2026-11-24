@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
 import {
   type ComponentRef,
   type PropsWithChildren,
@@ -21,9 +22,10 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { Button, Choice, ErrorText } from "@/components/ui";
+import { Choice, ErrorText } from "@/components/ui";
 import type { Language } from "@/lib/api";
 import { activityCopy } from "@/lib/activity-copy";
+import { neighbourCopy } from "@/lib/neighbour-copy";
 import { useCommunityDemo } from "@/lib/community-demo";
 import { useOnboarding } from "@/lib/onboarding";
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
@@ -78,6 +80,29 @@ const languages: { value: Language; label: string }[] = [
   { value: "bn", label: "বাংলা" },
 ];
 const shortLanguage = { en: "EN", ja: "日本語", bn: "বাংলা" };
+const settingsIcons = {
+  notifications: {
+    ios: "bell",
+    android: "notifications",
+    web: "notifications",
+  },
+  preferences: { ios: "slider.horizontal.3", android: "tune", web: "tune" },
+  blocked: { ios: "hand.raised", android: "block", web: "block" },
+  language: { ios: "globe", android: "language", web: "language" },
+  next: {
+    ios: "chevron.right",
+    android: "chevron_right",
+    web: "chevron_right",
+  },
+  signOut: {
+    ios: "rectangle.portrait.and.arrow.right",
+    android: "logout",
+    web: "logout",
+  },
+} satisfies Record<string, SymbolViewProps["name"]>;
+
+type OptionsSheet = "settings" | "language" | "settings-language";
+
 export function CommunityScreen({
   children,
   title,
@@ -102,15 +127,20 @@ export function CommunityScreen({
   const { t, locale } = useOnboardingText();
   const { state, saving, savePreferences } = useOnboarding();
   const { actor, people } = useCommunityDemo();
-  const [options, setOptions] = useState<"settings" | "language" | null>(null);
+  const [options, setOptions] = useState<OptionsSheet | null>(null);
   const [saveFailed, setSaveFailed] = useState(false);
   const copy = text[locale];
   const label = localizedType("field-label", locale);
   const body = localizedType("body", locale);
 
-  function openOptions(kind: "settings" | "language") {
+  function openOptions(kind: OptionsSheet) {
     setSaveFailed(false);
     setOptions(kind);
+  }
+
+  function closeOptions() {
+    if (!saving)
+      setOptions(options === "settings-language" ? "settings" : null);
   }
 
   async function chooseLanguage(language: Language) {
@@ -264,55 +294,93 @@ export function CommunityScreen({
         visible={options !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setOptions(null)}
+        onRequestClose={closeOptions}
       >
         <SafeAreaView style={styles.scrim}>
           <View accessibilityViewIsModal style={styles.sheet}>
-            <Text
-              accessibilityRole="header"
-              style={[localizedType("section-heading", locale), styles.ink]}
+            <View style={styles.sheetHeader}>
+              <Text
+                accessibilityRole="header"
+                style={[
+                  localizedType("section-heading", locale),
+                  styles.sheetTitle,
+                ]}
+              >
+                {options === "settings" ? copy.settings : copy.language}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ disabled: saving }}
+                disabled={saving}
+                onPress={closeOptions}
+                style={styles.sheetDone}
+              >
+                <Text style={[label, styles.green]}>{copy.done}</Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetContent}
             >
-              {options === "settings" ? copy.settings : copy.language}
-            </Text>
-            {options === "settings" ? (
-              <>
-                <Button
-                  label={activityCopy[locale].notifications}
-                  labelStyle={label}
-                  variant="text"
-                  onPress={() => {
-                    setOptions(null);
-                    router.push("/notifications");
-                  }}
-                />
-                <Button
-                  label={activityCopy[locale].preferences}
-                  labelStyle={label}
-                  variant="text"
-                  onPress={() => {
-                    setOptions(null);
-                    router.push("/notification-preferences");
-                  }}
-                />
-                <Text style={[label, styles.secondary]}>{copy.language}</Text>
-              </>
-            ) : null}
-            <Choice
-              options={languages}
-              value={locale}
-              onChange={chooseLanguage}
-              disabled={saving}
-            />
-            {saveFailed ? <ErrorText>{t("saveError")}</ErrorText> : null}
-            <Button
-              label={copy.done}
-              labelStyle={label}
-              disabled={saving}
-              onPress={() => setOptions(null)}
-            />
-            {options === "settings" ? (
-              <CommunitySignOut onClose={() => setOptions(null)} />
-            ) : null}
+              {options === "settings" ? (
+                <>
+                  <View style={styles.settingsGroup}>
+                    {(
+                      [
+                        [
+                          "notifications",
+                          activityCopy[locale].notifications,
+                          "/notifications",
+                        ],
+                        [
+                          "preferences",
+                          activityCopy[locale].preferences,
+                          "/notification-preferences",
+                        ],
+                        [
+                          "blocked",
+                          neighbourCopy[locale].blockedPeople,
+                          "/blocked-people",
+                        ],
+                      ] as const
+                    ).map(([icon, itemLabel, href]) => (
+                      <View key={href} style={styles.rule}>
+                        <SettingsRow
+                          icon={icon}
+                          label={itemLabel}
+                          locale={locale}
+                          onPress={() => {
+                            setOptions(null);
+                            router.push(href);
+                          }}
+                        />
+                      </View>
+                    ))}
+                    <SettingsRow
+                      icon="language"
+                      label={copy.language}
+                      locale={locale}
+                      value={
+                        languages.find((language) => language.value === locale)
+                          ?.label
+                      }
+                      onPress={() => openOptions("settings-language")}
+                    />
+                  </View>
+                  <CommunitySignOut onClose={() => setOptions(null)} />
+                </>
+              ) : (
+                <>
+                  <Choice
+                    options={languages}
+                    value={locale}
+                    onChange={chooseLanguage}
+                    disabled={saving}
+                  />
+                  {saveFailed ? <ErrorText>{t("saveError")}</ErrorText> : null}
+                </>
+              )}
+            </ScrollView>
           </View>
         </SafeAreaView>
       </Modal>
@@ -324,15 +392,65 @@ function CommunitySignOut({ onClose }: { onClose: () => void }) {
   const { signOut } = useSession();
   const { t, locale } = useOnboardingText();
   return (
-    <Button
+    <SettingsRow
+      icon="signOut"
       label={t("signOut")}
-      labelStyle={localizedType("field-label", locale)}
-      variant="text"
+      locale={locale}
+      navigates={false}
       onPress={() => {
         onClose();
         void signOut();
       }}
     />
+  );
+}
+
+function SettingsRow({
+  icon,
+  label,
+  locale,
+  value,
+  navigates = true,
+  onPress,
+}: {
+  icon: keyof typeof settingsIcons;
+  label: string;
+  locale: Language;
+  value?: string;
+  navigates?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={value ? `${label}, ${value}` : label}
+      onPress={onPress}
+      android_ripple={{ color: colors.wash }}
+      style={styles.settingsRow}
+    >
+      <SymbolView
+        name={settingsIcons[icon]}
+        size={19}
+        tintColor={colors.action}
+        accessible={false}
+      />
+      <Text style={[localizedType("field-label", locale), styles.rowLabel]}>
+        {label}
+      </Text>
+      {value ? (
+        <Text style={[localizedType("supporting", locale), styles.secondary]}>
+          {value}
+        </Text>
+      ) : null}
+      {navigates ? (
+        <SymbolView
+          name={settingsIcons.next}
+          size={13}
+          tintColor={colors.control}
+          accessible={false}
+        />
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -413,10 +531,44 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     maxWidth: 500,
     width: "100%",
+    maxHeight: "88%",
     backgroundColor: colors.canvas,
-    padding: spacing["screen-gutter"],
-    gap: spacing["card-inset"],
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    paddingHorizontal: spacing["screen-gutter"],
+    paddingTop: spacing["related-gap"],
+    paddingBottom: spacing["control-gap"],
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
   },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing["related-gap"],
+  },
+  sheetTitle: { flex: 1, color: colors.ink },
+  sheetDone: {
+    minHeight: controls["touch-target"],
+    minWidth: controls["touch-target"],
+    alignItems: "flex-end",
+    justifyContent: "center",
+  },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
+  sheetContent: {
+    gap: spacing["related-gap"],
+    paddingTop: spacing["related-gap"],
+  },
+  settingsGroup: {
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  settingsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing["control-gap"],
+    minHeight: controls["touch-target"],
+    paddingHorizontal: spacing["control-gap"],
+    paddingVertical: 6,
+  },
+  rowLabel: { flex: 1, color: colors.ink },
 });
