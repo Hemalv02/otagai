@@ -264,6 +264,9 @@ function PairHistory({
         const role = lent
           ? copy.given(partnerName)
           : copy.receivedHelp(partnerName);
+        const label = isLoan
+          ? activityCopy[locale].viewLoan
+          : copy.viewExchange;
         return (
           <View key={id} style={styles.row}>
             <View style={styles.text}>
@@ -282,17 +285,18 @@ function PairHistory({
                 {date ? `${role} · ${date}` : role}
               </Text>
             </View>
-            {isLoan ? (
-              <Button
-                label={activityCopy[locale].viewLoan}
-                accessibilityLabel={`${activityCopy[locale].viewLoan}: ${heading}`}
-                variant="text"
-                labelStyle={localizedType("field-label", locale)}
-                onPress={() =>
-                  router.push({ pathname: "/loans/[id]", params: { id } })
-                }
-              />
-            ) : null}
+            <Button
+              label={label}
+              accessibilityLabel={`${label}: ${heading}`}
+              variant="text"
+              labelStyle={localizedType("field-label", locale)}
+              onPress={() =>
+                router.push({
+                  pathname: isLoan ? "/loans/[id]" : "/exchanges/[id]",
+                  params: { id },
+                })
+              }
+            />
           </View>
         );
       })}

@@ -73,6 +73,7 @@ function LoanThankYou({
           exchangeLabel(api, exchange),
           findSentNote(api, id),
         ]);
+        if (!person && !existing) return { status: "unavailable" } as const;
         return {
           status: "ready",
           name: person?.display_name,
@@ -163,6 +164,9 @@ function LoanThankYou({
     try {
       setConfirmed(await api.sendThankYou(id, note.trim(), locale, suggested));
     } catch (cause) {
+      if (isUnavailable(cause)) {
+        await data.reload();
+      }
       if (
         cause instanceof ApiError &&
         [0, 408, 409, 500, 502, 503, 504].includes(cause.status)

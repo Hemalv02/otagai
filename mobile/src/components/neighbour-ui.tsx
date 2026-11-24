@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import type { PropsWithChildren } from "react";
-import { Modal, StyleSheet, Text, View } from "react-native";
+import { Modal, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { localizedType, useOnboardingText } from "@/lib/onboarding-i18n";
 import { colors, controls, spacing } from "@/theme/tokens.json";
@@ -88,7 +88,12 @@ export function NeighbourConfirmation({
       <View style={styles.scrim}>
         <View accessibilityViewIsModal style={styles.sheet}>
           <NeighbourHeading>{title}</NeighbourHeading>
-          {children}
+          <ScrollView
+            style={styles.confirmationBody}
+            contentContainerStyle={styles.confirmationContent}
+          >
+            {children}
+          </ScrollView>
           <Button
             label={confirmLabel}
             labelStyle={localizedType("button", locale)}
@@ -140,10 +145,13 @@ const styles = StyleSheet.create({
   sheet: {
     width: "100%",
     maxWidth: 440,
+    maxHeight: "85%",
     alignSelf: "center",
     backgroundColor: colors.canvas,
     borderRadius: controls.radius,
     padding: spacing["card-inset"],
     gap: spacing["control-gap"],
   },
+  confirmationBody: { flexGrow: 0, flexShrink: 1 },
+  confirmationContent: { gap: spacing["control-gap"] },
 });

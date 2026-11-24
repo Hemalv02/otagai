@@ -1,4 +1,15 @@
-from tests.integration.conftest import auth, completed_exchange
+import asyncio
+import uuid
+
+import pytest
+
+from tests.integration.conftest import (
+    auth,
+    completed_exchange,
+    join_circle,
+    make_circle,
+    make_user,
+)
 
 
 async def _mid(client, token):
@@ -167,3 +178,104 @@ async def test_report_resolve_by_leader(client):
     resolved = await client.post(f"/reports/{report_id}/resolve", headers=auth(leader))
     assert resolved.status_code == 200
     assert resolved.json()["status"] == "resolved"
+
+
+async def test_neighbour_report_retries_use_one_moderation_case(client):
+    ctx = await completed_exchange(client)
+    reporter, leader = ctx["helper"], ctx["requester"]
+    neighbour = await make_user(client, display_name="Neighbour")
+    await join_circle(client, leader, ctx["circle_id"], neighbour)
+    payload = {
+        "submission_id": str(uuid.uuid4()),
+        "target_type": "user",
+        "target_id": await _mid(client, neighbour),
+        "reason": "harassment",
+    }
+    first, retry = await asyncio.gather(
+        *(
+            client.post("/reports", headers=auth(reporter), json=payload)
+            for _ in range(2)
+        )
+    )
+    assert first.status_code == retry.status_code == 201
+    assert first.json()["id"] == retry.json()["id"]
+    assert first.json()["circle_id"] == ctx["circle_id"]
+
+    different_payload = await client.post(
+        "/reports", headers=auth(reporter), json={**payload, "reason": "spam"}
+    )
+    assert different_payload.status_code == 409
+    different_reporter = await client.post(
+        "/reports",
+        headers=auth(leader),
+        json={**payload, "target_id": await _mid(client, reporter)},
+    )
+    assert different_reporter.status_code == 409
+    queue = await client.get(
+        f"/circles/{ctx['circle_id']}/reports", headers=auth(leader)
+    )
+    assert [item["id"] for item in queue.json()["items"]] == [first.json()["id"]]
+
+    against_leader = await client.post(
+        "/reports",
+        headers=auth(reporter),
+        json={
+            **payload,
+            "submission_id": str(uuid.uuid4()),
+            "target_id": await _mid(client, leader),
+        },
+    )
+    assert against_leader.status_code == 201
+    queue = await client.get(
+        f"/circles/{ctx['circle_id']}/reports", headers=auth(leader)
+    )
+    assert [item["id"] for item in queue.json()["items"]] == [first.json()["id"]]
+    resolved = await client.post(
+        f"/reports/{against_leader.json()['id']}/resolve", headers=auth(leader)
+    )
+    assert resolved.status_code == 404
+
+
+async def test_neighbour_report_prefers_a_circle_with_an_eligible_leader(client):
+    reporter = await make_user(client, display_name="Reporter")
+    target = await make_user(client, display_name="Target")
+    moderator = await make_user(client, display_name="Moderator")
+    older = await make_circle(client, moderator)
+    await join_circle(client, moderator, older, reporter)
+    await join_circle(client, moderator, older, target)
+    newer = await make_circle(client, target)
+    await join_circle(client, target, newer, reporter)
+
+    response = await client.post(
+        "/reports",
+        headers=auth(reporter),
+        json={
+            "target_type": "user",
+            "target_id": await _mid(client, target),
+            "reason": "harassment",
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["circle_id"] == older
+    queue = await client.get(f"/circles/{older}/reports", headers=auth(moderator))
+    assert [item["id"] for item in queue.json()["items"]] == [response.json()["id"]]
+
+
+@pytest.mark.parametrize("sender", ["requester", "helper"])
+async def test_blocked_neighbours_cannot_create_thank_yous(client, sender):
+    ctx = await completed_exchange(client)
+    requester, helper = ctx["requester"], ctx["helper"]
+    helper_id = await _mid(client, helper)
+    blocked = await client.post(
+        "/users/me/blocks", headers=auth(requester), json={"user_id": helper_id}
+    )
+    assert blocked.status_code == 201
+    payload = {"exchange_id": ctx["exchange_id"], "gift_type": "note", "note": "Thanks"}
+    denied = await client.post("/thank-yous", headers=auth(ctx[sender]), json=payload)
+    assert denied.status_code == 404
+    for token in (requester, helper):
+        neighbours = await client.get("/users/me/neighbours", headers=auth(token))
+        assert neighbours.json()["items"] == []
+    await client.delete(f"/users/me/blocks/{helper_id}", headers=auth(requester))
+    sent = await client.post("/thank-yous", headers=auth(ctx[sender]), json=payload)
+    assert sent.status_code == 201

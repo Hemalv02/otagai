@@ -128,12 +128,14 @@ export function neighbourApi(authUserId: string) {
         culture_pack: culturePack,
       }),
     report: (
+      submissionId: string,
       targetType: ReportTarget,
       targetId: string,
       reason: ReportReason,
       details: string,
     ) =>
       post<{ id: string }>("/reports", {
+        submission_id: submissionId,
         target_type: targetType,
         target_id: targetId,
         reason,

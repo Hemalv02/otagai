@@ -1,3 +1,4 @@
+import { randomUUID } from "expo-crypto";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -108,6 +109,8 @@ function ReportOrBlock({
   const [result, setResult] = useState<Result>({});
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const submissionId = useRef<string | null>(null);
+  const reportDetails = reason === "other" ? details.trim() : "";
   const ready = target.data?.name !== undefined;
   const name = target.data?.name ?? copy.neighbour;
   const actions: Action[] = [];
@@ -132,7 +135,14 @@ function ReportOrBlock({
     try {
       if (selected.includes("report") && reason && result.report !== "done") {
         try {
-          await api.report("user", targetId, reason, details);
+          submissionId.current ??= randomUUID();
+          await api.report(
+            submissionId.current,
+            "user",
+            targetId,
+            reason,
+            reportDetails,
+          );
           outcomes.report = "done";
         } catch {
           outcomes.report = "failed";
@@ -252,7 +262,10 @@ function ReportOrBlock({
                           disabled: busy,
                         }}
                         disabled={busy}
-                        onPress={() => setReason(value)}
+                        onPress={() => {
+                          setReason(value);
+                          if (value !== "other") setDetails("");
+                        }}
                       >
                         <SelectionCopy
                           title={title}
@@ -329,10 +342,18 @@ function ReportOrBlock({
         >
           <ActivityText strong>{name}</ActivityText>
           {confirmation.includes("report") && reason ? (
-            <ActivityText>
-              {copy.reason} ·{" "}
-              {reason === "harassment" ? copy.unwanted : copy.other}
-            </ActivityText>
+            <>
+              <ActivityText>
+                {copy.reason} ·{" "}
+                {reason === "harassment" ? copy.unwanted : copy.other}
+              </ActivityText>
+              {reportDetails ? (
+                <View>
+                  <ActivityText strong>{copy.details}</ActivityText>
+                  <ActivityText>{reportDetails}</ActivityText>
+                </View>
+              ) : null}
+            </>
           ) : null}
           {confirmation.includes("block") ? (
             <ActivityText>{copy.blockDetail}</ActivityText>
