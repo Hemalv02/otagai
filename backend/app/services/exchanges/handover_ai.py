@@ -7,11 +7,12 @@ from agents import TResponseInputItem
 from pydantic import BaseModel, Field, StringConstraints
 
 from app.database.connection import Database
-from app.database.models.enums import MediaVariantName
+from app.database.models.enums import AiFeature, MediaVariantName
 from app.repositories.exchanges import ExchangeRepository
 from app.repositories.listings import ListingRepository
 from app.repositories.media import MediaRepository
 from app.services.actors.service import Actor
+from app.services.ai.runner import run_feature
 from app.services.ai.service import AIDraftError, draft
 from app.services.errors import (
     BadRequestError,
@@ -19,7 +20,6 @@ from app.services.errors import (
     ServiceConfigurationError,
 )
 from app.services.exchanges.handover import get_check, is_loan_pickup
-from app.services.ratelimit import enforce
 from app.services.storage.service import Storage
 from app.settings import Settings
 
@@ -79,48 +79,52 @@ async def suggest_pickup_items(
         raise ServiceConfigurationError(
             "Pickup suggestions are unavailable. Add parts manually."
         )
-    await enforce(
-        redis,
-        scope="handover_checklist",
-        user_id=actor.user.id,
-        limit=20,
-        window_seconds=3600,
-    )
 
-    content = [
-        {
-            "type": "input_text",
-            "text": json.dumps(
-                {
-                    "language": lang,
-                    "listing_title": listing.title if listing else None,
-                    "existing_items": [item.label for item in view.items],
-                },
-                ensure_ascii=False,
-            ),
-        }
-    ]
-    for photo in photos:
-        data = await storage.download(
-            photo.s3_key, max_bytes=settings.media_max_image_bytes
-        )
-        if not data:
-            raise AIDraftError("Could not read a pickup photo. Add parts manually.")
-        encoded = base64.b64encode(data).decode("ascii")
-        content.append(
+    async def produce() -> PickupSuggestions:
+        content = [
             {
-                "type": "input_image",
-                "image_url": f"data:{photo.mime_type};base64,{encoded}",
-                "detail": "low",
+                "type": "input_text",
+                "text": json.dumps(
+                    {
+                        "language": lang,
+                        "listing_title": listing.title if listing else None,
+                        "existing_items": [item.label for item in view.items],
+                    },
+                    ensure_ascii=False,
+                ),
             }
+        ]
+        for photo in photos:
+            data = await storage.download(
+                photo.s3_key, max_bytes=settings.media_max_image_bytes
+            )
+            if not data:
+                raise AIDraftError("Could not read a pickup photo. Add parts manually.")
+            encoded = base64.b64encode(data).decode("ascii")
+            content.append(
+                {
+                    "type": "input_image",
+                    "image_url": f"data:{photo.mime_type};base64,{encoded}",
+                    "detail": "low",
+                }
+            )
+
+        user_input: list[TResponseInputItem] = [{"role": "user", "content": content}]
+        return await draft(
+            settings,
+            instructions=INSTRUCTIONS,
+            user_input=user_input,
+            output_type=PickupSuggestions,
         )
 
-    user_input: list[TResponseInputItem] = [{"role": "user", "content": content}]
-    suggestions = await draft(
+    suggestions = await run_feature(
+        database,
+        redis,
         settings,
-        instructions=INSTRUCTIONS,
-        user_input=user_input,
-        output_type=PickupSuggestions,
+        actor.user,
+        feature=AiFeature.HANDOVER_CHECKLIST,
+        input_payload={"check_id": str(check_id), "lang": lang},
+        produce=produce,
     )
     seen = {item.label.casefold() for item in view.items}
     items = []

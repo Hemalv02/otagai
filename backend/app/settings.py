@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None
     openai_transcribe_model: str = "whisper-1"
+    ai_run_retention_days: int = Field(default=30, ge=1)
 
     media_max_image_bytes: int = Field(default=15 * 1024 * 1024, ge=1)
     media_max_audio_bytes: int = Field(default=25 * 1024 * 1024, ge=1)

@@ -1,6 +1,12 @@
 import pytest
+from aiohttp import ClientPayloadError
+from botocore.exceptions import IncompleteReadError, ResponseStreamingError
 
-from app.services.storage.service import Storage, StorageError
+from app.services.storage.service import (
+    IncompleteDownloadError,
+    Storage,
+    StorageError,
+)
 
 
 class ChunkedBody:
@@ -11,7 +17,10 @@ class ChunkedBody:
         return None
 
     async def read(self, size):
-        return next(self.chunks, b"")
+        chunk = next(self.chunks, b"")
+        if isinstance(chunk, Exception):
+            raise chunk
+        return chunk
 
 
 class ChunkedClient:
@@ -35,3 +44,47 @@ async def test_download_enforces_cap_during_streaming():
     storage = Storage(ChunkedClient([b"abc", b"def"], 5), "bucket", "region")
     with pytest.raises(StorageError, match="exceeds"):
         await storage.download("media/photo", max_bytes=5)
+
+
+class FlakyClient:
+    def __init__(self, attempts):
+        self.attempts = iter(attempts)
+        self.calls = 0
+
+    async def get_object(self, **kwargs):
+        self.calls += 1
+        body = ChunkedBody()
+        body.chunks = iter([next(self.attempts)])
+        return {"Body": body, "ContentLength": 6}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "partial_read",
+    [
+        b"abc",
+        IncompleteReadError(actual_bytes=3, expected_bytes=6),
+        ResponseStreamingError(error="closed during read"),
+        ClientPayloadError("body ended before content length"),
+    ],
+)
+async def test_download_retries_incomplete_object(monkeypatch, partial_read):
+    monkeypatch.setattr("app.services.storage.service.asyncio.sleep", _no_sleep)
+    client = FlakyClient([partial_read, b"abcdef"])
+    storage = Storage(client, "bucket", "region")
+    assert await storage.download("media/photo", max_bytes=6) == b"abcdef"
+    assert client.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_download_gives_up_after_repeated_incomplete_reads(monkeypatch):
+    monkeypatch.setattr("app.services.storage.service.asyncio.sleep", _no_sleep)
+    client = FlakyClient([b"abc"] * 3)
+    storage = Storage(client, "bucket", "region")
+    with pytest.raises(IncompleteDownloadError):
+        await storage.download("media/photo", max_bytes=6)
+    assert client.calls == 3
+
+
+async def _no_sleep(_seconds):
+    return None

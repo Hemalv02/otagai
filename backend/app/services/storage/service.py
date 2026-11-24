@@ -1,10 +1,17 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any, Self
 
 from aiobotocore.config import AioConfig
 from aiobotocore.session import get_session
-from botocore.exceptions import BotoCoreError, ClientError
+from aiohttp import ClientPayloadError
+from botocore.exceptions import (
+    BotoCoreError,
+    ClientError,
+    IncompleteReadError,
+    ResponseStreamingError,
+)
 
 from app.services.errors import ServiceConfigurationError, ServiceError
 from app.settings import Settings
@@ -16,6 +23,13 @@ class StorageError(ServiceError):
 
 class ObjectNotFoundError(StorageError):
     pass
+
+
+class IncompleteDownloadError(StorageError):
+    pass
+
+
+DOWNLOAD_ATTEMPTS = 3
 
 
 class Storage:
@@ -95,6 +109,14 @@ class Storage:
         self._validate_key(key)
         if max_bytes < 1:
             raise ValueError("Set a positive object size limit.")
+        for attempt in range(DOWNLOAD_ATTEMPTS - 1):
+            try:
+                return await self._download_once(key, max_bytes)
+            except IncompleteDownloadError:
+                await asyncio.sleep(0.2 * 2**attempt)
+        return await self._download_once(key, max_bytes)
+
+    async def _download_once(self, key: str, max_bytes: int) -> bytes:
         try:
             response = await self._client.get_object(Bucket=self._bucket, Key=key)
             async with response["Body"] as body:
@@ -108,8 +130,16 @@ class Storage:
                     if len(content) > max_bytes:
                         raise StorageError("The object exceeds the allowed size.")
                 if len(content) != response["ContentLength"]:
-                    raise StorageError("The object download was incomplete.")
+                    raise IncompleteDownloadError("The object download was incomplete.")
                 return bytes(content)
+        except (
+            IncompleteReadError,
+            ResponseStreamingError,
+            ClientPayloadError,
+        ) as error:
+            raise IncompleteDownloadError(
+                "The object download was incomplete."
+            ) from error
         except ClientError as error:
             if error.response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
                 raise ObjectNotFoundError("The object does not exist.") from error

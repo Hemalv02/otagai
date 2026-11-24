@@ -380,6 +380,7 @@ class AiFeature(StrEnum):
     TRANSLATE = "translate"
     TRANSCRIBE = "transcribe"
     INTRO_CARD = "intro_card"
+    TOOL_GUIDE = "tool_guide"
 
 
 class AiRunStatus(StrEnum):

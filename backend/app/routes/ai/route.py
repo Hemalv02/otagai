@@ -37,7 +37,6 @@ from app.services.ai.runner import (
     suggest_listing,
     transcribe_voice,
 )
-from app.services.ratelimit import enforce
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -141,16 +140,18 @@ async def tool_guides(
     body: ToolGuideInput,
     user: CurrentUserDep,
     settings: SettingsDep,
+    database: DatabaseDep,
     redis: RedisDep,
 ) -> ToolGuide:
-    await enforce(
+    return await run_feature(
+        database,
         redis,
-        scope="tool_guide",
-        user_id=user.id,
-        limit=40,
-        window_seconds=3600,
+        settings,
+        user,
+        feature=AiFeature.TOOL_GUIDE,
+        input_payload=body.model_dump(mode="json"),
+        produce=lambda: draft_tool_guide(settings, body),
     )
-    return await draft_tool_guide(settings, body)
 
 
 @router.post("/transcriptions")
