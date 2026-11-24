@@ -138,6 +138,7 @@ services:
     environment:
       APP_DOMAIN: "${APP_DOMAIN:?Set APP_DOMAIN}"
       S3_DOMAIN: "${S3_DOMAIN:?Set S3_DOMAIN}"
+      ACME_EMAIL: "${ACME_EMAIL:?Set ACME_EMAIL}"
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
