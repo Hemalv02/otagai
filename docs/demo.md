@@ -2,8 +2,6 @@
 
 [Project overview](../README.md) · [Architecture](architecture.md)
 
-Otagai tackles a small but recurring problem. Someone needs a tool or a few minutes of help, but asking a stranger or broadcasting the request feels awkward. Trust comes from circle membership, clear choices about who can see a request, and a record of how an exchange ends.
-
 ## Walkthrough
 
 The demo uses three accounts with records seeded through the API. Setup requires a demo database, Supabase Auth, media storage, and an AI provider for Ask and translation. [Seed command and configuration](../backend/docs/hackathon-demo.md)
