@@ -12,7 +12,7 @@
   --rule: #D9DDD2;
   --control: #81877C;
   --shadow: 0 40px 90px rgba(48, 54, 48, 0.14), 0 6px 18px rgba(48, 54, 48, 0.06);
-  --sans: 'Inter', system-ui, sans-serif;
+  --sans: 'Inter', 'Noto Sans JP', 'Noto Sans Bengali', system-ui, sans-serif;
   --serif: 'Lora', Georgia, serif;
   --mono: 'Geist Mono', monospace;
   --ja: 'Noto Sans JP', 'Inter', sans-serif;

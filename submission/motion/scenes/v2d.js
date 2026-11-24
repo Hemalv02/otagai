@@ -1,7 +1,7 @@
 import { headline, playHead, typeText, words, riseWords } from './kit.js';
 import { rel, devAt, zoomRig, zoomState, focusOn, swap, taps, tapRingHTML, press, show, setText, cls, trans, spring, seg, clamp, lerp, easeIn, easeOut, easeInOut, track, css } from './kit2.js';
 import { screen, device, head, btn, field, choice, notice, listRow, avatarImg, avatarInit, sf, T, backRow, toggle } from '../lib/app.js';
-import { glyphs, icon } from '../lib/ui.js';
+import { icon } from '../lib/ui.js';
 import { KNOT_T, T_ALERT } from './world2.js';
 
 const TANAKA = 'assets/onboarding-tanaka.png';
@@ -275,8 +275,10 @@ export const disaster = {
     [this.h1, this.h2] = el.querySelectorAll('.hl');
     this.el = el;
   },
-  update(lt, t) {
+  update(lt, t, ctx) {
     trans(this.el, t, { tin: 124.9, kin: 'fade', din: 0.25, tout: 139.8, kout: 'fade', dout: 0.5 });
+    const checkInHold = easeInOut(seg(t, 135, 135.45)) * (1 - easeInOut(seg(t, 139.8, 140.65)));
+    ctx.grainAmt *= 1 - checkInHold;
     this.flash.style.opacity = (seg(t, 124.9, 125.0) * (1 - seg(t, 125.0, 125.6)) * 0.35 + seg(t, 127.3, 127.35) * (1 - seg(t, 127.35, 127.9)) * 0.25).toFixed(3);
     devAt(this.dL, 1060);
     devAt(this.dM, 1530);
@@ -301,7 +303,7 @@ export const disaster = {
     press(this.safe, t, 129.8);
     show(this.thx, t, 130.0, Infinity, { dy: 10 });
     taps(this.tapM, this.dM, t, [[129.8, this.safe], [135.6, this.gt]]);
-    swap(this.scM, t, [0, 135.0]);
+    swap(this.scM, t, [0, 135.0], { kind: 'fade' });
     cls(this.gt.firstElementChild, 'on', t > 135.6);
     playHead(this.h1, t, 125.8, 134.8);
     playHead(this.h2, t, 135.3, 139.6);
@@ -348,38 +350,29 @@ export const trust = {
   },
 };
 
-const TAGL = [['Help is close by.', '', 'word'], ['助け合いは、すぐそばに。', 'ja', 'char'], ['সাহায্য আছে কাছেই।', 'bn', 'word']];
 export const close = {
   id: 'close', start: 152, end: 171,
   build(el) {
     el.innerHTML = `
-      <div class="abs cl" style="left:1010px;top:250px;width:860px">
+      <div class="abs cl" style="left:1010px;top:206px;width:790px">
+        <div class="eyebrow credit" style="color:var(--action-deep);margin-bottom:20px">Team FnF · Tsunagu</div>
         <div class="serif wm" style="font-size:190px;line-height:1;color:var(--action)">${words('Otagai')}</div>
         <div class="row sub" style="gap:22px;margin-top:18px"><span class="ja" style="font-size:42px;color:var(--ink)">お互い</span><span style="font:400 34px var(--serif);color:var(--secondary)">“mutual”</span></div>
         <div class="serif l1" style="font-size:50px;line-height:1.3;color:var(--ink);margin-top:50px">${words('Nagasaki already has the helpers.')}</div>
         <div class="serif l2" style="font-size:50px;line-height:1.3;color:var(--action)">${words('Otagai is the connection.')}</div>
-        <div class="tl" style="position:relative;height:70px;margin-top:40px">${TAGL.map(([s, f, m]) => `<div class="tg headline ${f}" style="position:absolute;left:0;top:0;font-size:44px;color:var(--secondary);${f === 'ja' ? 'font-weight:700;' : ''}">${glyphs(s, m)}</div>`).join('')}</div>
+        <div class="tagline" style="font:500 32px/1.3 var(--sans);color:var(--secondary);margin-top:36px">Neighbourhood tool and help sharing</div>
       </div>`;
     this.wm = el.querySelector('.wm'); this.sub = el.querySelector('.sub'); this.l1 = el.querySelector('.l1'); this.l2 = el.querySelector('.l2');
-    this.tg = [...el.querySelectorAll('.tg')];
+    this.credit = el.querySelector('.credit'); this.tagline = el.querySelector('.tagline');
   },
-  update(lt, t) {
+  update(lt, t, ctx) {
+    ctx.grainAmt *= 1 - easeInOut(seg(t, 158.4, 159.2));
     riseWords(this.l1, t, 155.0, { stagger: 0.07 });
     riseWords(this.l2, t, 157.3, { stagger: 0.08 });
     riseWords(this.wm, t, 157.0, { preset: 'heavy' });
-    const p = spring(t - 157.5, 'default');
-    css(this.sub, { o: clamp(p * 1.5), y: (1 - p) * 20 });
-    const Ts = [159.5, 160.8, 162.1];
-    this.tg.forEach((g, i) => {
-      const tin = Ts[i], tout = i < 2 ? Ts[i + 1] : 999;
-      g.style.display = t > tin - 0.1 && t < tout + 0.5 ? '' : 'none';
-      g.querySelectorAll('.g').forEach((s, j) => {
-        const pp = spring(t - tin - j * (i === 1 ? 0.025 : 0.06), 'snappy');
-        const q = easeIn(seg(t, tout + j * 0.012, tout + 0.25 + j * 0.012));
-        s.style.transform = `translateY(${((1 - pp) * 0.35 - q * 0.3).toFixed(3)}em)`;
-        s.style.opacity = (clamp(pp * 1.6) * (1 - q)).toFixed(3);
-      });
-    });
+    show(this.credit, t, 157.1);
+    show(this.sub, t, 157.5);
+    show(this.tagline, t, 159.3);
   },
 };
 
@@ -393,13 +386,16 @@ export const hud = {
   id: 'hud', start: 0, end: 171,
   build(el) {
     el.innerHTML = `<div class="abs clk mono halo" style="left:120px;top:64px;font-size:19px;letter-spacing:.16em;color:var(--control);text-transform:uppercase;display:flex;gap:16px;align-items:center">
-      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>`;
+      <span class="dot" style="width:12px;height:12px;border-radius:50%;background:var(--clay)"></span><span class="tm" style="color:var(--ink)"></span><span>·</span><span class="pl"></span></div>
+      <div class="abs concept-label" style="left:48px;bottom:60px;background:#fff;border:1.5px solid var(--rule);border-radius:8px;padding:10px 14px;font:600 22px/1.25 var(--sans);color:var(--action-deep)">Mobile concept</div>`;
     this.clk = el.querySelector('.clk'); this.tm = el.querySelector('.tm'); this.pl = el.querySelector('.pl'); this.dot = el.querySelector('.dot');
+    this.conceptLabel = el.querySelector('.concept-label');
   },
   update(lt, t) {
     let i = -1;
     for (let k = 0; k < CLOCK.length; k++) if (t >= CLOCK[k][0]) i = k;
     const zs = zoomState.t === t ? zoomState.s : 1;
+    this.conceptLabel.style.display = t >= circle.start - 0.2 && t < disaster.end + 0.3 ? 'block' : 'none';
     this.clk.style.opacity = (i < 0 ? 0 : seg(t, 0.6, 1.2) * (1 - seg(t, 139.4, 140.0)) * clamp(1 - (zs - 1) / 0.15)).toFixed(3);
     if (i >= 0 && this.tm._i !== i) { this.tm._i = i; this.tm.textContent = CLOCK[i][1]; this.pl.textContent = CLOCK[i][2]; }
     if (i >= 0) {

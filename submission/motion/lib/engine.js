@@ -52,9 +52,9 @@ for (const s of scenes) {
   s.build(s.el, ctx);
 }
 
-function paintGrain(frame) {
+function paintGrain() {
   const d = gimg.data;
-  let x = (frame * 2654435761) >>> 0 || 1;
+  let x = 1;
   for (let i = 0; i < d.length; i += 4) {
     x ^= x << 13; x ^= x >>> 17; x ^= x << 5; x >>>= 0;
     d[i] = d[i + 1] = d[i + 2] = x & 255;
@@ -62,6 +62,7 @@ function paintGrain(frame) {
   }
   gctx.putImageData(gimg, 0, 0);
 }
+paintGrain();
 
 window.seek = (film) => {
   const t = warp(film);
@@ -78,7 +79,6 @@ window.seek = (film) => {
   drawHero(t, ctx);
   grain.style.opacity = ctx.grainAmt;
   vignette.style.opacity = ctx.vig;
-  paintGrain(Math.round(film * 30));
 };
 window.DURATION = cfg.DURATION;
 window.warp = warp;

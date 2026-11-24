@@ -7,6 +7,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
+import { once } from 'node:events';
 
 const ROOT = path.dirname(new URL(import.meta.url).pathname);
 const args = Object.fromEntries(
@@ -23,11 +24,11 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': MIME[path.extname(p)] || 'application/octet-stream' });
   fs.createReadStream(p).pipe(res);
 });
-await new Promise((r) => server.listen(0, r));
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const URL_ = `http://127.0.0.1:${server.address().port}/index.html`;
 
 const scale = Number(args.scale || 1);
-const browser = await chromium.launch({ args: ['--disable-gpu-vsync', '--force-color-profile=srgb', '--font-render-hinting=none'] });
+const browser = await chromium.launch({ args: ['--disable-gpu-compositing', '--disable-gpu-vsync', '--force-color-profile=srgb', '--font-render-hinting=none'] });
 
 async function openPage() {
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
@@ -38,6 +39,7 @@ async function openPage() {
   try {
     await page.waitForFunction(() => window.ready, null, { timeout: 15000 });
     await page.evaluate(() => window.ready);
+    await page.evaluate(() => Promise.all([...document.images].map((image) => image.decode())));
   } catch (e) {
     console.error('Page failed to become ready:', errs.join('\n') || e.message);
     process.exit(1);
@@ -96,6 +98,7 @@ if (args.still) {
       const cdp = scale === 1 ? await page.context().newCDPSession(page) : null;
       const seg = path.join(tmp, `seg${w}.mp4`);
       const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', String(fps), '-c:v', 'png', '-i', '-', '-c:v', 'libx264', '-preset', args.preset || 'medium', '-crf', String(args.crf || 16), '-pix_fmt', 'yuv420p', '-r', String(fps), seg]);
+      const encoded = once(ff, 'close');
       for (let f = f0; f < f1; f++) {
         await page.evaluate((t) => window.seek(t), from + f / fps);
         let buf;
@@ -113,7 +116,8 @@ if (args.still) {
         }
       }
       ff.stdin.end();
-      await new Promise((r) => ff.on('close', r));
+      const [status, signal] = await encoded;
+      if (status !== 0) throw new Error(`Encoder failed for segment ${w} (${signal ?? status})`);
       await page.close();
     })
   );
@@ -125,6 +129,8 @@ if (args.still) {
   if (withAudio) ffArgs.push('-ss', String(from), '-t', String(to - from), '-i', audio, '-c:a', 'aac', '-b:a', '320k', '-shortest');
   ffArgs.push('-c:v', 'copy', '-movflags', '+faststart', out);
   execFileSync('ffmpeg', ffArgs);
+  const frameCount = Number(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=nb_frames', '-of', 'default=nw=1:nk=1', out], { encoding: 'utf8' }).trim());
+  if (frameCount !== total) throw new Error(`Export has ${frameCount} frames, expected ${total}`);
   console.log(`\n${out} (${((Date.now() - started) / 1000).toFixed(0)}s${withAudio ? ', with audio' : ''})`);
 }
 

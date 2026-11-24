@@ -37,7 +37,7 @@ Use the build steps below to generate the master and a smaller share copy in `ou
 | 2:20–2:32 | Trust and privacy |
 | 2:32–2:45 | Logo and close |
 
-The disaster mode, notice, and event screens are mobile concepts based on backend behaviour. Payments are shown as disabled options.
+The film labels the disaster mode, notice, and event scenes as mobile concept previews. Payments are shown as disabled options.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ WORKERS=3 ./build.sh      # on machines with less RAM
 ./build.sh --vo           # also re-record the narration (needs Kokoro, see below)
 ```
 
-The render prints a frame count and estimated time remaining. The script also writes `out/otagai_v2_share.mp4`, a smaller H.265 copy for sharing.
+The render prints a frame count and estimated time remaining. The script also writes `out/otagai_v2_share.mp4`, a smaller H.265 copy for sharing. Both MP4s include optional English captions. Upload `out/otagai_v2.en.srt` as the English caption track when publishing to YouTube.
 
 The score uses a fixed random seed, so `score.py` produces the same music on every run.
 

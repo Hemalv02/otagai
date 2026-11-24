@@ -1,6 +1,6 @@
 import { headline, playHead, typeText, enter, counter, words, riseWords, spring, seg, clamp, css, easeOut, easeIn } from './kit.js';
 import { P } from './world.js';
-import { avatar, TANAKA, icon, glyphs } from '../lib/ui.js';
+import { avatar, TANAKA, icon } from '../lib/ui.js';
 import { morph } from './kit.js';
 
 export const hook = {
@@ -81,48 +81,48 @@ export const helpers = {
   update(lt, t) { playHead(this.h1, t, 13.3, 15.1); playHead(this.h2, t, 15.4, 17.3); },
 };
 
-const TAGLINES = [['Help is close by.', 'sans', 'word'], ['助け合いは、すぐそばに。', 'ja', 'char'], ['সাহায্য আছে কাছেই।', 'bn', 'word']];
+const TAGLINES = [
+  { start: 20.4, lang: 'en', text: 'Help is close by.' },
+  { start: 22.0, lang: 'ja', text: '助け合いは、すぐそばに。' },
+  { start: 23.2, lang: 'bn', text: 'সাহায্য আছে কাছেই।' },
+];
 export const turn = {
   id: 'turn', start: 17.5, end: 25, post: 0.8,
   build(el) {
     el.innerHTML = `
       <div class="abs wm" style="white-space:nowrap"><div class="serif wmt" style="font-size:230px;line-height:1;color:var(--action)">${words('Otagai')}</div></div>
       <div class="abs sub" style="white-space:nowrap">
-        <div class="row" style="gap:22px"><span class="ja st1" style="font-size:44px;color:var(--ink)">お互い</span><span class="st2" style="font:400 36px var(--serif);color:var(--secondary)">“mutual”</span></div>
-        <div class="tl" style="position:relative;height:80px;margin-top:22px;width:900px">
-          ${TAGLINES.map(([s, f, m]) => `<div class="tg headline ${f === 'sans' ? '' : f}" style="position:absolute;left:0;top:0;font-size:60px;${f === 'ja' ? 'font-weight:700;' : ''}">${glyphs(s, m)}</div>`).join('')}
-        </div>
+        <div class="row meaning" style="gap:22px"><span class="ja" style="font-size:44px;color:var(--ink)">お互い</span><span style="font:400 36px var(--serif);color:var(--secondary)">“mutual”</span></div>
+        <div class="headline tl" style="height:80px;margin-top:22px;width:900px;font-size:60px"></div>
         <div class="row langs" style="gap:12px;margin-top:20px">${['English', '日本語', 'বাংলা'].map((l, i) => `<span class="chip lg ${i === 1 ? 'ja' : i === 2 ? 'bn' : ''}" style="height:44px;font-size:20px;background:#fff;box-shadow:0 0 0 1.5px var(--rule) inset;color:var(--ink)">${l}</span>`).join('')}</div>
       </div>`;
     this.wm = el.querySelector('.wm'); this.wmt = el.querySelector('.wmt'); this.sub = el.querySelector('.sub');
-    this.st1 = el.querySelector('.st1'); this.st2 = el.querySelector('.st2');
-    this.tg = [...el.querySelectorAll('.tg')]; this.lg = [...el.querySelectorAll('.lg')];
+    this.meaning = el.querySelector('.meaning'); this.tagline = el.querySelector('.tl');
+    this.langs = el.querySelector('.langs'); this.lg = [...el.querySelectorAll('.lg')];
   },
   update(lt, t, ctx) {
     ctx.place(this.wm, 140, 247.5, { zref: 0.86, ax: 0.5, ay: 1 });
     ctx.place(this.sub, 140, 252, { zref: 0.86, ax: 0.5, ay: 0 });
     riseWords(this.wmt, t, 18.5, { preset: 'heavy', dist: 1.0 });
-    const p1 = spring(t - 19.4, 'default'), p2 = spring(t - 19.6, 'default');
-    css(this.st1, { y: (1 - p1) * 30, o: clamp(p1 * 1.5) });
-    css(this.st2, { y: (1 - p2) * 30, o: clamp(p2 * 1.5) });
-    const T = [20.4, 22.0, 23.2];
-    this.tg.forEach((g, i) => {
-      const tin = T[i], tout = T[i + 1] ?? 99;
-      g.style.display = t > tin - 0.1 && t < tout + 0.6 ? '' : 'none';
-      g.querySelectorAll('.g').forEach((s, j) => {
-        const p = spring(t - tin - j * (i === 1 ? 0.025 : 0.06), 'snappy');
-        const q = easeIn(seg(t, tout + j * 0.012, tout + 0.25 + j * 0.012));
-        s.style.transform = `translateY(${((1 - p) * 0.35 - q * 0.3).toFixed(3)}em) scale(${(0.3 + 0.7 * p - q * 0.6).toFixed(3)})`;
-        s.style.opacity = (clamp(p * 1.6) * (1 - q)).toFixed(3);
+    this.meaning.style.opacity = easeOut(seg(t, 19.4, 19.9)).toFixed(3);
+    this.langs.style.opacity = easeOut(seg(t, 20.6, 21.0)).toFixed(3);
+    const active = Math.max(0, TAGLINES.findLastIndex(({ start }) => t >= start));
+    const { start, lang, text } = TAGLINES[active];
+    const nextStart = TAGLINES[active + 1]?.start ?? Infinity;
+    const fadeOut = Number.isFinite(nextStart) ? easeIn(seg(t, nextStart - 0.18, nextStart)) : 0;
+    this.tagline.style.opacity = (easeOut(seg(t, start, start + 0.2)) * (1 - fadeOut)).toFixed(3);
+    if (this.tagline.lang !== lang) {
+      this.tagline.lang = lang;
+      this.tagline.textContent = text;
+      this.tagline.className = `headline tl ${lang}`;
+      this.tagline.style.fontWeight = lang === 'ja' ? '700' : '';
+      this.lg.forEach((chip, index) => {
+        chip.style.background = index === active ? 'var(--wash)' : '#fff';
+        chip.style.boxShadow = index === active ? '0 0 0 2px var(--action) inset' : '0 0 0 1.5px var(--rule) inset';
       });
-    });
-    this.lg.forEach((l, i) => {
-      const p = spring(t - (20.6 + i * 0.12), 'snappy');
-      const on = (i === 0 && t < 22.0) || (i === 1 && t >= 22.0 && t < 23.2) || (i === 2 && t >= 23.2);
-      css(l, { o: clamp(p * 1.5), y: (1 - p) * 14 });
-      l.style.background = on ? 'var(--wash)' : '#fff';
-      l.style.boxShadow = on ? '0 0 0 2px var(--action) inset' : '0 0 0 1.5px var(--rule) inset';
-    });
+    }
+    const titleHold = easeOut(seg(t, 20.4, 20.8)) * (1 - easeIn(seg(t, 24.55, 25.1)));
+    ctx.grainAmt *= 1 - titleHold;
     const o = 1 - seg(t, 24.4, 25.1);
     this.wm.style.opacity = o.toFixed(3); this.sub.style.opacity = o.toFixed(3);
   },

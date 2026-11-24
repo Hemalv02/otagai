@@ -35,8 +35,14 @@ export const meet = {
       <div style="flex:1;padding:16px;display:flex;flex-direction:column;gap:10px;justify-content:flex-end">
         <div style="${T.sup};text-align:center">Contact details stay private. Use this chat to arrange the help.</div>
         <div class="obub ja" style="font-family:var(--ja);font-size:17px;line-height:27px">${JA_REQ}</div>
-        <div class="pbub prep" style="position:relative;min-height:60px"><div class="from bn">${glyphs(BN_REP, 'word')}</div><div class="to ja" style="position:absolute;left:14px;top:10px;right:14px;font-size:17px">${glyphs(JA_REP, 'char')}</div></div>
-        <div class="row pv" style="gap:6px;${T.label};font-size:15px;color:var(--action)">${sf('globe', 16, 'var(--action)')}Preview translation</div>
+        <div class="pbub prep" style="min-height:60px">
+          <div class="bn" style="font-size:17px">${BN_REP}</div>
+          <div class="translation" style="display:none;border-top:1px solid var(--rule);margin-top:8px;padding-top:8px">
+            <div style="${T.sup};color:var(--secondary)">Translation · Japanese</div>
+            <div class="ja" style="font-size:17px">${JA_REP}</div>
+          </div>
+          <div class="row pv" style="gap:6px;margin-top:8px;${T.label};font-size:15px;color:var(--action)">${sf('globe', 16, 'var(--action)')}<span class="vlabel">Translate to Japanese</span></div>
+        </div>
       </div>
       <div class="row" style="gap:8px;padding:10px 16px 30px"><div style="flex:1;border-radius:20px;box-shadow:0 0 0 1px var(--rule) inset;padding:10px 16px;${T.body};color:var(--control)">Write a message…</div><span style="width:48px;height:48px;border-radius:24px;background:var(--action);display:flex;align-items:center;justify-content:center">${sf('up', 22, '#fff', 2.4)}</span></div></div>`;
     const req = screen(`
@@ -66,7 +72,9 @@ export const meet = {
     [this.dT, this.dR] = el.querySelectorAll('.dev');
     for (const d of [this.dT, this.dR]) d.querySelector('.dev-in').insertAdjacentHTML('beforeend', tapRingHTML);
     this.tapR = this.dR.querySelector('.tapr');
+    this.tapT = this.dT.querySelector('.tapr');
     this.prep = F(this.dT, this.dT.querySelector('.prep')); this.pv = this.dT.querySelector('.pv');
+    this.translation = this.dT.querySelector('.translation'); this.vlabel = this.dT.querySelector('.vlabel');
     this.rcard = F(this.dR, this.dR.querySelector('.rcard')); this.rtx = this.dR.querySelector('.rtx'); this.tr = this.dR.querySelector('.tr');
     this.help = this.dR.querySelector('.help'); this.sent = this.dR.querySelector('.sent'); this.myrep = this.dR.querySelector('.myrep');
     this.rsc = [...this.dR.querySelectorAll('.a-scr')];
@@ -76,6 +84,8 @@ export const meet = {
   },
   update(lt, t, ctx) {
     trans(this.el, t, { tin: 62.3, kin: 'none', din: 0.3, tout: 74.6, kout: 'push', dout: 0.6, ox: 690, oy: 510 });
+    const photoHold = easeInOut(seg(t, 69.4, 70.2)) * (1 - easeInOut(seg(t, 74.5, 75.2)));
+    ctx.grainAmt *= 1 - photoHold;
     const out = easeIn(seg(t, 69.4, 70.2));
     devAt(this.dT, 330 - out * 700);
     devAt(this.dR, 1590 + out * 700);
@@ -98,8 +108,10 @@ export const meet = {
       this.ret.style.display = ''; this.ret.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px)`;
     } else this.ret.style.display = 'none';
     show(this.prep, t, 68.0, Infinity, { dy: 14 });
-    morph(this.prep, t, 68.5, { stagger: 0.03 });
-    this.pv.style.opacity = seg(t, 68.7, 69.0).toFixed(3);
+    const translated = t >= 68.6;
+    this.translation.style.display = translated ? 'block' : 'none';
+    setText(this.vlabel, translated ? 'Hide translation' : 'Translate to Japanese');
+    taps(this.tapT, this.dT, t, [[68.38, this.pv]]);
     const pp = spring(t - 69.9, 'heavy');
     css(this.photo, { r: -1.4, s: 0.9 + 0.1 * pp + (t - 70) * 0.004, y: (1 - pp) * 60, o: clamp(pp * 1.4) });
     this.photo.style.display = t > 69.8 ? '' : 'none';

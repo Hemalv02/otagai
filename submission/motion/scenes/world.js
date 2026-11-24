@@ -473,6 +473,6 @@ function rrand(i, s) { return rand(i * 0.731 + 0.17, s); }
 function mixHex(a, b, p) {
   const A = parseInt(a.slice(1), 16), B = parseInt(b.slice(1), 16);
   const r = lerp(A >> 16, B >> 16, p) | 0, g = lerp((A >> 8) & 255, (B >> 8) & 255, p) | 0, bb = lerp(A & 255, B & 255, p) | 0;
-  return `rgb(${r},${g},${bb})`;
+  return `#${((r << 16) | (g << 8) | bb).toString(16).padStart(6, '0')}`;
 }
 export { mixHex };

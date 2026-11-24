@@ -44,12 +44,17 @@ ffmpeg -y -loglevel error -i audio/mix_raw.wav \
 echo "== render with $WORKERS workers"
 node render.mjs --video --fps 30 --workers "$WORKERS" --preset veryfast --crf 18 --mute --out out/v2_silent.mp4
 
-echo "== mux"
-ffmpeg -y -loglevel error -i out/v2_silent.mp4 -i audio/mix_vo.wav -map 0:v:0 -map 1:a:0 \
-  -c:v copy -c:a aac -b:a 320k -shortest -movflags +faststart out/otagai_v2.mp4
+echo "== mux with English captions"
+python3 audio/captions.py audio/voiceover.json audio/vo_track.wav out/otagai_v2.en.srt
+duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 out/v2_silent.mp4)
+ffmpeg -y -loglevel error -i out/v2_silent.mp4 -i audio/mix_vo.wav -i out/otagai_v2.en.srt \
+  -map 0:v:0 -map 1:a:0 -map 2:s:0 -t "$duration" \
+  -c:v copy -c:a aac -b:a 320k -c:s mov_text -metadata:s:s:0 language=eng -disposition:s:0 0 \
+  -movflags +faststart out/otagai_v2.mp4
 
 echo "== share copy (H.265)"
-ffmpeg -y -loglevel error -i out/otagai_v2.mp4 -c:v libx265 -preset medium -crf 22 -tag:v hvc1 \
-  -pix_fmt yuv420p -c:a copy -movflags +faststart out/otagai_v2_share.mp4
+ffmpeg -y -loglevel error -i out/otagai_v2.mp4 -map 0:v:0 -map 0:a:0 -map 0:s:0 \
+  -c:v libx265 -preset medium -crf 22 -tag:v hvc1 \
+  -pix_fmt yuv420p -c:a copy -c:s copy -movflags +faststart out/otagai_v2_share.mp4
 
 ls -lh out/otagai_v2.mp4 out/otagai_v2_share.mp4
