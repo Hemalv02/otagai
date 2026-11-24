@@ -23,7 +23,20 @@ EQUIVALENT_TERMS = (
         "草刈り機",
         "ঘাস কাটার যন্ত্র",
     ),
-    ("drill", "power drill", "電動ドリル", "ড্রিল"),
+    (
+        "drill",
+        "power drill",
+        "electric drill",
+        "cordless drill",
+        "battery drill",
+        "drill driver",
+        "電動ドリル",
+        "コードレスドリル",
+        "充電式ドリル",
+        "ড্রিল",
+        "máy khoan",
+    ),
+    ("hammer drill", "rotary hammer", "ハンマードリル", "máy khoan búa"),
     ("ladder", "stepladder", "step ladder", "脚立", "はしご", "মই"),
     ("drain snake", "drain auger", "排水管クリーナー", "ড্রেন স্নেক"),
     ("carry", "carrying", "lift", "lifting", "運ぶ", "運ん", "運搬", "বহন", "বয়ে"),
@@ -95,6 +108,17 @@ def _normalize(value: str) -> str:
 
 def _contains(text: str, term: str) -> bool:
     return f" {term} " in f" {text} " if term.isascii() else term in text
+
+
+def expand_catalog_terms(terms: list[str]) -> list[str]:
+    normalized = {_normalize(term) for term in terms}
+    aliases = [
+        alias
+        for group in EQUIVALENT_TERMS
+        if any(_normalize(term) in normalized for term in group)
+        for alias in group
+    ]
+    return list(dict.fromkeys([*terms, *aliases]))[:24]
 
 
 def matching_terms(text: str) -> list[str]:

@@ -61,6 +61,7 @@ from app.services.listings.service import (
     match_assistant_listings,
 )
 from app.services.media.service import MediaNotFoundError, ready_image_data_url
+from app.services.requests.matching import expand_catalog_terms
 from app.services.requests.ripple import RippleStartStage
 from app.services.requests.service import (
     NewRequest,
@@ -207,7 +208,7 @@ class CatalogContext:
             self.storage,
             self.settings,
             self.user_id,
-            list(dict.fromkeys([*intent.tool_terms, *intent.english_tool_terms])),
+            expand_catalog_terms([*intent.tool_terms, *intent.english_tool_terms]),
             list(dict.fromkeys([*intent.skill_terms, *intent.english_skill_terms])),
         )
 

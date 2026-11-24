@@ -781,3 +781,24 @@ async def test_initial_draft_can_use_the_relationship_stated_in_the_request(
     assert response.status_code == 201, response.text
     assert response.json()["draft"]["relationship"] == "elder"
     assert response.json()["draft"]["tone"] == "keigo"
+
+
+async def test_english_tool_terms_match_a_japanese_cordless_drill(client, monkeypatch):
+    seeker = await make_user(client, language="en")
+    circle = await make_circle(client, seeker)
+    owner = await make_user(client, language="ja")
+    await join_circle(client, seeker, circle, owner)
+    drill = await create_listing(
+        client, owner, "tool", "コードレスドリル", "棚の取り付けに便利です。"
+    )
+    stub_agent(
+        monkeypatch,
+        intent(tool_terms=("cordless drill", "battery drill", "電動ドリル")),
+    )
+    response = await client.post(
+        "/assistant/turns",
+        headers=auth(seeker),
+        json={"text": "I need to borrow a cordless drill to install a shelf."},
+    )
+    assert response.status_code == 201, response.text
+    assert [card["listing"]["id"] for card in response.json()["cards"]] == [drill]
