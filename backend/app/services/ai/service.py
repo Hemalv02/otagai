@@ -32,8 +32,8 @@ class AIDraftError(UpstreamUnavailableError):
 
 @dataclass
 class UsageMeter:
-    input_tokens: int = 0
-    output_tokens: int = 0
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 _meter: ContextVar[UsageMeter | None] = ContextVar("ai_usage_meter", default=None)
@@ -52,8 +52,8 @@ def metered() -> Iterator[UsageMeter]:
 def record_usage(input_tokens: int, output_tokens: int) -> None:
     meter = _meter.get()
     if meter is not None:
-        meter.input_tokens += input_tokens
-        meter.output_tokens += output_tokens
+        meter.input_tokens = (meter.input_tokens or 0) + input_tokens
+        meter.output_tokens = (meter.output_tokens or 0) + output_tokens
 
 
 async def draft[Output: BaseModel](

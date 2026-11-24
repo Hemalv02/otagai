@@ -1,4 +1,6 @@
 import pytest
+from aiohttp import ClientPayloadError
+from botocore.exceptions import IncompleteReadError, ResponseStreamingError
 
 from app.services.storage.service import (
     IncompleteDownloadError,
@@ -15,7 +17,10 @@ class ChunkedBody:
         return None
 
     async def read(self, size):
-        return next(self.chunks, b"")
+        chunk = next(self.chunks, b"")
+        if isinstance(chunk, Exception):
+            raise chunk
+        return chunk
 
 
 class ChunkedClient:
@@ -54,9 +59,18 @@ class FlakyClient:
 
 
 @pytest.mark.asyncio
-async def test_download_retries_incomplete_object(monkeypatch):
+@pytest.mark.parametrize(
+    "partial_read",
+    [
+        b"abc",
+        IncompleteReadError(actual_bytes=3, expected_bytes=6),
+        ResponseStreamingError(error="closed during read"),
+        ClientPayloadError("body ended before content length"),
+    ],
+)
+async def test_download_retries_incomplete_object(monkeypatch, partial_read):
     monkeypatch.setattr("app.services.storage.service.asyncio.sleep", _no_sleep)
-    client = FlakyClient([b"abc", b"abcdef"])
+    client = FlakyClient([partial_read, b"abcdef"])
     storage = Storage(client, "bucket", "region")
     assert await storage.download("media/photo", max_bytes=6) == b"abcdef"
     assert client.calls == 2

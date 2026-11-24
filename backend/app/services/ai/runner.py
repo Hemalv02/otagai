@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from openai import APIError, AsyncOpenAI
+from openai.types.audio.transcription import UsageTokens
 from pydantic import BaseModel
 
 from app.database.connection import Database
@@ -28,6 +29,7 @@ from app.services.ai.service import (
     AIDraftError,
     UsageMeter,
     metered,
+    record_usage,
 )
 from app.services.errors import NotFoundError, ServiceConfigurationError, ServiceError
 from app.services.media.service import MediaNotFoundError, ready_image_data_url
@@ -145,8 +147,8 @@ async def _log(
                 "status": status,
                 "error": error,
                 "latency_ms": latency_ms,
-                "input_tokens": usage.input_tokens or None,
-                "output_tokens": usage.output_tokens or None,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
             }
         )
 
@@ -197,6 +199,9 @@ async def transcribe_voice(
                 )
         except APIError as error:
             raise AIDraftError("The transcription service failed.") from error
+        usage = getattr(result, "usage", None)
+        if isinstance(usage, UsageTokens):
+            record_usage(usage.input_tokens, usage.output_tokens)
         return Transcript(text=result.text)
 
     return await run_feature(
