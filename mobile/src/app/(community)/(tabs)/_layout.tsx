@@ -1,4 +1,7 @@
+import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
+import { SymbolView, type SymbolViewProps } from "expo-symbols";
+import { Platform } from "react-native";
 
 import { assistantCopy } from "@/lib/assistant-copy";
 import { useOnboardingText } from "@/lib/onboarding-i18n";
@@ -17,6 +20,53 @@ const labels = {
 export default function CommunityTabs() {
   const { locale } = useOnboardingText();
   const copy = labels[locale];
+
+  if (Platform.OS === "web") {
+    const options = (title: string, name: SymbolViewProps["name"]) => ({
+      title,
+      tabBarIcon: ({ focused }: { focused: boolean }) => (
+        <SymbolView
+          name={name}
+          tintColor={focused ? colors.action : colors.secondary}
+          size={20}
+          accessible={false}
+        />
+      ),
+    });
+    return (
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarPosition: "bottom",
+          tabBarLabelPosition: "below-icon",
+          tabBarActiveTintColor: colors.action,
+          tabBarInactiveTintColor: colors.secondary,
+          tabBarActiveBackgroundColor: colors.wash,
+          tabBarStyle: {
+            backgroundColor: colors.canvas,
+            borderTopColor: colors.rule,
+          },
+        }}
+      >
+        <Tabs.Screen
+          name="index"
+          options={options(copy.home, { web: "home" })}
+        />
+        <Tabs.Screen
+          name="tools"
+          options={options(copy.browse, { web: "search" })}
+        />
+        <Tabs.Screen
+          name="requests"
+          options={options(copy.requests, { web: "assignment" })}
+        />
+        <Tabs.Screen
+          name="assistant"
+          options={options(assistantCopy[locale].tab, { web: "chat" })}
+        />
+      </Tabs>
+    );
+  }
 
   return (
     <NativeTabs

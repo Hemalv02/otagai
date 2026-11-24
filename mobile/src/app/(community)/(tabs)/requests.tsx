@@ -144,7 +144,7 @@ export default function RequestsScreen() {
         </View>
       ) : null}
       {rows.map(({ request, seen, my_response_status }) => (
-        <View key={request.id}>
+        <View key={request.id} style={styles.card}>
           <Pressable
             accessibilityRole="button"
             onPress={() =>
@@ -153,7 +153,7 @@ export default function RequestsScreen() {
                 params: { id: request.id },
               })
             }
-            style={styles.card}
+            style={styles.cardRow}
           >
             <View style={styles.cardText}>
               <Text
@@ -190,15 +190,23 @@ export default function RequestsScreen() {
               accessible={false}
             />
           </Pressable>
-          <TranslationOption
-            key={`${locale}:${request.lang}:${request.polite_text}`}
-            locale={locale}
-            source={request.lang}
-            original={request.polite_text}
-            load={(target) =>
-              assistantApi.translate(request.polite_text, request.lang, target)
-            }
-          />
+          {request.lang !== locale ? (
+            <View style={styles.cardTranslation}>
+              <TranslationOption
+                key={`${locale}:${request.lang}:${request.polite_text}`}
+                locale={locale}
+                source={request.lang}
+                original={request.polite_text}
+                load={(target) =>
+                  assistantApi.translate(
+                    request.polite_text,
+                    request.lang,
+                    target,
+                  )
+                }
+              />
+            </View>
+          ) : null}
         </View>
       ))}
       {error ? (
@@ -255,13 +263,21 @@ const styles = StyleSheet.create({
   selectedTab: { backgroundColor: colors.wash },
   cards: { gap: spacing["related-gap"] },
   card: {
+    borderWidth: 1,
+    borderColor: colors.rule,
+    borderRadius: controls.radius,
+  },
+  cardRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     padding: spacing["card-inset"],
-    borderWidth: 1,
-    borderColor: colors.rule,
-    borderRadius: controls.radius,
+  },
+  cardTranslation: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.rule,
+    paddingHorizontal: spacing["card-inset"],
+    paddingVertical: 4,
   },
   cardText: { flex: 1, minWidth: 0, gap: 8 },
   skeleton: {

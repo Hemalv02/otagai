@@ -12,16 +12,19 @@ const copy = {
   en: {
     translated: "Translation",
     choose: "Translate to",
+    hide: "Hide translation",
     error: "Could not translate. Try again.",
   },
   ja: {
     translated: "翻訳",
     choose: "翻訳先の言語",
+    hide: "翻訳を閉じる",
     error: "翻訳できませんでした。もう一度お試しください。",
   },
   bn: {
     translated: "অনুবাদ",
     choose: "অনুবাদের ভাষা",
+    hide: "অনুবাদ লুকান",
     error: "অনুবাদ করা যায়নি। আবার চেষ্টা করুন।",
   },
 };
@@ -74,9 +77,16 @@ export function TranslationOption({
       {result !== undefined ? (
         <>
           <Text style={[style("supporting", locale), styles.label]}>
-            {labels.translated}
+            {labels.translated} ·{" "}
+            {draftLanguageNames[chooseLanguage ? target : locale]}
           </Text>
-          <Text selectable style={[style("body", locale), styles.text]}>
+          <Text
+            selectable
+            style={[
+              style("body", chooseLanguage ? target : locale),
+              styles.text,
+            ]}
+          >
             {result}
           </Text>
         </>
@@ -98,7 +108,7 @@ export function TranslationOption({
       {failed ? <ErrorText>{labels.error}</ErrorText> : null}
       <Button
         variant="text"
-        label={result !== undefined ? words.original : words.translate}
+        label={result !== undefined ? labels.hide : words.translate}
         labelStyle={style("field-label", locale)}
         busy={busy}
         onPress={() => {
