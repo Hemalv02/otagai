@@ -16,10 +16,10 @@ The assistant reuses the same owned-ready image loader with its original `purpos
 
 - New backend integration tests first failed: 9 failed, 1 passed because image_media_id was rejected and new category/recognition fields were missing.
 - Focused photo/AI/assistant/listings regressions: 40 passed, 15 existing SQLAlchemy deprecation warnings.
-- Complete backend suite against disposable local PostgreSQL: 281 passed, 28 existing SQLAlchemy deprecation warnings.
+- Final merged branch backend suite against disposable local PostgreSQL: 283 passed, 28 existing SQLAlchemy deprecation warnings.
 - Mobile suggestion tests cover manual-edit preservation, live category validation, bounded/deduplicated parts and help-only preservation. The recommendation-preservation regression failed before its fix and passed afterward.
 - Combined mobile suite after the direct-request account-binding fix: 125 passed.
-- Mobile TypeScript and lint passed.
+- Mobile TypeScript, lint, final web export and repository pre-commit checks passed.
 - Backend Ruff check and format checks passed from the backend project directory.
 
 Integration tests use isolated authentication and byte-preserving in-memory object storage, with a mocked model. Separately, real OpenAI calls were made for the three user-supplied images: cleaver recognized and help-only; multiple tools unrecognized for manual entry; screwdriver initially returned 503 and succeeded on retry. The original and retry JSON artifacts preserve the actual outputs. Live photo checks still use isolated authentication, in-memory storage and disposable catalog categories, not production services.
