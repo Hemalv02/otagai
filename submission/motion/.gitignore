@@ -1,0 +1,5 @@
+node_modules/
+out/
+# Rebuilt by build.sh. Only the Kokoro voice track is kept, because it needs a local TTS setup.
+audio/*.wav
+!audio/vo_track.wav

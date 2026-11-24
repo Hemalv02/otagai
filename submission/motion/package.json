@@ -1,0 +1,14 @@
+{
+  "name": "motion-film",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "still": "node render.mjs --still",
+    "sheet": "node render.mjs --sheet",
+    "draft": "node render.mjs --video --fps 30 --preset veryfast --crf 18 --out out/draft.mp4",
+    "final": "node render.mjs --video --fps 60 --preset slow --crf 14 --out out/final.mp4"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}
