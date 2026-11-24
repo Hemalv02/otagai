@@ -5,7 +5,13 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query, Response, status
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from app.database.models.enums import Language, LendMode, ListingKind, RequestKind
+from app.database.models.enums import (
+    Language,
+    LendMode,
+    ListingKind,
+    RequestKind,
+    RequestTone,
+)
 from app.routes.dependencies import (
     CurrentUserDep,
     DatabaseDep,
@@ -16,6 +22,11 @@ from app.routes.dependencies import (
 from app.routes.listings.route import ListingSummary, OwnerSummary, listing_summary
 from app.routes.pagination import Page, PageQuery
 from app.routes.requests.route import RequestSummary
+from app.services.ai.request_writer import (
+    DraftRelationship,
+    RequestWording,
+    WordingInput,
+)
 from app.services.assistant.service import (
     Clarification,
     Confirmation,
@@ -23,6 +34,7 @@ from app.services.assistant.service import (
     MessageText,
     Turn,
     confirm_turn,
+    draft_turn_wording,
     list_threads,
     read_history,
     run_turn,
@@ -53,7 +65,14 @@ class ResultCard(BaseModel):
     owner: OwnerSummary
 
 
+class TurnDraftBody(WordingInput):
+    listing_id: uuid.UUID | None = None
+
+
 class DraftCard(Draft):
+    language: Language
+    tone: RequestTone = RequestTone.POLITE
+    relationship: DraftRelationship = "neighbor"
     status: Literal["awaiting_confirmation", "posted"]
 
 
@@ -111,9 +130,12 @@ def turn_model(turn: Turn) -> TurnModel:
         )
     saved = turn.saved
     draft = (
-        DraftCard(
-            **saved.draft,
-            status="posted" if saved.request_id else "awaiting_confirmation",
+        DraftCard.model_validate(
+            {
+                "language": saved.context["language"],
+                **saved.draft,
+                "status": "posted" if saved.request_id else "awaiting_confirmation",
+            }
         )
         if saved.draft
         else None
@@ -186,6 +208,20 @@ async def thread_turns(
     return Page[TurnModel](
         items=[turn_model(turn) for turn in result.items],
         next_cursor=result.next_cursor,
+    )
+
+
+@router.post("/turns/{turn_id}/drafts")
+async def draft_wording(
+    turn_id: uuid.UUID,
+    body: TurnDraftBody,
+    user: CurrentUserDep,
+    database: DatabaseDep,
+    redis: RedisDep,
+    settings: SettingsDep,
+) -> RequestWording:
+    return await draft_turn_wording(
+        database, redis, settings, user, turn_id, body, body.listing_id
     )
 
 

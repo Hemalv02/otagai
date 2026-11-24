@@ -98,6 +98,8 @@ def intent(
     tool_terms=(),
     skill_terms=(),
     draft=None,
+    draft_if_no_matches=False,
+    draft_relationship="neighbor",
     question=None,
     scope="otagai",
     image_subject=None,
@@ -108,6 +110,8 @@ def intent(
         "english_tool_terms": [],
         "english_skill_terms": [],
         "draft": draft,
+        "draft_if_no_matches": draft_if_no_matches,
+        "draft_relationship": draft_relationship,
         "question": question,
         "scope": scope,
         "image_subject": image_subject,
@@ -142,6 +146,13 @@ async def test_matches_real_tools_and_helpers_with_one_model_call(client, monkey
         intent(
             tool_terms=("hammer drill", "rotary hammer"),
             skill_terms=("concrete drill",),
+            draft_if_no_matches=True,
+            draft={
+                "kind": "borrow",
+                "title": "Borrow a hammer drill",
+                "description": "Could I borrow a hammer drill for concrete?",
+                "when_text": None,
+            },
         ),
     )
 
@@ -349,14 +360,15 @@ async def test_empty_search_can_continue_to_a_request_and_shared_exchange(
     await join_circle(client, requester, circle, observer)
     calls = stub_agent(
         monkeypatch,
-        intent(skill_terms=("mending chairs",)),
         intent(
+            skill_terms=("mending chairs",),
+            draft_if_no_matches=True,
             draft={
                 "kind": "help",
                 "title": "Mend a chair",
                 "description": "Could someone help me mend a wobbly chair?",
                 "when_text": None,
-            }
+            },
         ),
     )
     first = await client.post(
@@ -365,26 +377,20 @@ async def test_empty_search_can_continue_to_a_request_and_shared_exchange(
         json={"text": "Find someone to mend a wobbly chair"},
     )
     assert first.status_code == 201, first.text
-    empty = first.json()
-    assert empty["no_matches"] is True
-    assert not empty["cards"] and empty["draft"] is None
+    turn = first.json()
+    assert not turn["cards"] and turn["no_matches"] is False
+    assert turn["draft"]["status"] == "awaiting_confirmation"
+    assert turn["draft"]["language"] == "en"
+    assert "couldn't find" in turn["reply"]
+    assert "wobbly chair" in json.dumps(calls[0])
+    assert (await client.get("/users/me/requests", headers=auth(requester))).json()[
+        "items"
+    ] == []
     history = await client.get(
-        f"/assistant/threads/{empty['thread_id']}/turns", headers=auth(requester)
+        f"/assistant/threads/{turn['thread_id']}/turns", headers=auth(requester)
     )
-    assert history.json()["items"][0]["no_matches"] is True
+    assert history.json()["items"][0]["draft"] == turn["draft"]
 
-    follow_up = await client.post(
-        "/assistant/turns",
-        headers=auth(requester),
-        json={
-            "text": "Draft a request for what I just described.",
-            "previous_turn_id": empty["id"],
-        },
-    )
-    assert follow_up.status_code == 201, follow_up.text
-    turn = follow_up.json()
-    assert turn["no_matches"] is False
-    assert "wobbly chair" in json.dumps(calls[1])
     payload = {
         "kind": "help",
         "text": turn["draft"]["description"],
@@ -749,3 +755,29 @@ async def test_japanese_search_checks_english_catalog_terms(client, monkeypatch)
     saved = response.json()
     assert saved["reply"] == "サークル内で見つかった候補です。"
     assert [item["listing"]["id"] for item in saved["cards"]] == [drill]
+
+
+async def test_initial_draft_can_use_the_relationship_stated_in_the_request(
+    client, monkeypatch
+):
+    member = await make_user(client, language="ja")
+    stub_agent(
+        monkeypatch,
+        intent(
+            draft_relationship="elder",
+            draft={
+                "kind": "help",
+                "title": "花壇の手入れのお手伝い",
+                "description": "花壇の手入れをお手伝いいただけますでしょうか。",
+                "when_text": None,
+            },
+        ),
+    )
+    response = await client.post(
+        "/assistant/turns",
+        headers=auth(member),
+        json={"text": "年上の方に花壇の手入れを手伝っていただく依頼を書いて"},
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["draft"]["relationship"] == "elder"
+    assert response.json()["draft"]["tone"] == "keigo"
