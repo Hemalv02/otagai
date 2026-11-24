@@ -7,10 +7,12 @@ import {
   OnboardingLink,
   OnboardingScreen,
 } from "@/components/onboarding-screen";
+import { CircleParentChoice } from "@/components/circle-parent-choice";
 import { ActivityToggle } from "@/components/activity-toggle";
 import { Button, Choice, ErrorText, Field } from "@/components/ui";
 import {
   api,
+  ApiError,
   type CircleMembership,
   type CircleUnitType,
   type MembershipRole,
@@ -35,9 +37,12 @@ export default function StartCircle() {
   const units = unitsByRegion[region];
   const [name, setName] = useState("");
   const [unitType, setUnitType] = useState<CircleUnitType>(units[0]);
+  const [parentId, setParentId] = useState("");
   const [openToNearby, setOpenToNearby] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<"createError" | "nearbyLocationError">();
+  const [error, setError] = useState<
+    "createError" | "nearbyLocationError" | "parentCircleError"
+  >();
   const submitting = useRef(false);
   const body = localizedType("body", locale);
   const fieldLabel = localizedType("field-label", locale);
@@ -59,6 +64,7 @@ export default function StartCircle() {
         name: name.trim(),
         unit_type: unitType,
         open_to_nearby: openToNearby,
+        ...(parentId ? { parent_id: parentId } : {}),
         ...position,
       });
       record(detail, {
@@ -68,8 +74,14 @@ export default function StartCircle() {
           (detail.my_status as CircleMembership["status"] | null) ?? "approved",
         circle: detail,
       });
-    } catch {
-      setError("createError");
+    } catch (error) {
+      setError(
+        parentId &&
+          error instanceof ApiError &&
+          [400, 403, 404].includes(error.status)
+          ? "parentCircleError"
+          : "createError",
+      );
     } finally {
       submitting.current = false;
       setBusy(false);
@@ -130,12 +142,24 @@ export default function StartCircle() {
             label: copy.types[value],
           }))}
           value={unitType}
-          onChange={setUnitType}
+          onChange={(value) => {
+            if (value !== unitType) {
+              setUnitType(value);
+              setParentId("");
+            }
+          }}
           labelStyle={() => body}
           disabled={busy}
           stacked
         />
       </View>
+      <CircleParentChoice
+        unitType={unitType}
+        region={region}
+        value={parentId}
+        onChange={setParentId}
+        disabled={busy}
+      />
       <View className="flex-row items-center gap-control-gap">
         <View className="flex-1">
           <Text className="text-ink" style={fieldLabel}>

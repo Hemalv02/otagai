@@ -92,6 +92,7 @@ class CreateCircleBody(BaseModel):
     approx_lat: float | None = Field(default=None, ge=-90, le=90)
     approx_lng: float | None = Field(default=None, ge=-180, le=180)
     open_to_nearby: bool = True
+    parent_id: uuid.UUID | None = None
 
 
 class JoinCircleBody(BaseModel):
@@ -116,6 +117,7 @@ class CircleSummary(BaseModel):
 
 
 class CircleDetail(CircleSummary):
+    parent_id: uuid.UUID | None
     member_count: int
     my_status: str | None
     my_role: str | None
@@ -141,6 +143,11 @@ class MembershipItem(BaseModel):
 def circle_detail(view: CircleView) -> CircleDetail:
     return CircleDetail(
         **CircleSummary.model_validate(view.circle).model_dump(),
+        parent_id=(
+            view.circle.parent_id
+            if view.my_status == MembershipStatus.APPROVED.value
+            else None
+        ),
         member_count=view.member_count,
         my_status=view.my_status,
         my_role=view.my_role,
@@ -193,6 +200,7 @@ async def start_circle(
             approx_lat=body.approx_lat,
             approx_lng=body.approx_lng,
             open_to_nearby=body.open_to_nearby,
+            parent_id=body.parent_id,
         ),
     )
     response.headers["Location"] = f"/circles/{view.circle.id}"
@@ -258,6 +266,7 @@ class UpdateCircleBody(BaseModel):
     name: CircleName | None = None
     name_translations: dict[str, Any] | None = None
     open_to_nearby: bool | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CreateInviteBody(BaseModel):

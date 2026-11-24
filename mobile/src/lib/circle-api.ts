@@ -78,6 +78,12 @@ export function circleApi(authUserId: string) {
 
   return {
     circle: (id: string) => get<CircleDetail>(`/circles/${circleId(id)}`),
+    setParent: (id: string, parentId: string | null) =>
+      request<CircleDetail>(`/circles/${circleId(id)}`, {
+        authUserId,
+        method: "PATCH",
+        body: JSON.stringify({ parent_id: parentId }),
+      }),
     profile: (id: string) =>
       get<{ id: string; display_name: string }>(
         `/users/${encodeURIComponent(id)}`,

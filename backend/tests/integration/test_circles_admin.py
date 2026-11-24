@@ -1,4 +1,16 @@
-from tests.integration.conftest import auth, join_circle, make_circle, make_user
+import uuid
+
+from sqlalchemy import update
+
+from app.database.connection import Database
+from app.database.models import Circle
+from tests.integration.conftest import (
+    _settings,
+    auth,
+    join_circle,
+    make_circle,
+    make_user,
+)
 
 
 async def _mid(client, token):
@@ -236,3 +248,134 @@ async def test_nearby_search_returns_open_local_circles_in_distance_order(client
     )
     assert joined.status_code == 201
     assert joined.json()["status"] == "pending"
+
+
+async def test_circle_leader_can_link_and_unlink_a_local_parent(client):
+    leader = await make_user(client)
+    guest = await make_user(client)
+    parent = await client.post(
+        "/circles",
+        headers=auth(leader),
+        json={"name": "Mizunoura", "unit_type": "association"},
+    )
+    assert parent.status_code == 201, parent.text
+    parent_id = parent.json()["id"]
+    child = await client.post(
+        "/circles",
+        headers=auth(leader),
+        json={"name": "Han 3", "unit_type": "han", "parent_id": parent_id},
+    )
+    assert child.status_code == 201, child.text
+    assert child.json()["parent_id"] == parent_id
+    path = child.headers["Location"]
+    assert (await client.get(path, headers=auth(guest))).json()["parent_id"] is None
+
+    detached = await client.patch(path, headers=auth(leader), json={"parent_id": None})
+    assert detached.status_code == 200, detached.text
+    assert detached.json()["parent_id"] is None
+    attached = await client.patch(
+        path, headers=auth(leader), json={"parent_id": parent_id}
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["parent_id"] == parent_id
+
+
+async def test_circle_hierarchy_rejects_unauthorized_and_invalid_links(client):
+    child_leader = await make_user(client)
+    parent_leader = await make_user(client)
+    child = await make_circle(client, child_leader)
+    path = f"/circles/{child}"
+
+    async def create(name, region="jp", latitude=None):
+        response = await client.post(
+            "/circles",
+            headers=auth(child_leader),
+            json={
+                "name": name,
+                "unit_type": "association",
+                "region": region,
+                "approx_lat": latitude,
+                "approx_lng": 129.87 if latitude else None,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    parent = await client.post(
+        "/circles",
+        headers=auth(parent_leader),
+        json={"name": "Parent", "unit_type": "association"},
+    )
+    parent_id = parent.json()["id"]
+    await join_circle(client, parent_leader, parent_id, child_leader)
+    await join_circle(client, child_leader, child, parent_leader)
+
+    for caller in (child_leader, parent_leader):
+        denied = await client.patch(
+            path, headers=auth(caller), json={"parent_id": parent_id}
+        )
+        assert denied.status_code == 403, denied.text
+
+    outside_region = await create("Other region", "bd")
+    for bad_parent in (child, outside_region, await make_circle(client, child_leader)):
+        invalid = await client.patch(
+            path, headers=auth(child_leader), json={"parent_id": bad_parent}
+        )
+        assert invalid.status_code == 400, invalid.text
+
+    distant = await create("Distant association", latitude=33)
+    too_far = await client.post(
+        "/circles",
+        headers=auth(child_leader),
+        json={
+            "name": "Han near port",
+            "unit_type": "han",
+            "approx_lat": 32.75,
+            "approx_lng": 129.87,
+            "parent_id": distant,
+        },
+    )
+    assert too_far.status_code == 400, too_far.text
+
+    archived = await create("Archived association")
+    response = await client.post(
+        f"/circles/{archived}/archive", headers=auth(child_leader)
+    )
+    assert response.status_code == 200, response.text
+    inactive = await client.patch(
+        path, headers=auth(child_leader), json={"parent_id": archived}
+    )
+    assert inactive.status_code == 404, inactive.text
+    assert (await client.get(path, headers=auth(child_leader))).json()[
+        "parent_id"
+    ] is None
+
+
+async def test_circle_hierarchy_rejects_ancestor_cycles(client):
+    leader = await make_user(client)
+    child_id = await make_circle(client, leader)
+    parent = await client.post(
+        "/circles",
+        headers=auth(leader),
+        json={"name": "Association", "unit_type": "association"},
+    )
+    assert parent.status_code == 201, parent.text
+    parent_id = parent.json()["id"]
+
+    database = Database(_settings())
+    try:
+        async with database.session() as session:
+            await session.execute(
+                update(Circle)
+                .where(Circle.id == uuid.UUID(parent_id))
+                .values(parent_id=uuid.UUID(child_id))
+            )
+    finally:
+        await database.close()
+
+    response = await client.patch(
+        f"/circles/{child_id}", headers=auth(leader), json={"parent_id": parent_id}
+    )
+    assert response.status_code == 400, response.text
+    detail = await client.get(f"/circles/{child_id}", headers=auth(leader))
+    assert detail.json()["parent_id"] is None

@@ -9,6 +9,7 @@ from app.database.connection import Database
 from app.database.models import Circle, CircleInvite, CircleMembership, User
 from app.database.models.enums import (
     CircleStatus,
+    CircleUnitType,
     JoinMethod,
     MembershipRole,
     MembershipStatus,
@@ -36,6 +37,16 @@ from app.services.relationships.service import (
     get_managed_profile_for_creator,
 )
 
+PARENT_TYPES = {
+    CircleUnitType.ASSOCIATION: frozenset({CircleUnitType.CITY}),
+    CircleUnitType.MOHOLLA: frozenset({CircleUnitType.CITY}),
+    CircleUnitType.HAN: frozenset({CircleUnitType.ASSOCIATION}),
+    CircleUnitType.PARA: frozenset({CircleUnitType.MOHOLLA}),
+    CircleUnitType.BUILDING: frozenset(
+        {CircleUnitType.ASSOCIATION, CircleUnitType.MOHOLLA}
+    ),
+}
+
 
 class CircleNotFoundError(NotFoundError):
     def __init__(self) -> None:
@@ -57,6 +68,11 @@ class NotCircleLeaderError(PermissionDeniedError):
         super().__init__("Only a circle leader can do this.")
 
 
+class NotParentCircleLeaderError(PermissionDeniedError):
+    def __init__(self) -> None:
+        super().__init__("An approved leader of the parent circle must link it.")
+
+
 class JoinTargetError(BadRequestError):
     def __init__(self) -> None:
         super().__init__("Provide either an invite code or a circle id.")
@@ -70,6 +86,7 @@ class NewCircle:
     approx_lat: float | None
     approx_lng: float | None
     open_to_nearby: bool
+    parent_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -120,9 +137,14 @@ async def create_circle(
     database: Database, user: User, new_circle: NewCircle
 ) -> CircleView:
     async with database.session() as session:
-        circle = await CircleRepository(session).create(
+        circles = CircleRepository(session)
+        if new_circle.parent_id is not None:
+            await circles.lock_hierarchy(new_circle.region)
+            await _validate_parent(session, user.id, new_circle, new_circle.parent_id)
+        circle = await circles.create(
             {
                 "name": new_circle.name,
+                "parent_id": new_circle.parent_id,
                 "region": new_circle.region,
                 "unit_type": new_circle.unit_type,
                 "approx_lat": new_circle.approx_lat,
@@ -289,22 +311,79 @@ def generate_invite_code() -> str:
     return secrets.token_urlsafe(12)
 
 
-async def _require_leader(session, circle_id: uuid.UUID, user_id: uuid.UUID) -> None:
+async def _require_leader(session, circle_id: uuid.UUID, user_id: uuid.UUID) -> Circle:
     circle = await CircleRepository(session).get(circle_id)
     if circle is None:
         raise CircleNotFoundError
     if not await MembershipRepository(session).is_leader(circle_id, user_id):
         raise NotCircleLeaderError
+    return circle
+
+
+async def _validate_parent(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    child: Circle | NewCircle,
+    parent_id: uuid.UUID,
+) -> None:
+    circles = CircleRepository(session)
+    if isinstance(child, Circle) and child.id == parent_id:
+        raise BadRequestError("A circle cannot be its own parent.")
+    parent = await circles.get(parent_id)
+    if parent is None:
+        raise CircleNotFoundError
+    if parent.region != child.region:
+        raise BadRequestError("Choose a parent circle in the same region.")
+    parent = await circles.get_for_update(parent_id)
+    if parent is None or parent.status != CircleStatus.ACTIVE.value:
+        raise CircleNotFoundError
+    if not await MembershipRepository(session).is_leader(parent_id, user_id, lock=True):
+        raise NotParentCircleLeaderError
+    if parent.unit_type not in PARENT_TYPES.get(child.unit_type, ()):
+        raise BadRequestError("Choose a compatible parent circle type.")
+    if (
+        parent.unit_type != CircleUnitType.CITY.value
+        and parent.approx_lat is not None
+        and parent.approx_lng is not None
+        and child.approx_lat is not None
+        and child.approx_lng is not None
+        and not await circles.is_nearby(
+            parent.id, float(child.approx_lat), float(child.approx_lng)
+        )
+    ):
+        raise BadRequestError("Choose a parent circle within 3 km.")
+
+    seen = {child.id} if isinstance(child, Circle) else set()
+    ancestor = parent
+    while ancestor is not None:
+        if ancestor.id in seen:
+            raise BadRequestError("The parent circle would create a cycle.")
+        seen.add(ancestor.id)
+        if ancestor.parent_id is None:
+            break
+        ancestor = await circles.get(ancestor.parent_id)
 
 
 async def update_circle(
     database: Database, user: User, circle_id: uuid.UUID, changes: dict
 ) -> CircleView:
     async with database.session() as session:
-        await _require_leader(session, circle_id, user.id)
-        circle = await CircleRepository(session).get_for_update(circle_id)
+        existing = await _require_leader(session, circle_id, user.id)
+        circles = CircleRepository(session)
+        if "parent_id" in changes:
+            await circles.lock_hierarchy(existing.region)
+        circle = await circles.get_for_update(circle_id)
+        if "parent_id" in changes:
+            if circle.status != CircleStatus.ACTIVE.value:
+                raise BadRequestError("An archived circle cannot change its parent.")
+            if not await MembershipRepository(session).is_leader(
+                circle_id, user.id, lock=True
+            ):
+                raise NotCircleLeaderError
+            if changes["parent_id"] is not None:
+                await _validate_parent(session, user.id, circle, changes["parent_id"])
         if changes:
-            circle = await CircleRepository(session).update(circle, changes)
+            circle = await circles.update(circle, changes)
         return await _build_view(session, circle, user.id)
 
 

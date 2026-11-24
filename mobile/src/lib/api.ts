@@ -74,6 +74,7 @@ export type Circle = {
   id: string;
   region: Region;
   unit_type: string;
+  status?: string;
   name: string;
   name_translations: Partial<Record<Language, unknown>>;
 };
@@ -84,6 +85,7 @@ export type CircleUnitType =
 export type MembershipRole = "member" | "leader" | "coordinator";
 
 export type CircleDetail = Circle & {
+  parent_id: string | null;
   approx_lat: number | null;
   approx_lng: number | null;
   open_to_nearby: boolean;
@@ -103,6 +105,7 @@ export type CircleMembership = {
 export type NewCircle = {
   name: string;
   unit_type: CircleUnitType;
+  parent_id?: string;
   region?: Region;
   open_to_nearby?: boolean;
   approx_lat?: number;

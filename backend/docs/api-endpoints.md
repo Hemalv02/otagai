@@ -319,7 +319,7 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `GET /circles?near=lat,lng` or `?q=` | Search open circles in the profile's region. Nearby results are limited to 3 km and ordered by distance. Returns approximate locations only | 200 | 4 | MVP |
 | `GET /circles/{circle_id}` | Circle details. Members whose membership isn't approved get a limited view | 200 | 4, 38 | MVP |
 | `POST /circles` | Start a circle; the creator becomes its leader | 201 | 4 | MVP |
-| `PATCH /circles/{circle_id}` | Leader edits the name, translations or `open_to_nearby` | 200 | 40 | Later |
+| `PATCH /circles/{circle_id}` | Leader edits the name, translations, discovery setting or parent circle | 200 | 40 | MVP |
 | `POST /circles/{circle_id}/archive` | Leader archives the circle | 200 | 40 | Later |
 | `GET /circle-invites/{code}` | Preview the circle behind an invite code or QR before joining. 404 if the code is invalid or expired | 200 | 4 | MVP |
 | `POST /users/me/memberships` | Join with `{invite_code}`, or ask to join a found circle with `{circle_id}`. Approved straight away if the invite auto-approves, otherwise pending | 201 | 4 | MVP |
@@ -333,6 +333,8 @@ There is deliberately no "decline" endpoint for a request. Not answering is the 
 | `POST /circles/{circle_id}/invites` | Leader creates an invite code (expiry, max uses, auto-approve) | 201 | 40 | Later |
 | `GET /circles/{circle_id}/invites` | List the circle's invites | 200 | 40 | Later |
 | `POST /circles/{circle_id}/invites/{invite_id}/revoke` | Revoke an invite | 200 | 40 | Later |
+
+To link a circle, pass `parent_id` when creating it or patching an existing circle. The actor must be an approved leader of both circles, and both circles must be active and in the same region. A han can link to an association, a para to a moholla, and a building to either. Associations and mohollas can link to a city. Local circles with coordinates must be within 3 km of their parent. Pass `parent_id: null` in a patch to unlink a circle. Only approved members of the child circle receive its parent ID in circle details.
 
 ## 4. Media uploads
 

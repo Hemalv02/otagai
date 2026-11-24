@@ -8,6 +8,7 @@ import {
   activityStyles,
 } from "@/components/activity-ui";
 import { ActivityToggle } from "@/components/activity-toggle";
+import { CircleParentChoice } from "@/components/circle-parent-choice";
 import { CommunityScreen } from "@/components/community-screen";
 import {
   NeighbourConfirmation,
@@ -57,7 +58,10 @@ function CircleAdmin({ id, authUserId }: { id: string; authUserId: string }) {
   const now = useCurrentTime();
   const ready = Boolean(authUserId) && isUuid(id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [actionError, setActionError] = useState(false);
+  const [actionError, setActionError] = useState<
+    "actionError" | "parentCircleError"
+  >();
+  const [parentDraft, setParentDraft] = useState<string>();
   const [autoApprove, setAutoApprove] = useState(true);
   const [removing, setRemoving] = useState<RosterMembership | null>(null);
   const actionLock = useRef(false);
@@ -101,7 +105,10 @@ function CircleAdmin({ id, authUserId }: { id: string; authUserId: string }) {
       }
     }, [api, id, ready]),
   );
-  const isLeader = circle.data?.status === "ready" && !circle.error;
+  const detail = circle.data?.status === "ready" ? circle.data.detail : null;
+  const isLeader = Boolean(detail) && !circle.error;
+  const currentParent = detail?.parent_id ?? "";
+  const selectedParent = parentDraft ?? currentParent;
 
   const loadMembers = useCallback(
     async (status: "pending" | "approved", cursor?: string | null) => {
@@ -151,11 +158,11 @@ function CircleAdmin({ id, authUserId }: { id: string; authUserId: string }) {
     if (!isLeader || actionLock.current) return;
     actionLock.current = true;
     setBusyKey(key);
-    setActionError(false);
+    setActionError(undefined);
     try {
       await action();
     } catch (error) {
-      setActionError(true);
+      setActionError(key === "parent" ? "parentCircleError" : "actionError");
       if (error instanceof ApiError && error.status === 403) {
         await circle.reload();
       }
@@ -213,9 +220,36 @@ function CircleAdmin({ id, authUserId }: { id: string; authUserId: string }) {
       {circle.data?.status === "unavailable" ? (
         <ActivityText>{copy.circleUnavailable}</ActivityText>
       ) : null}
-      {actionError ? <ErrorText>{copy.actionError}</ErrorText> : null}
+      {actionError ? <ErrorText>{copy[actionError]}</ErrorText> : null}
       {isLeader ? (
         <>
+          {detail?.status === "active" ? (
+            <View className="gap-related-gap">
+              <CircleParentChoice
+                circleId={detail.id}
+                unitType={detail.unit_type}
+                region={detail.region}
+                currentParent={currentParent}
+                value={selectedParent}
+                onChange={setParentDraft}
+                disabled={Boolean(busyKey)}
+              />
+              {selectedParent !== currentParent ? (
+                <Button
+                  label={copy.saveParentCircle}
+                  busy={busyKey === "parent"}
+                  disabled={Boolean(busyKey)}
+                  onPress={() =>
+                    run("parent", async () => {
+                      await api.setParent(id, selectedParent || null);
+                      await circle.reload();
+                      setParentDraft(undefined);
+                    })
+                  }
+                />
+              ) : null}
+            </View>
+          ) : null}
           <NeighbourHeading>{copy.pendingHeading}</NeighbourHeading>
           <ActivityStatus
             loading={pending.loading}

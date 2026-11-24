@@ -71,6 +71,23 @@ class CircleRepository:
             Circle, circle_id, with_for_update=True, populate_existing=True
         )
 
+    async def lock_hierarchy(self, region: str) -> None:
+        await self._session.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    func.hashtext("circle_hierarchy"), func.hashtext(region)
+                )
+            )
+        )
+
+    async def is_nearby(
+        self, circle_id: uuid.UUID, latitude: float, longitude: float
+    ) -> bool:
+        statement = select(
+            circle_distance_meters(latitude, longitude) <= NEARBY_RADIUS_METERS
+        ).where(Circle.id == circle_id)
+        return bool(await self._session.scalar(statement))
+
     async def approved_circle_ids(self, user_id: uuid.UUID) -> list[uuid.UUID]:
         statement = select(CircleMembership.circle_id).where(
             CircleMembership.user_id == user_id,
@@ -241,8 +258,11 @@ class MembershipRepository:
             in (MembershipRole.LEADER.value, MembershipRole.COORDINATOR.value)
         )
 
-    async def is_leader(self, circle_id: uuid.UUID, user_id: uuid.UUID) -> bool:
-        membership = await self.get(circle_id, user_id)
+    async def is_leader(
+        self, circle_id: uuid.UUID, user_id: uuid.UUID, *, lock: bool = False
+    ) -> bool:
+        get = self.get_for_update if lock else self.get
+        membership = await get(circle_id, user_id)
         return (
             membership is not None
             and membership.status == MembershipStatus.APPROVED.value
